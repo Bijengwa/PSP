@@ -5,7 +5,8 @@ import RequireAuth from './management/auth/RequireAuth'
 
 // The office is its own bundle: shop visitors never download it.
 const Login = lazy(() => import('./management/auth/login'))
-const Dashboard = lazy(() => import('./management/inApp/dashboard'))
+const OfficeLayout = lazy(() => import('./management/inApp/dashboard'))
+const OfficeHome = lazy(() => import('./management/inApp/dashboard').then((m) => ({ default: m.OfficeHome })))
 
 // Everything under /office shares one auth state. Shop routes stay outside it,
 // so the public side never calls the auth API.
@@ -47,7 +48,9 @@ export default function App() {
       <Route path="/office" element={<OfficeRoot />}>
         <Route path="auth/login" element={<Login />} />
         <Route element={<RequireAuth />}>
-          <Route index element={<Dashboard />} />
+          <Route element={<OfficeLayout />}>
+            <Route index element={<OfficeHome />} />
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

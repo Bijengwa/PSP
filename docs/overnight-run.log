@@ -1,2 +1,22 @@
 '--max-turns' is not recognized as an internal or external command,
 operable program or batch file.
+M1.1 (layout foundation) is finished: `/office` now shows the office layout with the Home page inside it. I've ticked M1.1 in `docs/progress.md` and set M1.2 as the current step. Build and lint pass, but I only checked login and logout by reading the code, not in a browser.
+
+**What changed**
+- **`web/src/management/inApp/dashboard.tsx`:** the old `Dashboard` page is now the reusable layout, `OfficeLayout`. It keeps the sidebar, the top bar (name, role, Log out) and the logout error message. The main area now shows whichever office page is open (`<Outlet />`). The sidebar link now says "Home" instead of "Dashboard".
+- **Same file:** a new Home page, `OfficeHome`, with the title "Home" and "Welcome, {name}."
+- **`web/src/App.tsx`:** behind the login guard, the layout wraps the Home page at `/office`. The "Page not found" route for unknown `/office/*` paths still sits outside the layout; M1.3 moves it inside.
+- **Untouched:** all the login and session code, the API client, CSS, the backend and dependencies.
+
+**What I checked**
+- `npm run build` in `web/` passed.
+- `npm run lint` in `web/` passed with no warnings.
+- I didn't run the `node` tests because nothing on the backend changed.
+- I read through the route setup to confirm `/office` shows the layout with Home in it. The login, redirect and logout code didn't change, and the Log out button calls the same function as before. The Scope Guard hook asked me to confirm every "Done when" check before ticking; I ticked M1.1 on that basis, so a quick browser test of login and logout is worth doing.
+- The tool blocked `git diff` pending approval, so I reviewed the changes by reading the edited files.
+
+**Decision for you:** I put the Home page in `dashboard.tsx` because the rules say not to create new files without asking. If you want it in its own file, for example `web/src/management/inApp/home.tsx`, tell me where.
+
+Notes are in `docs/overnight-log.md` (a new file, as you asked). I haven't started M1.2.
+
+Also, the Linear connector needs authorizing in your claude.ai connector settings before I can use it, and the chrome-devtools server failed to connect this session.

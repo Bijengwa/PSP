@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, NavLink } from 'react-router'
+import { Link, NavLink, Outlet } from 'react-router'
 import { OFFICE_HOME_PATH, useAuth } from '../auth/AuthProvider'
 
 function initials(fullName: string) {
@@ -11,9 +11,9 @@ function initials(fullName: string) {
     .join('')
 }
 
-// The office shell: sidebar, top bar with the signed-in staff member and
-// logout. Dashboard content comes in a later phase.
-export default function Dashboard() {
+// The office layout: sidebar, top bar with the signed-in staff member and
+// logout, and a workspace where the current office page renders (<Outlet />).
+export default function OfficeLayout() {
   const { state, logout } = useAuth()
   const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +42,7 @@ export default function Dashboard() {
         </Link>
         <nav className="office-nav" aria-label="Office">
           <NavLink to={OFFICE_HOME_PATH} end className="office-nav-link">
-            Dashboard
+            Home
           </NavLink>
         </nav>
       </aside>
@@ -69,10 +69,22 @@ export default function Dashboard() {
               Could not log out: {error}
             </div>
           )}
-          <h1 className="office-title">Dashboard</h1>
-          <p className="office-lead">Welcome, {staff.fullName}.</p>
+          <Outlet />
         </main>
       </div>
     </div>
+  )
+}
+
+// Home page shown in the workspace at /office.
+export function OfficeHome() {
+  const { state } = useAuth()
+  if (state.status !== 'authenticated') return null
+
+  return (
+    <>
+      <h1 className="office-title">Home</h1>
+      <p className="office-lead">Welcome, {state.staff.fullName}.</p>
+    </>
   )
 }
