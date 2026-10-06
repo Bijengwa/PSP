@@ -50,6 +50,17 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route element={<OfficeLayout />}>
             <Route index element={<OfficeHome />} />
+            {/* Sidebar routes. No element yet, so the workspace stays empty;
+                each gets its placeholder page in M1.3. */}
+            <Route path="products" />
+            <Route path="products/new" />
+            <Route path="inventory" />
+            <Route path="orders" />
+            <Route path="customers" />
+            <Route path="staff" />
+            <Route path="reports" />
+            <Route path="notifications" />
+            <Route path="settings" />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Route>

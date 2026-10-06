@@ -2,6 +2,40 @@ import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router'
 import { OFFICE_HOME_PATH, useAuth } from '../auth/AuthProvider'
 
+// Sidebar navigation, grouped as in docs/management-plan.md §2.
+const NAV_GROUPS = [
+  { label: 'Home', items: [{ label: 'Home', to: OFFICE_HOME_PATH }] },
+  {
+    label: 'Catalog',
+    items: [
+      { label: 'Products', to: '/office/products' },
+      { label: 'Add Product', to: '/office/products/new' },
+      { label: 'Inventory', to: '/office/inventory' },
+    ],
+  },
+  {
+    label: 'Sales',
+    items: [
+      { label: 'Orders', to: '/office/orders' },
+      { label: 'Customers', to: '/office/customers' },
+    ],
+  },
+  {
+    label: 'Management',
+    items: [
+      { label: 'Staff', to: '/office/staff' },
+      { label: 'Reports', to: '/office/reports' },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { label: 'Notifications', to: '/office/notifications' },
+      { label: 'Settings', to: '/office/settings' },
+    ],
+  },
+]
+
 function initials(fullName: string) {
   return fullName
     .split(/\s+/)
@@ -41,9 +75,23 @@ export default function OfficeLayout() {
           <span className="office-brand-sub">Admin portal</span>
         </Link>
         <nav className="office-nav" aria-label="Office">
-          <NavLink to={OFFICE_HOME_PATH} end className="office-nav-link">
-            Home
-          </NavLink>
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="office-nav-group">
+              <h2 id={`office-nav-${group.label}`} className="office-nav-heading">
+                {group.label}
+              </h2>
+              <ul className="office-nav-list" aria-labelledby={`office-nav-${group.label}`}>
+                {group.items.map((item) => (
+                  <li key={item.to}>
+                    {/* `end` keeps Products from staying active on /office/products/new. */}
+                    <NavLink to={item.to} end className="office-nav-link">
+                      {item.label}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
       </aside>
 

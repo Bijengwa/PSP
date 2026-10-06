@@ -20,3 +20,27 @@ M1.1 (layout foundation) is finished: `/office` now shows the office layout with
 Notes are in `docs/overnight-log.md` (a new file, as you asked). I haven't started M1.2.
 
 Also, the Linear connector needs authorizing in your claude.ai connector settings before I can use it, and the chrome-devtools server failed to connect this session.
+I've built M1.2 (Sidebar + navigation), ticked it in `docs/progress.md`, set M1.3 as the current step, and stopped there. Build and lint pass, but no browser run was done, so the three "Done when" checks (every item navigates, active highlighting, keyboard use) are backed only by reading the code.
+
+**What changed**
+- **`web/src/management/inApp/dashboard.tsx`:** the sidebar now has the five groups from ┬º2 of the plan (Home, Catalog, Sales, Management, System). Each item is a `NavLink`, and each group has its own heading. Every link uses `end`, so Products isn't highlighted when you're on `/office/products/new`.
+- **`web/src/App.tsx`:** added routes inside the layout for products, products/new, inventory, orders, customers, staff, reports, notifications and settings. They have no page component yet, so the workspace is empty until the placeholder pages arrive in M1.3. Unknown `/office/*` paths still show the full-page Not found, as before.
+- **`web/src/index.css`:** styles for the group headings and lists, and a hover state on links. The existing active style is unchanged.
+- **`docs/overnight-log.md`:** notes for this step.
+
+No new files, no new dependencies, and no backend, header or logout changes.
+
+**Checks**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- Backend tests: not run, since nothing in `node/` changed.
+- I wrote a small script to check route matching and highlighting at runtime, but couldn't run it: saving a file outside the project needs a permission this session doesn't have.
+- Why I expect the three checks to hold: every link has a matching route, the links are ordinary links so Tab and Enter work, and the active link is highlighted and marked for screen readers. A quick click-through in the browser would confirm it.
+
+**Notes**
+- At the start, a hook warned that another Claude session had edited these files a few minutes earlier. The working tree was clean apart from my own edit, so I took it to be the already-committed M1.1 work.
+- On screens 768px wide or narrower, the full sidebar list sits above the workspace. That's expected until the mobile drawer in M1.5.
+- I couldn't run a final `git status` because it needed approval. The changed files I expect are the five listed above, but I didn't confirm that with git.
+- The Linear connector needs authorizing in your claude.ai connector settings, and the chrome-devtools plugin failed to connect. Neither was needed for this step.
+
+M1.3 (Placeholder workspace pages) was not started.

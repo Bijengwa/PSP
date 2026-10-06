@@ -145,15 +145,41 @@ a {
 .office-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 16px;
+}
+
+.office-nav-heading {
+  margin-bottom: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+}
+
+.office-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .office-nav-link {
+  display: block;
   padding: 8px;
   border-radius: var(--radius);
   color: var(--ink-muted);
   text-decoration: none;
+  font-size: 14px;
   font-weight: 500;
+}
+
+.office-nav-link:hover {
+  background: var(--surface-muted);
+  color: var(--ink);
 }
 
 .office-nav-link.active {
