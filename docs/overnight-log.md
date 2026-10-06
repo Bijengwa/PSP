@@ -170,3 +170,22 @@
 **Notes for the user**
 - The Collision Guard hook reported an edit to this log by another session (c7e5e89d) a minute before this entry. The file's tail was re-read and matched the second-attempt entry, so nothing was overwritten.
 - M1.6 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.5 Responsive/mobile (fourth attempt, still NOT ticked)
+
+**Changed**
+- No code changes. The M1.5 implementation from commit 22a066d is unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- **Browser check still not done.** Permission to use the Chrome DevTools tool (`new_page`) was refused again. A Vite dev server started on port 5199 then exited with code 1. Its output could not be read because of a permission prompt; a dev server left running by an earlier run may still hold the port.
+- So, as CLAUDE.md requires, M1.5 stays unticked in `docs/progress.md`, and the current step stays **M1.5**.
+
+**To finish M1.5**
+- Same as the third attempt. Do the manual 360px/768px/1280px check under "To finish M1.5" in the first M1.5 entry, or allow the `mcp__plugin_ecc_chrome-devtools__*` tools for this project. Until one of those is done, more overnight runs will stop at this same point.
+
+**Notes for the user**
+- The Collision Guard hook reported an edit to this log by another session (feb690eb) a minute before this entry. The file's tail was re-read and matched the third-attempt entry, so nothing was overwritten.
+- M1.6 was not started. Nothing was committed by this run.
