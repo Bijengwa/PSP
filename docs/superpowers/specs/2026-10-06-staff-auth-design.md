@@ -10,7 +10,7 @@ Give the management side of PSP (the "office") a secure login. Shop customers ne
 - Only staff log in. IT registers them; nobody can sign themselves up.
 - There is one role (`admin`) today. More roles must be addable later as data rows, without changing the schema.
 - Forgot password does not send an email. It notifies IT, and IT resets the password.
-- Keep database traffic low with Redis caching. Side effects (audit log, IT notification) run through an event bus on Redis Streams.
+- Redis stores sessions; they exist nowhere else. Staff profiles and roles are **not** cached: they are read from Postgres on every request, so deactivation, forced password changes and role changes take effect immediately. Side effects (audit log, IT notification) run through an event bus on Redis Streams.
 
 ## 2. Decisions
 
@@ -22,7 +22,8 @@ Give the management side of PSP (the "office") a secure login. Shop customers ne
 | Login identifier | Email + password. Emails are unique and stored lowercase. |
 | Password reset | Handled by IT. The user asks, IT sets a temporary password, and the user must change it at next login. |
 | Session | A random session ID in an httpOnly cookie. The session itself is stored in Redis. |
-| Cache | Redis, read-through ("cache-aside") with expiry times. All keys start with `psp:`. |
+| Session storage | Redis is the only store for sessions; they are not a cache of anything. Kept separate from the application cache in the code. |
+| Application cache | Redis cache-aside for non-auth data only: the reset-request badge count in this phase, catalog data later. Staff profiles, roles and authorization decisions are never cached. All keys start with `psp:`. |
 | Event bus | Redis Streams with consumer groups. |
 | Redis client | `redis` (node-redis, the official client). |
 | Password hashing | `argon2` (argon2id). |
@@ -88,37 +89,56 @@ A seed creates the `admin` role and the first admin from `SEED_ADMIN_EMAIL`, `SE
 - Set `REDIS_URL` in `.env`, and add it to `.env.example`.
 - Use two clients: one for normal commands and caching, one dedicated to the bus's blocking `XREADGROUP` reads. A blocking read ties up its connection, so it can't share one.
 - Production: require a password, keep Redis off the public internet, and enable AOF persistence so sessions and stream events survive a restart.
-- Set `maxmemory-policy volatile-lru`. Every cache and session key has an expiry time, and the stream has none, so the stream is never evicted.
+- Set `maxmemory-policy volatile-lru`. Every cache and session key has an expiry time, and the stream has none, so the stream is never evicted. If memory runs out, an evicted session only logs that person out, so the failure is safe. Once the application cache grows (catalog phase), move it to its own Redis instance with `allkeys-lru` and run the session/bus instance with `noeviction`.
 - Local development on Windows: run Redis with Docker (`redis:7`) or use Memurai.
 
-### Keys
+Redis does three separate jobs here, and the code keeps them in separate modules:
+1. **Session storage**: authoritative session state. Nothing is copied from Postgres.
+2. **Rate limiting**: short-lived counters.
+3. **Application cache**: cache-aside with TTL and invalidation, for non-auth data only. In this phase that's just the reset-request badge count. Catalog data comes later, with stampede protection.
+
+### Session storage keys
 | key | contents | TTL |
 |---|---|---|
 | `psp:sess:{sha256(sessionId)}` | JSON `{ staffId, createdAt, absoluteExpiresAt, ip, userAgent }` | 8h sliding (refreshed on use, at most once per minute), hard maximum of 12h |
 | `psp:staff-sess:{staffId}` | SET of that staff member's session key hashes | refreshed together with the sessions |
-| `psp:staff:{staffId}` | JSON of the profile and role name, **without** `password_hash` | 10 min |
-| `psp:roles` | JSON list of roles | 24h |
-| `psp:reset-requests:pending-count` | integer | 60s |
+
+- The raw session ID only ever exists in the cookie. Redis stores a SHA-256 hash of it, so anyone who dumps Redis cannot take over a session.
+- A session holds only *who* is logged in (`staffId`). It never holds the role, `is_active` or `must_change_password`. Those are always read fresh from Postgres.
+
+### Rate-limit keys
+| key | contents | TTL |
+|---|---|---|
 | `psp:rl:login:ip:{ip}` | counter | 15 min |
 | `psp:rl:login:email:{email}` | counter | 15 min |
 | `psp:rl:forgot:ip:{ip}` / `psp:rl:forgot:email:{email}` | counter | 1h |
 
-- The raw session ID only ever exists in the cookie. Redis stores a SHA-256 hash of it, so anyone who dumps Redis cannot take over a session.
-- Rate-limit counters use `INCR`, and set the expiry with `EXPIRE … NX`, both inside one `MULTI` transaction.
+Counters use `INCR`, and set the expiry with `EXPIRE … NX`, both inside one `MULTI` transaction.
 
-### Request path (cached)
-1. Read the cookie, hash the session ID, then `GET psp:sess:{hash}`. If it's missing, return 401.
-2. `GET psp:staff:{staffId}`. If it's missing, load the profile from Postgres and `SET` it with its expiry time.
-3. Check `is_active` and `must_change_password`, then the role.
+### Application cache keys (this phase)
+| key | contents | TTL | invalidated by |
+|---|---|---|---|
+| `psp:reset-requests:pending-count` | integer | 60s | `reset_request.*` events (see §5) |
 
-A normal authenticated request therefore costs **0 database queries** while the cache is warm.
+**Not cached, on purpose:** staff profiles, roles and authorization decisions. There is no `psp:staff:{id}` or `psp:roles` key. With only a handful of staff, a primary-key read joined to `roles` costs well under a millisecond. Caching it would let a deactivated or demoted person keep access until the TTL ran out.
 
-### Invalidation
-Anything that can lock a person out must take effect at once, so it happens **directly in the write path**:
-- Deactivate, reset password, change password, or change role: delete every key listed in `psp:staff-sess:{id}`, then the set itself, then `psp:staff:{id}`.
-- Edit a profile without touching security fields: delete `psp:staff:{id}`.
+### Request path
+```
+Request
+ -> Redis: GET psp:sess:{sha256(cookie)}            (missing -> 401)
+ -> Postgres: staff_profiles JOIN roles WHERE id = staffId   (primary-key lookup, every request)
+ -> authorization: is_active, must_change_password, role
+ -> route handler
+```
 
-The bus then handles everything else (see §5).
+A normal authenticated request costs 1 Redis `GET` and 1 indexed Postgres read.
+
+### Session revocation
+Anything that can lock a person out must take effect at once, so it happens **directly in the write path**, not through the bus:
+- Deactivate, reset password, change password, or change role: delete every key listed in `psp:staff-sess:{id}`, then the set itself.
+- Because profiles and roles are read from Postgres on each request, the change is already in effect for any request that slips in before the sessions are deleted. Nothing needs to be invalidated.
+
+The bus then handles the side effects (see §5).
 
 ### When Redis is down
 Sessions live in Redis, so authenticated office routes **refuse access** with 503 "Service temporarily unavailable". The public shop is not affected. `/api/health` reports the Redis status next to the database status.
@@ -147,7 +167,7 @@ Sessions live in Redis, so authenticated office routes **refuse access** with 50
 | group | does |
 |---|---|
 | `audit` | writes every event to `audit_logs` |
-| `cache` | after `staff.*`, deletes `psp:roles` and other cached data; after `reset_request.*`, deletes `psp:reset-requests:pending-count` |
+| `cache` | after `reset_request.*`, deletes `psp:reset-requests:pending-count`. It never touches sessions, which are revoked synchronously (§4). Catalog invalidation is added here later. |
 | `it-notify` | after `reset_request.created`, updates the badge count. A later phase may add email or SMS to IT here. |
 
 The consumers run inside the API process when it starts. They can move to a separate worker process later without code changes.
@@ -161,7 +181,7 @@ All responses use the existing `{ success, data }` / `{ success, error }` format
 |---|---|---|
 | `POST /api/auth/login` | rate limit | `{ email, password }`. See §7. |
 | `POST /api/auth/logout` | session | deletes the session and clears the cookie |
-| `GET /api/auth/me` | session | the current staff member, served from cache |
+| `GET /api/auth/me` | session | the current staff member, read from Postgres (the same lookup `requireAuth` already did) |
 | `POST /api/auth/change-password` | session (allowed even while `must_change_password` is set) | `{ currentPassword, newPassword }`. Checks password strength and ends all other sessions. |
 | `POST /api/auth/forgot-password` | rate limit | `{ email }`. Always answers 200 with the same message. |
 
@@ -246,7 +266,8 @@ The guard calls `/me` through react-query, with `staleTime` set to 5 min. Not lo
   - deactivation and password reset delete sessions immediately
   - the forgot-password response is the same for known and unknown emails
   - the password strength rules
-  - a warm-cache request makes 0 database queries (asserted with a Knex query counter)
+  - an authenticated request makes exactly 1 Redis session read and 1 Postgres staff/role read (asserted with a Knex query counter)
+  - deactivating someone or changing their role takes effect on that person's very next request, with no waiting for a TTL
   - consumers: the audit handler writes once even when an event is delivered twice; an event left unconfirmed is claimed again
 - **Frontend:** Vitest and Testing Library for:
   - route guard redirects

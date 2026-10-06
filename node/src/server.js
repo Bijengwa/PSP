@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const express = require('express');
 const cors = require('cors');
@@ -65,20 +65,57 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ---------- Start ----------
-const server = app.listen(PORT, () => {
-  console.log(`PSP API listening on http://localhost:${PORT}`);
-});
-
-function shutdown(signal) {
-  console.log(`${signal} received, shutting down...`);
-  server.close(async () => {
-    await db.destroy();
-    process.exit(0);
+// ---------- Start / stop ----------
+function start(port = PORT) {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => resolve(server));
+    server.once('error', reject);
   });
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+// Stops accepting connections, waits for in-flight requests to finish,
+// then closes the shared database pool.
+async function stop(server) {
+  if (server) {
+    await new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+  await db.destroy();
+}
 
-module.exports = app;
+// Only listen when run directly (npm start / npm run dev), not when imported by tests.
+if (require.main === module) {
+  start()
+    .then((server) => {
+      console.log(`PSP API listening on http://localhost:${PORT}`);
+
+      let shuttingDown = false;
+      function shutdown(signal) {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log(`${signal} received, shutting down...`);
+
+        // A client holding a keep-alive socket open must not block shutdown forever.
+        setTimeout(() => server.closeAllConnections(), 10000).unref();
+
+        stop(server).then(
+          () => process.exit(0),
+          (err) => {
+            console.error(err);
+            process.exit(1);
+          },
+        );
+      }
+
+      process.on('SIGINT', () => shutdown('SIGINT'));
+      process.on('SIGTERM', () => shutdown('SIGTERM'));
+    })
+    .catch(async (err) => {
+      console.error(err);
+      await db.destroy();
+      process.exit(1);
+    });
+}
+
+module.exports = { app, start, stop };
