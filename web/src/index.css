@@ -125,9 +125,17 @@ a {
   border-right: 1px solid var(--border);
 }
 
+.office-aside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .office-brand {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   padding: 0 8px;
   text-decoration: none;
 }
@@ -206,6 +214,7 @@ a {
 }
 
 .office-topbar-title {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   font-size: 16px;
@@ -238,6 +247,13 @@ a {
   justify-content: center;
   width: 40px;
   height: 40px;
+}
+
+/* Hamburger, drawer close button and backdrop exist only on mobile. */
+.office-menu-toggle,
+.office-drawer-close,
+.office-backdrop {
+  display: none;
 }
 
 .office-profile-button {
@@ -380,23 +396,88 @@ a {
   color: var(--danger);
 }
 
+/* Mobile: the sidebar becomes an overlay drawer opened from the hamburger.
+   Keep the breakpoint in sync with MOBILE_QUERY in inApp/dashboard.tsx. */
 @media (max-width: 768px) {
-  .office {
-    flex-direction: column;
+  .office-aside {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: min(280px, 85vw);
+    padding: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 8px 24px rgb(15 35 38 / 18%);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
-  .office-aside {
-    width: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    padding: 16px;
+  .office-aside-open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.2s ease;
+  }
+
+  .office-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgb(15 35 38 / 40%);
+  }
+
+  .office-menu-toggle,
+  .office-drawer-close {
+    display: inline-flex;
+    flex-shrink: 0;
   }
 
   .office-topbar {
-    padding: 0 16px;
+    position: relative;
+    gap: 8px;
+    height: 56px;
+    padding: 0 12px;
+  }
+
+  .office-topbar-actions {
+    gap: 4px;
+  }
+
+  /* Avatar only; the name and role stay readable by screen readers. */
+  .office-profile-button {
+    padding: 2px;
+  }
+
+  .office-user-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Popovers anchor to the header so they stay on screen at narrow widths. */
+  .office-popover-anchor {
+    position: static;
+  }
+
+  .office-popover {
+    top: calc(100% + 4px);
+    right: 12px;
+    max-width: calc(100% - 24px);
   }
 
   .office-main {
     padding: 24px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-aside {
+    transition: none;
   }
 }

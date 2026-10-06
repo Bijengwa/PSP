@@ -4,6 +4,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type FocusEvent,
   type KeyboardEvent,
   type RefObject,
@@ -88,6 +89,19 @@ function useDismiss(open: boolean, containerRef: RefObject<HTMLElement | null>, 
   }, [open, containerRef, close])
 }
 
+// Below this width the sidebar becomes an overlay drawer (matches index.css).
+const MOBILE_QUERY = '(max-width: 768px)'
+
+function subscribeToMobile(onChange: () => void) {
+  const query = window.matchMedia(MOBILE_QUERY)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+function isMobileViewport() {
+  return window.matchMedia(MOBILE_QUERY).matches
+}
+
 // True when keyboard focus moves from inside the popover to somewhere outside it.
 function focusLeft(event: FocusEvent<HTMLElement>) {
   const next = event.relatedTarget as Node | null
@@ -99,6 +113,22 @@ function BellIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function MenuIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
     </svg>
   )
 }
@@ -252,11 +282,37 @@ function ProfileMenu({ staff }: { staff: Staff }) {
 
 // The office layout: sidebar, header (page title, notifications, profile menu,
 // logout) and a workspace where the current office page renders (<Outlet />).
+// On mobile the sidebar is an overlay drawer opened from the header's hamburger.
 export default function OfficeLayout() {
   const { state, logout } = useAuth()
   const { pathname } = useLocation()
   const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isMobile = useSyncExternalStore(subscribeToMobile, isMobileViewport)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const drawerShown = drawerOpen && isMobile
+  const drawerId = useId()
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const drawerWasShown = useRef(false)
+
+  // Focus moves into the drawer when it opens and back to the hamburger when it closes.
+  useEffect(() => {
+    if (drawerShown) closeButtonRef.current?.focus()
+    else if (drawerWasShown.current) menuButtonRef.current?.focus()
+    drawerWasShown.current = drawerShown
+  }, [drawerShown])
+
+  useEffect(() => {
+    if (!drawerShown) return
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') setDrawerOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [drawerShown])
+
+  const closeDrawer = () => setDrawerOpen(false)
 
   // RequireAuth only renders this page for an authenticated staff member.
   if (state.status !== 'authenticated') return null
@@ -275,11 +331,30 @@ export default function OfficeLayout() {
 
   return (
     <div className="office">
-      <aside className="office-aside">
-        <Link to={OFFICE_HOME_PATH} className="office-brand">
-          <span className="office-brand-name">PSP Engineering Group</span>
-          <span className="office-brand-sub">Admin portal</span>
-        </Link>
+      {/* Tapping outside the open drawer closes it; keyboard users have Escape and the close button. */}
+      {drawerShown && <div className="office-backdrop" aria-hidden="true" onClick={closeDrawer} />}
+      <aside
+        id={drawerId}
+        className={drawerOpen ? 'office-aside office-aside-open' : 'office-aside'}
+        role={drawerShown ? 'dialog' : undefined}
+        aria-modal={drawerShown || undefined}
+        aria-label={drawerShown ? 'Office navigation' : undefined}
+      >
+        <div className="office-aside-head">
+          <Link to={OFFICE_HOME_PATH} className="office-brand" onClick={closeDrawer}>
+            <span className="office-brand-name">PSP Engineering Group</span>
+            <span className="office-brand-sub">Admin portal</span>
+          </Link>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="office-icon-button office-drawer-close"
+            aria-label="Close navigation"
+            onClick={closeDrawer}
+          >
+            <CloseIcon />
+          </button>
+        </div>
         <nav className="office-nav" aria-label="Office">
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="office-nav-group">
@@ -290,7 +365,7 @@ export default function OfficeLayout() {
                 {group.items.map((item) => (
                   <li key={item.to}>
                     {/* `end` keeps Products from staying active on /office/products/new. */}
-                    <NavLink to={item.to} end className="office-nav-link">
+                    <NavLink to={item.to} end className="office-nav-link" onClick={closeDrawer}>
                       {item.label}
                     </NavLink>
                   </li>
@@ -301,8 +376,20 @@ export default function OfficeLayout() {
         </nav>
       </aside>
 
-      <div className="office-body">
+      {/* While the drawer is open the rest of the page cannot be focused or clicked. */}
+      <div className="office-body" inert={drawerShown}>
         <header className="office-topbar">
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="office-icon-button office-menu-toggle"
+            aria-label="Open navigation"
+            aria-expanded={drawerShown}
+            aria-controls={drawerId}
+            onClick={() => setDrawerOpen(true)}
+          >
+            <MenuIcon />
+          </button>
           {/* Not a heading: each workspace page has its own h1. */}
           <p className="office-topbar-title">{pageTitle(pathname)}</p>
           <div className="office-topbar-actions">

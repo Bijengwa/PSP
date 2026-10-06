@@ -95,3 +95,31 @@ M1.4 (Header) is built and ticked in `docs/progress.md`, and M1.5 is now the cur
 Notes are in `docs/overnight-log.md`. Nothing was committed, and I stopped before starting M1.5.
 
 The Linear connector needs authorizing in your claude.ai connector settings before it can be used.
+I've built the M1.5 mobile layout, but I didn't tick it in `docs/progress.md`. The step's "Done when" is a check in a real browser at 360px, 768px and desktop widths, and I couldn't run it here. Your instruction said to mark it done; CLAUDE.md says to tick a step only when that check passes, so I followed CLAUDE.md. The current step is still **M1.5**, and M1.6 was not started.
+
+**What changed**
+- **`web/src/management/inApp/dashboard.tsx`:**
+  - At 768px and below, the header has a hamburger button and the sidebar becomes a slide-in drawer over the page. While it's open, screen readers treat it as a modal dialog and the rest of the page can't be clicked or tabbed to.
+  - The drawer closes when you pick an item, tap outside it, press Escape, or use a new close button inside it. Focus moves into the drawer when it opens and back to the hamburger when it closes.
+- **`web/src/index.css`:**
+  - Styles for the drawer and the dimmed backdrop behind it.
+  - On mobile the header is shorter and shows only the avatar; screen readers still get the name and role.
+  - The Notifications and Profile popovers are pinned inside the header width so they stay on screen at 360px.
+
+No new files or dependencies, and nothing outside this step was touched.
+
+**What I checked**
+- `npm run build` and `npm run lint` in `web/` both pass.
+- I didn't run the backend tests because nothing in `node/` changed.
+- I worked out the 360px header widths by hand, and the parts should fit without sideways scrolling. That is not a substitute for actually looking.
+- The browser check didn't happen because this session wasn't allowed to open the browser tool or check whether Postgres and Redis were running.
+
+**To finish M1.5**
+1. With the API running, log in and open `/office` in device mode at 360px, 768px and 1280px.
+2. At 360px and 768px: the hamburger opens the drawer, and Escape, tapping outside and choosing an item each close it. There should be no sideways scrolling, including with the popovers open.
+3. At 1280px: the sidebar is always visible and there is no hamburger.
+4. If that all passes, tick M1.5 and set the current step to M1.6.
+
+**Decision for you:** at exactly 768px you currently get the drawer, because the existing CSS breakpoint includes 768. If you'd rather have the full sidebar at that width, the breakpoint needs to drop to 767px in both changed files.
+
+Notes and these steps are in `docs/overnight-log.md`. Nothing was committed.

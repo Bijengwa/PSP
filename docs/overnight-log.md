@@ -93,3 +93,40 @@
 - The Collision Guard hook again reported recent edits by other sessions (80b8c5fd, 28d23d15). `git status` showed only this step's changes, so nothing was overwritten.
 - Nothing was committed.
 - Next step: M1.5 Responsive/mobile. It was not started.
+
+## 2026-10-07 — M1.5 Responsive/mobile (implemented, NOT ticked)
+
+**Changed**
+- `web/src/management/inApp/dashboard.tsx` (`OfficeLayout`):
+  - A hamburger button (`aria-label="Open navigation"`, `aria-expanded`, `aria-controls`) sits left of the page title in the header. It is shown only at ≤768px, the breakpoint the CSS already used.
+  - At ≤768px the sidebar is an overlay drawer. While it is open it has `role="dialog"`, `aria-modal="true"` and `aria-label="Office navigation"`, and the rest of the page (`.office-body`) is `inert`. The mobile state comes from `matchMedia` through `useSyncExternalStore` (`MOBILE_QUERY`), so on desktop the sidebar keeps its plain landmark semantics.
+  - The drawer closes when you choose a nav item or the brand link, tap the backdrop, press Escape, or use a new "Close navigation" button in the drawer head.
+  - Focus moves to the close button when the drawer opens and back to the hamburger when it closes.
+  - New private icons `MenuIcon` and `CloseIcon` (inline SVG, no emoji).
+- `web/src/index.css`:
+  - The ≤768px block no longer stacks the sidebar above the page. It now styles the off-canvas drawer: `min(280px, 85vw)` wide, slides in with `transform`, and is hidden with `visibility` when closed so its links cannot be tabbed to. A backdrop sits behind it.
+  - A compact 56px header: the profile button shows the avatar only, and the name and role stay in the accessible name through a visually-hidden style.
+  - Popovers are anchored to the header (`right: 12px`, `max-width: calc(100% - 24px)`) so they stay on screen at 360px.
+  - The header title has `flex: 1`. The hamburger, close button and backdrop are hidden on desktop. Transitions are turned off under `prefers-reduced-motion`.
+
+**Not changed**
+- Auth wiring, the backend, the sidebar items, the placeholder pages, and how the header popovers behave. The Log out button stays in the header until M1.7. No theme work (M1.6). No new files or dependencies.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- 360px overflow check, by arithmetic only. Header at 360px: 12px padding on each side leaves 336px. That holds the hamburger (40), two 8px gaps, and the actions (bell 40, avatar 40, Log out about 86, gaps 8 = about 174), leaving about 106px for the title, which is ellipsised. The drawer is at most 85vw and popovers are capped to the header width. Nothing found that should scroll sideways.
+- **Not verified in a browser.** "Done when: checked at 360px, 768px and desktop widths" needs a real viewport check. This session was not allowed to open the Chrome DevTools browser tool or to check whether Postgres and Redis are running. `vite preview` was started and then stopped without being used. So, as CLAUDE.md requires, **M1.5 is not ticked** in `docs/progress.md`, and the current step stays M1.5.
+
+**To finish M1.5 (manual check)**
+1. With the API running, log in and open `/office` in DevTools device mode at 360px, 768px and 1280px.
+2. At 360px and 768px: the hamburger shows. It opens the drawer and focus lands on the close button. Tab stays inside the drawer. Each of these closes it with focus back on the hamburger: Escape, tapping the backdrop, choosing an item. There is no horizontal scrollbar, including with the Notifications and Profile popovers open.
+3. At 1280px: the sidebar is always visible and there is no hamburger.
+4. If all of that passes, tick M1.5 and set the current step to M1.6.
+
+**Notes for the user**
+- 768px counts as mobile (drawer), because the existing breakpoint is `max-width: 768px`. If you want the full sidebar at exactly 768px, the breakpoint needs to drop to 767px in both `index.css` and `MOBILE_QUERY`.
+- The Collision Guard hook reported recent edits by another session (2a0d793a) to `dashboard.tsx` and `index.css`. `git status` showed only this step's changes, so nothing was overwritten.
+- The GateGuard hook asked for facts before the first edits. They were given and the edits went ahead.
+- Nothing was committed. M1.6 was not started.
