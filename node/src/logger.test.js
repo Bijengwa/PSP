@@ -246,7 +246,8 @@ describe('startup and shutdown', () => {
     const { port } = server.address();
     await srv.stop(server);
 
-    const lines = srv.cap.lines();
+    // Redis connection state lines depend on whether Redis runs locally.
+    const lines = srv.cap.lines().filter((line) => !line.msg.startsWith('Redis'));
     expect(lines.map((line) => line.msg)).toEqual(['PSP API listening', 'HTTP server closed', 'Database pool closed']);
     expect(lines[0].port).toBe(port);
   });

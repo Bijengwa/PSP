@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const db = require('./db');
+const redis = require('./redis');
 const { logger, createHttpLogger } = require('./logger');
 
 const app = express();
@@ -26,19 +27,29 @@ app.get('/api/health', async (req, res) => {
     database = 'down';
   }
 
+  // Redis only holds office sessions; the public shop works without it, so it is
+  // reported but does not make the API unhealthy.
+  let redisStatus = 'ok';
+  try {
+    await redis.client.ping();
+  } catch (err) {
+    redisStatus = 'down';
+  }
+
   const healthy = database === 'ok';
   res.status(healthy ? 200 : 503).json({
     success: healthy,
     data: {
       api: 'ok',
       database,
+      redis: redisStatus,
       time: new Date().toISOString(),
     },
   });
 });
 
-// Feature routers are mounted here as they are built, e.g.:
-// app.use('/api/auth', require('./modules/auth/auth.routes'));
+// Feature routers
+app.use('/api/auth', require('./auth/auth.routes'));
 
 // ---------- 404 for unknown API routes ----------
 app.use('/api', (req, res) => {
@@ -52,7 +63,8 @@ app.use('/api', (req, res) => {
 // Express 5 forwards errors thrown in async handlers here automatically.
 // Throw an error with a `status` (or `statusCode`) property to control the response code.
 // The full error (stack included) goes to the log with the request ID; the client
-// only ever sees the generic message for 5xx.
+// only ever sees the generic message for 5xx, unless the error sets `expose: true`
+// because its message is known to be safe.
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   const status = err.status || err.statusCode || 500;
@@ -64,7 +76,8 @@ function errorHandler(err, req, res, next) {
   res.status(status).json({
     success: false,
     error: {
-      message: status >= 500 ? 'Internal server error' : err.message,
+      message: status >= 500 && !err.expose ? 'Internal server error' : err.message,
+      ...(status < 500 && err.code && { code: err.code }),
       ...(err.details && { details: err.details }),
     },
   });
@@ -79,13 +92,14 @@ function start(port = PORT) {
     const server = app.listen(port, (err) => {
       if (err) return reject(err);
       logger.info({ port: server.address().port }, 'PSP API listening');
+      redis.connect();
       resolve(server);
     });
   });
 }
 
 // Stops accepting connections, waits for in-flight requests to finish,
-// then closes the shared database pool.
+// then closes the Redis client and the shared database pool.
 async function stop(server) {
   if (server) {
     await new Promise((resolve, reject) => {
@@ -93,6 +107,7 @@ async function stop(server) {
     });
     logger.info('HTTP server closed');
   }
+  await redis.disconnect();
   await db.destroy();
   logger.info('Database pool closed');
 }
@@ -124,6 +139,7 @@ if (require.main === module) {
     })
     .catch(async (err) => {
       logger.error({ err }, 'Startup failed');
+      await redis.disconnect();
       await db.destroy();
       process.exit(1);
     });

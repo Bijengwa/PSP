@@ -53,6 +53,9 @@ function baseConfig({ database, ssl = false }) {
     migrations: {
       directory: './migrations',
     },
+    seeds: {
+      directory: './seeds',
+    },
   };
 }
 
