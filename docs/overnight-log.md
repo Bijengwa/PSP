@@ -63,3 +63,33 @@
 - §2 lists Notifications as `"No notifications"` until its stage, but the M1.3 scope says "title only". The page currently shows only the title "Notifications". If you want the "No notifications" line added on the page too, say so. The M1.4 header popover will show "No notifications" either way.
 - The Collision Guard hook again flagged a recent edit by another session (28d23d15). Re-reading the files showed only this step's edits on top of the committed M1.2 work, so nothing was overwritten.
 - Next step: M1.4 Header. It was not started.
+
+## 2026-10-07 — M1.4 Header
+
+**Changed**
+- `web/src/management/inApp/dashboard.tsx`:
+  - The header now has the page title on the left. It is looked up from the current path (sidebar labels, plus "Change password"; anything else shows "Not found"). It is a `<p>`, not a heading, because each workspace page already has its own `h1`.
+  - `NotificationsPopover`: a bell icon button (inline SVG, `aria-label="Notifications"`, `aria-haspopup="dialog"`, `aria-expanded`, `aria-controls`) opens a non-modal `role="dialog"` popover that says "No notifications". Focus moves into the popover when it opens.
+  - `ProfileMenu`: the avatar, name and role button (`aria-haspopup="menu"`, `aria-expanded`, `aria-controls`) opens a menu. It shows name and role from `useAuth()`, then a `role="menu"` list with `role="menuitem"` entries: Profile, Change password (routes to `/office/auth/change-password`) and Settings (routes to `/office/settings`). Keyboard: ArrowDown/ArrowUp on the button open the menu on the first/last item; ArrowUp/Down (wrapping), Home and End move between items; Enter activates.
+  - Both popovers close on Escape (focus returns to the button), on a pointer press outside, when focus is tabbed out, and when the button is clicked again. Opening one closes the other, because that click counts as outside.
+  - New exported constant `CHANGE_PASSWORD_PATH`.
+  - The Log out button stays in the header until M1.7 moves it to Settings.
+- `web/src/App.tsx`: a placeholder route `auth/change-password` ("Change password") inside the shell, so the menu entry lands on a placeholder until M2.1/M2.2 replace it.
+- `web/src/index.css`: header title and actions, icon/profile buttons, popover, menu and disabled-item styles. The unused `.office-user` rule was removed.
+
+**Not changed**
+- Auth wiring, the backend, the sidebar and the placeholder pages. No real notifications, no profile editing, no mobile drawer. No new files or dependencies.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed. The first run flagged `react-hooks/refs`, because refs were passed into a helper during render. This was fixed by using `event.currentTarget` in the blur handler instead.
+- `node` tests: not run, because there were no backend changes.
+- The "Done when" checks (open and close with mouse and keyboard, Escape, outside click, ARIA roles) were checked **by reading the code only**. No browser run was done: the session could not check whether Postgres and Redis were running without extra approval. A manual check in the browser is still worth doing.
+
+**Notes for the user**
+- **Profile** is shown in the menu as a disabled item (`aria-disabled`), because the own-profile page belongs to M4.3 and §2 has no route for it. If you would rather hide it until M4.3, or point it somewhere, say so.
+- The change-password placeholder renders *inside* the shell. M2.1 builds the real page outside the shell, as §2 says, and will need to move this route.
+- The header title repeats the workspace `h1` on each page, because the plan asks for both. On narrow screens the profile button still shows the full name; the compact mobile header is M1.5.
+- The Collision Guard hook again reported recent edits by other sessions (80b8c5fd, 28d23d15). `git status` showed only this step's changes, so nothing was overwritten.
+- Nothing was committed.
+- Next step: M1.5 Responsive/mobile. It was not started.

@@ -70,3 +70,28 @@ M1.3 (placeholder pages) is done. The build and lint pass, but I only checked th
 The Collision Guard hook flagged recent edits to these files by another session. My first `git status` showed only this step's edits on top of the committed M1.2 work. A later `git status` on the docs needed your approval, so I re-read the two docs instead and they were unchanged. Nothing was overwritten.
 
 Stopping here; M1.4 (Header) has not been started.
+M1.4 (Header) is built and ticked in `docs/progress.md`, and M1.5 is now the current step. I haven't seen the menus work in a browser: the "Done when" checks were confirmed only by reading the code. `npm run build` and `npm run lint` in `web/` pass.
+
+**What changed**
+- **Page title:** the header now shows the title of the current page on the left. Unknown office paths show "Not found".
+- **Notifications:** a bell button opens a popover that says "No notifications".
+- **Profile menu:** a button with your initials, name and role opens a menu. It shows the name and role from `useAuth()`, then Profile, Change password and Settings.
+- **Keyboard:** arrow keys open the profile menu and move between items, and Home/End jump to the first and last item. Enter activates an item.
+- **Closing:** both menus close on Escape (focus goes back to their button), on a click outside, on clicking their button again, and when you Tab away.
+- **ARIA roles:** the profile menu uses `menu`/`menuitem` and the notifications popover uses `dialog`, with `aria-expanded` and `aria-haspopup` on both buttons.
+- **Change password:** this entry goes to `/office/auth/change-password`, which for now shows a placeholder page inside the shell. That route is in `web/src/App.tsx`.
+- **Log out:** the old Log out button stays in the header until M1.7 moves it to Settings.
+- The menus live in `web/src/management/inApp/dashboard.tsx` and their styles in `web/src/index.css`. No new files or dependencies.
+
+**Checks**
+- The first lint run failed on a rule about reading refs during render; I fixed it and both checks now pass.
+- I didn't run the `node` tests because nothing in the backend changed.
+- I couldn't start the app because checking whether Postgres and Redis were running needed approval I didn't have. A quick click-through is still worth doing.
+
+**Decisions for you**
+- **Profile entry:** it is shown greyed out and can't be clicked, because your own profile page isn't built until M4.3 and has no route yet. I can hide it instead, or point it somewhere.
+- **Change-password placeholder:** it sits inside the shell for now. M2.1 builds the real page outside the shell, so that route will need to move then.
+
+Notes are in `docs/overnight-log.md`. Nothing was committed, and I stopped before starting M1.5.
+
+The Linear connector needs authorizing in your claude.ai connector settings before it can be used.

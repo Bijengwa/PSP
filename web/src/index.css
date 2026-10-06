@@ -197,7 +197,7 @@ a {
 .office-topbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 16px;
   height: 64px;
   padding: 0 32px;
@@ -205,10 +205,130 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
-.office-user {
+.office-topbar-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.office-topbar-actions {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.office-icon-button,
+.office-profile-button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.office-icon-button {
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+
+.office-profile-button {
   gap: 12px;
+  padding: 4px 8px 4px 4px;
+  color: var(--ink);
+}
+
+.office-icon-button:hover,
+.office-profile-button:hover,
+.office-icon-button[aria-expanded='true'],
+.office-profile-button[aria-expanded='true'] {
+  background: var(--surface-muted);
+}
+
+.office-popover-anchor {
+  position: relative;
+}
+
+.office-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(15 35 38 / 12%);
+}
+
+.office-popover-heading {
+  font-weight: 600;
+}
+
+.office-popover-empty {
+  margin-top: 8px;
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+.office-popover-menu {
+  width: 220px;
+  padding: 4px;
+}
+
+.office-menu-identity {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+
+.office-menu-identity span {
+  font-size: 13px;
+  color: var(--ink-subtle);
+  text-transform: capitalize;
+}
+
+.office-menu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-menu-item {
+  display: block;
+  padding: 8px;
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.office-menu-item:hover,
+.office-menu-item:focus {
+  background: var(--surface-muted);
+  outline: none;
+}
+
+.office-menu-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.office-menu-item[aria-disabled='true'] {
+  color: var(--ink-subtle);
+  cursor: not-allowed;
 }
 
 .office-avatar {

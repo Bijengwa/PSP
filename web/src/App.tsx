@@ -66,6 +66,8 @@ export default function App() {
             <Route path="reports" element={<PlaceholderPage title="Reports" />} />
             <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
             <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+            {/* Profile menu target; the real page is built in M2.1. */}
+            <Route path="auth/change-password" element={<PlaceholderPage title="Change password" />} />
             <Route path="*" element={<OfficeNotFound />} />
           </Route>
         </Route>
