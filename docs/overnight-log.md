@@ -130,3 +130,22 @@
 - The Collision Guard hook reported recent edits by another session (2a0d793a) to `dashboard.tsx` and `index.css`. `git status` showed only this step's changes, so nothing was overwritten.
 - The GateGuard hook asked for facts before the first edits. They were given and the edits went ahead.
 - Nothing was committed. M1.6 was not started.
+
+## 2026-10-07 — M1.5 Responsive/mobile (second attempt, still NOT ticked)
+
+**Changed**
+- No code changes. The M1.5 implementation from the previous entry (commit 22a066d) is unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- **Browser check still not done.** The plan was to run the Vite dev server and open `/office` in the Chrome DevTools tool at 360px, 768px and 1280px. `/api/auth/me` would be stubbed inside the browser only (no code change), so Postgres and Redis would not be needed. The dev server started, but permission to use the Chrome DevTools tool (`new_page`) was refused, so the check could not run. The dev server was stopped. Checks for whether Postgres and Redis were listening were also blocked by the permission prompts.
+- So, as CLAUDE.md requires, M1.5 stays unticked in `docs/progress.md`, and the current step stays **M1.5**.
+
+**To finish M1.5**
+- Either do the manual check listed under "To finish M1.5" in the entry above, or allow the `plugin:ecc:chrome-devtools` tools for this project so a later run can do it. After that, tick M1.5 and set the current step to M1.6.
+
+**Notes for the user**
+- The Collision Guard hook reported an edit to this log by another session (e7161d7d) two minutes before this entry. The file's tail matched the committed M1.5 entry, so nothing was overwritten.
+- M1.6 was not started. Nothing was committed by this run.

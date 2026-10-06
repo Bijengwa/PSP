@@ -123,3 +123,17 @@ No new files or dependencies, and nothing outside this step was touched.
 **Decision for you:** at exactly 768px you currently get the drawer, because the existing CSS breakpoint includes 768. If you'd rather have the full sidebar at that width, the breakpoint needs to drop to 767px in both changed files.
 
 Notes and these steps are in `docs/overnight-log.md`. Nothing was committed.
+I didn't mark M1.5 done, because I couldn't do its required check. M1.5's "Done when" needs a check at 360px, 768px and desktop widths in a browser. Permission to use the Chrome DevTools browser tool was refused, the same thing that stopped the last overnight run. So `docs/progress.md` is unchanged: M1.5 is unticked and still the current step. M1.6 was not started.
+
+- **Code:** I made no changes. The M1.5 hamburger and overlay drawer were already in the last commit (`22a066d`), in `web/src/management/inApp/dashboard.tsx` and `web/src/index.css`.
+- **Checks:** `npm run build` and `npm run lint` in `web/` both pass. I didn't run the `node` tests because nothing in the backend changed.
+- **What I tried:** I started the Vite dev server so I could open `/office` at the three widths, faking the logged-in user inside the browser so the database and Redis weren't needed. The browser tool was refused, so I stopped the server. Checks for whether Postgres and Redis are running were also blocked.
+- **Log:** I added an entry to `docs/overnight-log.md` saying all of this. A hook said another session had edited that log two minutes earlier. I re-read the file first and nothing of theirs was overwritten.
+
+To finish M1.5, either:
+- **Check it by hand:** follow the steps under "To finish M1.5" in the earlier log entry.
+- **Let a later run check it:** allow the `plugin:ecc:chrome-devtools` tools for this project.
+
+Once the check passes, tick M1.5 and make M1.6 the current step.
+
+The claude.ai Linear connector also needs to be authorized in your claude.ai connector settings before it can be used. It wasn't needed for this step.
