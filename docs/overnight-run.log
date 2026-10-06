@@ -137,3 +137,18 @@ To finish M1.5, either:
 Once the check passes, tick M1.5 and make M1.6 the current step.
 
 The claude.ai Linear connector also needs to be authorized in your claude.ai connector settings before it can be used. It wasn't needed for this step.
+I couldn't tick M1.5. Its "Done when" needs a real check at 360px, 768px and desktop widths, and I wasn't allowed to open the browser tool. So `docs/progress.md` is unchanged and the current step is still **M1.5**. M1.6 was not started.
+
+**What happened**
+- The M1.5 code was already done in an earlier run (commit 22a066d): the hamburger button, the overlay drawer, closing it (choosing an item, tapping outside, Escape), focus handling, and the compact mobile header. I made no code changes.
+- Web `npm run build` and `npm run lint` both pass. I didn't run `node` tests because nothing on the backend changed.
+- I started the dev server and planned to fake the login check (`/api/auth/me`) inside the browser only, so no database or Redis would be needed. Opening the Chrome DevTools browser tool was refused, so I stopped the server. I didn't launch Chrome some other way, because that would get around the refusal.
+- I added this run's notes to `docs/overnight-log.md`. Nothing was committed.
+
+**This is the third run that has stopped here.** Running it again won't help until you do one of these:
+1. **Check it yourself.** Open `/office` in your browser's mobile view at 360px, 768px and 1280px and follow the checklist under "To finish M1.5" in the first M1.5 entry of `docs/overnight-log.md`. If everything passes, tick M1.5 and set the current step to M1.6.
+2. **Allow the browser tools.** Allow the `mcp__plugin_ecc_chrome-devtools__*` tools for this project, so the next run can do the check itself.
+
+At exactly 768px the page shows the drawer, not the full sidebar, because the existing breakpoint is `max-width: 768px`. If you want the full sidebar at 768px, say so and I'll change the breakpoint to 767px.
+
+The collision guard said another session (c7e5e89d) edited `docs/overnight-log.md` a few minutes earlier. I re-read the end of the file before adding my notes and nothing had changed, so nothing was overwritten.

@@ -149,3 +149,24 @@
 **Notes for the user**
 - The Collision Guard hook reported an edit to this log by another session (e7161d7d) two minutes before this entry. The file's tail matched the committed M1.5 entry, so nothing was overwritten.
 - M1.6 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.5 Responsive/mobile (third attempt, still NOT ticked)
+
+**Changed**
+- No code changes. The M1.5 implementation from commit 22a066d is unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- **Browser check still not done.** The Vite dev server was started on port 5199. The plan was to replace `/api/auth/me` inside the browser only, using a navigation init script, so no code change was needed. Permission to use the Chrome DevTools tool (`new_page`) was refused again. The dev server was stopped. Chrome was not launched any other way, because that would get around the refused permission.
+- So, as CLAUDE.md requires, M1.5 stays unticked in `docs/progress.md`, and the current step stays **M1.5**.
+
+**To finish M1.5**
+- This is the third run that has stopped at the same point. Running again will not help until one of these is done:
+  - do the manual check under "To finish M1.5" in the first M1.5 entry, then tick M1.5 and set the current step to M1.6, or
+  - allow the `mcp__plugin_ecc_chrome-devtools__*` tools (at least `new_page`, `navigate_page`, `resize_page`, `evaluate_script`, `take_snapshot`, `press_key`, `click`) for this project, so the overnight run can do the check itself.
+
+**Notes for the user**
+- The Collision Guard hook reported an edit to this log by another session (c7e5e89d) a minute before this entry. The file's tail was re-read and matched the second-attempt entry, so nothing was overwritten.
+- M1.6 was not started. Nothing was committed by this run.
