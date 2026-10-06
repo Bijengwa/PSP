@@ -23,6 +23,8 @@ describe('GET /api/health', () => {
           ...knexfile.test,
           connection: { ...knexfile.test.connection, port: 1 },
           acquireConnectionTimeout: 2000,
+          // Knex prints connection failures itself; the test asserts on them instead.
+          log: { warn() {}, error() {}, debug() {}, deprecate() {} },
         });
         return unreachableDb;
       });
@@ -43,6 +45,15 @@ describe('GET /api/health', () => {
 
 // Runs last: stop() destroys this file's shared pool.
 describe('startup and graceful shutdown', () => {
+  test('start() rejects when the port is already in use', async () => {
+    const first = await start(0);
+    try {
+      await expect(start(first.address().port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    } finally {
+      await new Promise((resolve) => first.close(resolve));
+    }
+  });
+
   test('boots, serves requests, then closes the server and the shared pool', async () => {
     const server = await start(0);
     expect(server.listening).toBe(true);

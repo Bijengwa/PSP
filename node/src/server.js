@@ -4,12 +4,15 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const db = require('./db');
+const { logger, createHttpLogger } = require('./logger');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
 // ---------- Global middleware ----------
+// First, so every response (including errors) carries X-Request-Id and gets logged.
+app.use(createHttpLogger(logger));
 app.use(helmet());
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
@@ -48,12 +51,14 @@ app.use('/api', (req, res) => {
 // ---------- Central error handler ----------
 // Express 5 forwards errors thrown in async handlers here automatically.
 // Throw an error with a `status` (or `statusCode`) property to control the response code.
+// The full error (stack included) goes to the log with the request ID; the client
+// only ever sees the generic message for 5xx.
 // eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
+function errorHandler(err, req, res, next) {
   const status = err.status || err.statusCode || 500;
 
   if (status >= 500) {
-    console.error(err);
+    (req.log || logger).error({ err, reqId: req.id }, 'Unhandled error');
   }
 
   res.status(status).json({
@@ -63,13 +68,19 @@ app.use((err, req, res, next) => {
       ...(err.details && { details: err.details }),
     },
   });
-});
+}
+
+app.use(errorHandler);
 
 // ---------- Start / stop ----------
 function start(port = PORT) {
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, () => resolve(server));
-    server.once('error', reject);
+    // Express 5 also calls this callback when listening fails (e.g. port in use).
+    const server = app.listen(port, (err) => {
+      if (err) return reject(err);
+      logger.info({ port: server.address().port }, 'PSP API listening');
+      resolve(server);
+    });
   });
 }
 
@@ -80,21 +91,21 @@ async function stop(server) {
     await new Promise((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
+    logger.info('HTTP server closed');
   }
   await db.destroy();
+  logger.info('Database pool closed');
 }
 
 // Only listen when run directly (npm start / npm run dev), not when imported by tests.
 if (require.main === module) {
   start()
     .then((server) => {
-      console.log(`PSP API listening on http://localhost:${PORT}`);
-
       let shuttingDown = false;
       function shutdown(signal) {
         if (shuttingDown) return;
         shuttingDown = true;
-        console.log(`${signal} received, shutting down...`);
+        logger.info({ signal }, 'Shutting down');
 
         // A client holding a keep-alive socket open must not block shutdown forever.
         setTimeout(() => server.closeAllConnections(), 10000).unref();
@@ -102,7 +113,7 @@ if (require.main === module) {
         stop(server).then(
           () => process.exit(0),
           (err) => {
-            console.error(err);
+            logger.error({ err }, 'Shutdown failed');
             process.exit(1);
           },
         );
@@ -112,10 +123,10 @@ if (require.main === module) {
       process.on('SIGTERM', () => shutdown('SIGTERM'));
     })
     .catch(async (err) => {
-      console.error(err);
+      logger.error({ err }, 'Startup failed');
       await db.destroy();
       process.exit(1);
     });
 }
 
-module.exports = { app, start, stop };
+module.exports = { app, start, stop, errorHandler };
