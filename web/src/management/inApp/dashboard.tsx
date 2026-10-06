@@ -136,3 +136,19 @@ export function OfficeHome() {
     </>
   )
 }
+
+// Placeholder for a workspace page whose module is not built yet: the title only.
+export function PlaceholderPage({ title }: { title: string }) {
+  return <h1 className="office-title">{title}</h1>
+}
+
+// Unknown /office/* paths, shown inside the shell.
+export function OfficeNotFound() {
+  return (
+    <>
+      <h1 className="office-title">Not found</h1>
+      <p className="office-lead">This page does not exist.</p>
+      <Link to={OFFICE_HOME_PATH}>Go to Home</Link>
+    </>
+  )
+}

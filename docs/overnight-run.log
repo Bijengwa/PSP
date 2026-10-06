@@ -44,3 +44,29 @@ No new files, no new dependencies, and no backend, header or logout changes.
 - The Linear connector needs authorizing in your claude.ai connector settings, and the chrome-devtools plugin failed to connect. Neither was needed for this step.
 
 M1.3 (Placeholder workspace pages) was not started.
+M1.3 (placeholder pages) is done. The build and lint pass, but I only checked the pages by reading the code, not in a browser.
+
+**What changed**
+- **`web/src/management/inApp/dashboard.tsx`:** two new pages.
+  - `PlaceholderPage` shows only the page title.
+  - `OfficeNotFound` shows "Not found", one line of text and a link back to Home.
+- **`web/src/App.tsx`:**
+  - All 9 sidebar pages now show their placeholder, titled with the sidebar label: Products, Add Product, Inventory, Orders, Customers, Staff, Reports, Notifications, Settings.
+  - An unknown `/office/...` address now shows Not found inside the office layout, still behind the login check. The site-wide Not found page for other addresses is unchanged.
+- No new files, no new dependencies, and no backend, CSS or auth changes.
+
+**Checks**
+- `npm run build` and `npm run lint` in `web/` both pass.
+- `npm test` in `node/` was not run, because nothing in the backend changed.
+- "No placeholder fetches data": the two new pages only display text and make no API calls.
+- "Each route shows its title": each route passes the matching title.
+
+**Docs**
+- In `docs/progress.md`, M1.3 is ticked and the current step is now M1.4.
+- `docs/overnight-log.md` has an M1.3 entry.
+
+**Decision for you:** the plan's sidebar table (┬º2) lists the Notifications page as showing "No notifications", but the M1.3 step says "title only". I followed the step, so the page shows just the title "Notifications". If you want the "No notifications" line on the page as well, say so.
+
+The Collision Guard hook flagged recent edits to these files by another session. My first `git status` showed only this step's edits on top of the committed M1.2 work. A later `git status` on the docs needed your approval, so I re-read the two docs instead and they were unchanged. Nothing was overwritten.
+
+Stopping here; M1.4 (Header) has not been started.

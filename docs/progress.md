@@ -1,13 +1,13 @@
 # Management Progress
 
 Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" checks pass.
-Current step: **M1.3**
+Current step: **M1.4**
 
 ## M1 — Management Shell
 
 - [x] M1.1 Layout foundation
 - [x] M1.2 Sidebar + navigation
-- [ ] M1.3 Placeholder workspace pages
+- [x] M1.3 Placeholder workspace pages
 - [ ] M1.4 Header
 - [ ] M1.5 Responsive/mobile
 - [ ] M1.6 Dark/light theme

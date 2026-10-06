@@ -7,6 +7,12 @@ import RequireAuth from './management/auth/RequireAuth'
 const Login = lazy(() => import('./management/auth/login'))
 const OfficeLayout = lazy(() => import('./management/inApp/dashboard'))
 const OfficeHome = lazy(() => import('./management/inApp/dashboard').then((m) => ({ default: m.OfficeHome })))
+const PlaceholderPage = lazy(() =>
+  import('./management/inApp/dashboard').then((m) => ({ default: m.PlaceholderPage })),
+)
+const OfficeNotFound = lazy(() =>
+  import('./management/inApp/dashboard').then((m) => ({ default: m.OfficeNotFound })),
+)
 
 // Everything under /office shares one auth state. Shop routes stay outside it,
 // so the public side never calls the auth API.
@@ -50,19 +56,18 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route element={<OfficeLayout />}>
             <Route index element={<OfficeHome />} />
-            {/* Sidebar routes. No element yet, so the workspace stays empty;
-                each gets its placeholder page in M1.3. */}
-            <Route path="products" />
-            <Route path="products/new" />
-            <Route path="inventory" />
-            <Route path="orders" />
-            <Route path="customers" />
-            <Route path="staff" />
-            <Route path="reports" />
-            <Route path="notifications" />
-            <Route path="settings" />
+            {/* Sidebar routes: title-only placeholders until each module is built. */}
+            <Route path="products" element={<PlaceholderPage title="Products" />} />
+            <Route path="products/new" element={<PlaceholderPage title="Add Product" />} />
+            <Route path="inventory" element={<PlaceholderPage title="Inventory" />} />
+            <Route path="orders" element={<PlaceholderPage title="Orders" />} />
+            <Route path="customers" element={<PlaceholderPage title="Customers" />} />
+            <Route path="staff" element={<PlaceholderPage title="Staff" />} />
+            <Route path="reports" element={<PlaceholderPage title="Reports" />} />
+            <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
+            <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+            <Route path="*" element={<OfficeNotFound />} />
           </Route>
-          <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
 

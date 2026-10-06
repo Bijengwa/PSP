@@ -40,3 +40,26 @@
 - At the start, a Collision Guard hook said another session (78b38214) had edited `dashboard.tsx`, `App.tsx` and these docs a few minutes earlier. `git status` showed a clean tree apart from this step's own edits, so it was taken to be the committed M1.1 work.
 - On narrow screens (≤768px) the full sidebar list currently stacks above the workspace. This is expected until the M1.5 drawer.
 - Next step: M1.3 Placeholder workspace pages. It was not started.
+
+## 2026-10-07 — M1.3 Placeholder workspace pages
+
+**Changed**
+- `web/src/management/inApp/dashboard.tsx`: two new named exports.
+  - `PlaceholderPage({ title })` renders only `<h1 className="office-title">{title}</h1>`.
+  - `OfficeNotFound` shows a "Not found" title, one line of text and a link back to Home (`/office`).
+- `web/src/App.tsx`: each sidebar route (`products`, `products/new`, `inventory`, `orders`, `customers`, `staff`, `reports`, `notifications`, `settings`) now renders `PlaceholderPage` with its sidebar label as the title. The `/office/*` catch-all moved inside `OfficeLayout` and now renders `OfficeNotFound`, so unknown office paths show inside the shell and stay behind `RequireAuth`. The top-level `*` NotFound for non-office paths is unchanged. Both new components are lazy-loaded from the office chunk, like `OfficeHome`.
+
+**Not changed**
+- The sidebar, header, logout, auth wiring, CSS and backend. No new files or dependencies.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- "No placeholder fetches data": `PlaceholderPage` and `OfficeNotFound` are plain render functions with no hooks, effects or API calls.
+- "Each route shows its title": checked by reading the code (each route passes the matching title). No browser run was done.
+
+**Notes for the user**
+- §2 lists Notifications as `"No notifications"` until its stage, but the M1.3 scope says "title only". The page currently shows only the title "Notifications". If you want the "No notifications" line added on the page too, say so. The M1.4 header popover will show "No notifications" either way.
+- The Collision Guard hook again flagged a recent edit by another session (28d23d15). Re-reading the files showed only this step's edits on top of the committed M1.2 work, so nothing was overwritten.
+- Next step: M1.4 Header. It was not started.
