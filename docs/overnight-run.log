@@ -484,3 +484,23 @@ The Collision Guard said another Claude session edited `docs/overnight-log.md` 7
 Once you approve, the next run can add the tests, run them and tick M2.5. The log also has an open question from the previous run: whether a 503 from any page should switch to the unavailable screen (which loses unsaved form input), or only a 503 from the session check.
 
 I've stopped here.
+I didn't mark M2.5 as done and didn't move to the next step, because its finish condition still can't be met. That condition is "frontend tests cover each redirect", and `web/` has no test runner and no test files. Adding them means installing dev dependencies and creating new files, and CLAUDE.md says to ask you before doing either. No approval is recorded in CLAUDE.md, the plan or the progress file.
+
+- **The code is already built:** the M2.5 behaviour went in during an earlier run tonight (commit 34630d5). That covers sending people to login on 401 and to change-password on 403 `PASSWORD_CHANGE_REQUIRED`. It shows "Service temporarily unavailable" with a "Try again" button on 503. After login it returns people to the page they asked for, accepting only `/office` paths so it can't be used as an open redirect. No test runs any of this yet.
+- **Checks:** `npm run build` and `npm run lint` in `web/` both pass. I didn't run `npm test` in `node/` because nothing there changed.
+- **Changes this run:** I only added a "third pass" entry to `docs/overnight-log.md`. No code changed, `docs/progress.md` still says M2.5, and nothing was committed.
+- **Another session:** the guard reported another Claude session (3618e161) editing the overnight log at the same time. I re-read the file before adding my entry, and nothing was lost.
+
+**Decision for you:** re-running this prompt will give the same result until you approve a test setup. The proposal is:
+- Dev dependencies: `vitest`, `jsdom` and `@testing-library/react`.
+- A `"test": "vitest run"` script in `web/package.json` and a test section in the Vite config.
+- Three new test files, unless you name other paths:
+  - `web/src/api/client.test.ts`
+  - `web/src/management/auth/login.test.tsx`
+  - `web/src/management/auth/RequireAuth.test.tsx`
+
+Once you approve, the next run can add the tests, run them and mark M2.5 done.
+
+**One choice to review:** right now a 503 from any call while someone is signed in replaces the whole office with the "unavailable" screen. That includes the sidebar's once-a-minute reset-request check, and it loses any unsaved form input. The alternative is to show that screen only when `GET /api/auth/me` fails, and have other pages show their own inline error.
+
+**Linear:** the claude.ai Linear connector needs authorising in your claude.ai connector settings before it can be used.

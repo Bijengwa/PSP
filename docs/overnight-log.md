@@ -641,3 +641,16 @@ Under CLAUDE.md (ask before new files, install only when necessary and say why),
 **Code changes this pass:** none.
 
 **To unblock:** approve the dev dependencies and the three test-file paths (or name other paths). The next run can then add the tests, run them, and tick M2.5.
+
+## M2.5 Session/security integration (2026-10-07, third pass): still blocked, NOT ticked
+
+**Status:** No change since the second pass. `web/` still has no test runner or test files, and no approval for the test-tooling proposal is recorded in `CLAUDE.md`, `docs/management-plan.md` or `docs/progress.md`. "Done when: frontend tests cover each redirect" can't be met without new dependencies and new files, and CLAUDE.md says to ask before adding either. Current step stays **M2.5**. `docs/progress.md` is unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `npm test` (node) not run: nothing in `node/` changed.
+
+**Code changes this pass:** none.
+
+**To unblock (unchanged):** approve the dev dependencies `vitest`, `jsdom` and `@testing-library/react`, plus a `test` script and a vitest config block. Also approve the test files `web/src/api/client.test.ts`, `web/src/management/auth/login.test.tsx` and `web/src/management/auth/RequireAuth.test.tsx`, or name other paths. Re-running this overnight prompt without that approval will keep producing this same result.
