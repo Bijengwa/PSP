@@ -1,5 +1,6 @@
 const express = require('express');
 const sessions = require('./session.store');
+const rateLimit = require('./rate-limit');
 const {
   RESET_REQUEST_STATUSES,
   login,
@@ -35,6 +36,8 @@ router.post('/login', async (req, res) => {
   if (email.length > 254 || password.length > 1024) {
     throw httpError(401, INVALID_CREDENTIALS);
   }
+
+  await rateLimit.enforce(res, 'login', { ip: req.ip, email });
 
   // A fresh login always gets a fresh session ID.
   const previous = readSessionCookie(req);
@@ -100,6 +103,8 @@ router.post('/forgot-password', async (req, res) => {
   if (typeof email !== 'string' || !email.trim() || email.length > 254) {
     throw httpError(400, 'Enter a valid email address');
   }
+
+  await rateLimit.enforce(res, 'forgot', { ip: req.ip, email });
 
   await requestPasswordReset({ email, ip: req.ip });
   req.log.info({ event: 'reset_request.created' }, 'Password reset requested');

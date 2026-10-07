@@ -667,3 +667,36 @@ Under CLAUDE.md (ask before new files, install only when necessary and say why),
 **Code changes this pass:** none.
 
 **To unblock (unchanged):** see the first-pass proposal above. It needs approval for `vitest`, `jsdom` and `@testing-library/react`, a `test` script and a vitest config block, and the three test-file paths. Until that approval is recorded, running this prompt again will not advance anything.
+
+## M2.5 Session/security integration (2026-10-07, third pass): TICKED
+
+**Approved by the user in chat:** dev dependencies `vitest`, `jsdom`, `@testing-library/react`, and the three test files. `@testing-library/dom` was also added because `@testing-library/react` requires it as a peer dependency.
+
+**Changed**
+- `web/package.json`: script `"test": "vitest run"` and the four dev dependencies. `web/package-lock.json` is NOT updated yet: run `npm install` in `web` on Windows (an install from the Linux workspace would write Linux-only native packages into `node_modules`, so it was not done in the user's folder).
+- `web/vite.config.js`: `test: { environment: 'jsdom' }`.
+- New: `web/src/api/client.test.ts`, `web/src/management/auth/login.test.tsx`, `web/src/management/auth/RequireAuth.test.tsx`.
+
+**Verified** (in a copy of `web/` in the Claude workspace, with the packages installed there)
+- `npx vitest run`: 3 files, 26 tests, all passed.
+- Covered redirects: signed out to login with `from`; temporary password to change-password; `/me` 503 to the unavailable screen; later 401 to login with `from`; later 403 `PASSWORD_CHANGE_REQUIRED` to change-password; later 503 to the unavailable screen and Try again restores the page; any other 403 does nothing; after login the person lands on the requested page, and an unsafe return-to lands on `/office`; `safeReturnPath` accept/reject cases.
+- The tests were shown to fail on purpose: changing the 503 mapping made 3 tests fail.
+- `npx tsc` and `npx eslint .`: clean.
+- **Still to do on the user's computer:** `npm install` then `npm test` in `web`.
+
+M2.5 ticked; current step is **M3.1**. M3.1 was not started.
+
+## M3.1 Login rate limiting (done in an interactive session)
+
+**Changed**
+- New `node/src/auth/rate-limit.js`: `INCR` + `EXPIRE … NX` + `TTL` in one `MULTI` per counter. Keys `psp:rl:{login|forgot}:{ip|email}:{value}`. Login 10/IP and 5/email per 15 min; forgot-password 5/IP and 3/email per hour. Over the limit gives 429 `RATE_LIMITED` with `Retry-After`. Redis errors give 503 (fails closed).
+- `node/src/auth/auth.routes.js`: `/login` and `/forgot-password` call `rateLimit.enforce` after body validation.
+- `node/src/auth/auth.test.js`: the fake Redis gained `incr` and `expire … NX`; new "rate limiting" tests; the "Redis is empty" assertions now ignore the `psp:rl:` counters; the forgot-password timing test flushes Redis between requests.
+
+**Decisions:** every attempt counts, successful ones too; forgot-password also returns 503 when Redis is down.
+
+**Known gap, left for M3.5:** `trust proxy` is not set, so behind a reverse proxy `req.ip` is the proxy's address and all users would share one IP bucket.
+
+**Verified:** `npm test` in `node`: 4 suites, 104 tests passed. `npm install` and `npm test` in `web` (M2.5 leftovers): 3 files, 26 tests passed.
+
+M3.1 ticked; current step is **M3.2**. M3.2 was not started.

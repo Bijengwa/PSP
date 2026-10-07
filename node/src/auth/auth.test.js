@@ -84,11 +84,18 @@ jest.mock('../redis', () => {
       this.check();
       return this.alive(key) ? [...this.data.get(key)] : [];
     }
-    async expire(key, seconds) {
+    async expire(key, seconds, mode) {
       this.check();
       if (!this.alive(key)) return 0;
+      if (mode === 'NX' && this.expiry.has(key)) return 0;
       this.expiry.set(key, Date.now() + seconds * 1000);
       return 1;
+    }
+    async incr(key) {
+      this.check();
+      const next = (this.alive(key) ? Number(this.data.get(key)) : 0) + 1;
+      this.data.set(key, String(next));
+      return next;
     }
     multi() {
       const queued = [];
@@ -131,6 +138,9 @@ let adminId;
 let passwordHash;
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+// Session data only: the rate-limit counters are written on every login attempt.
+const storedKeysExceptRateLimits = () => [...redis.client.data.keys()].filter((key) => !key.startsWith('psp:rl:'));
 
 function sessionCookieFrom(res) {
   return (res.headers['set-cookie'] || []).find((c) => c.startsWith('psp_sid='));
@@ -247,7 +257,7 @@ describe('POST /api/auth/login', () => {
       expect(res.status).toBe(401);
       expect(res.body).toEqual({ success: false, error: { message: 'Invalid email or password' } });
       expect(sessionCookieFrom(res)).toBeUndefined();
-      expect(redis.client.data.size).toBe(0);
+      expect(storedKeysExceptRateLimits()).toEqual([]);
     });
   });
 
@@ -377,7 +387,7 @@ describe('revocation', () => {
 
     expect((await me(laptop)).status).toBe(401);
     expect((await me(phone)).status).toBe(401);
-    expect(redis.client.data.size).toBe(0);
+    expect(storedKeysExceptRateLimits()).toEqual([]);
   });
 
   test('deactivating an account blocks its existing session on the very next request', async () => {
@@ -593,6 +603,7 @@ describe('POST /api/auth/forgot-password', () => {
     const timings = { known: [], unknown: [] };
     for (let i = 0; i < 15; i += 1) {
       for (const [kind, email] of [['known', ADMIN.email], ['unknown', UNKNOWN_EMAIL]]) {
+        redis.client.flush(); // this test measures timing, not the rate limit
         const start = process.hrtime.bigint();
         await forgotPassword({ email });
         timings[kind].push(Number(process.hrtime.bigint() - start) / 1e6);
@@ -825,6 +836,137 @@ describe('IT password resets (/api/office)', () => {
     const logged = mockLogLines.join('\n');
     expect(logged).toContain('staff.password_reset');
     expect(logged).not.toContain(TEMPORARY);
+  });
+});
+
+describe('rate limiting', () => {
+  const counterKeys = (scope, kind) =>
+    [...redis.client.data.keys()].filter((key) => key.startsWith(`psp:rl:${scope}:${kind}:`));
+
+  const forgot = (email) => request(app).post('/api/auth/forgot-password').set('Origin', ORIGIN).send({ email });
+
+  beforeEach(async () => {
+    await db('password_reset_requests').del();
+  });
+
+  describe('login', () => {
+    const wrong = (email = ADMIN.email) => postLogin({ email, password: 'Wrong-Pass-1234!' });
+
+    test('allows 5 attempts per email, then answers 429 even for the right password', async () => {
+      for (let i = 0; i < 5; i += 1) expect((await wrong()).status).toBe(401);
+
+      const blocked = await postLogin({ email: ADMIN.email, password: PASSWORD });
+      expect(blocked.status).toBe(429);
+      expect(blocked.body).toEqual({
+        success: false,
+        error: { message: 'Too many attempts. Try again later.', code: 'RATE_LIMITED' },
+      });
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+      expect(Number(blocked.headers['retry-after'])).toBeLessThanOrEqual(15 * 60);
+      expect(sessionCookieFrom(blocked)).toBeUndefined();
+    });
+
+    test('successful logins count too', async () => {
+      for (let i = 0; i < 5; i += 1) await postLogin({ email: ADMIN.email, password: PASSWORD });
+      expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(429);
+    });
+
+    test('the email is counted case-insensitively and trimmed', async () => {
+      for (const email of ['ADMIN@psp.test', ' admin@psp.test ', 'Admin@Psp.Test', 'admin@psp.test', 'ADMIN@PSP.TEST']) {
+        await wrong(email);
+      }
+      expect((await wrong('admin@psp.test')).status).toBe(429);
+      expect(counterKeys('login', 'email')).toEqual(['psp:rl:login:email:admin@psp.test']);
+    });
+
+    test('one email being blocked does not block other emails', async () => {
+      for (let i = 0; i < 6; i += 1) await wrong();
+      expect((await wrong()).status).toBe(429);
+      expect((await postLogin({ email: INACTIVE.email, password: 'Wrong-Pass-1234!' })).status).toBe(401);
+    });
+
+    test('allows 10 attempts per IP across different emails, then answers 429', async () => {
+      for (let i = 0; i < 10; i += 1) expect((await wrong(`user${i}@psp.test`)).status).toBe(401);
+
+      const blocked = await wrong('fresh@psp.test');
+      expect(blocked.status).toBe(429);
+      expect(blocked.body.error.code).toBe('RATE_LIMITED');
+    });
+
+    test('the counters expire after 15 minutes and the window is not extended by later attempts', async () => {
+      await wrong();
+      const [key] = counterKeys('login', 'email');
+      expect(redis.client.ttl(key)).toBe(15 * 60);
+
+      // 100 seconds left in the window: another attempt must not push that back out.
+      redis.client.expiry.set(key, Date.now() + 100 * 1000);
+      await wrong();
+      expect(redis.client.ttl(key)).toBeLessThanOrEqual(100);
+      expect(redis.client.ttl(counterKeys('login', 'ip')[0])).toBeLessThanOrEqual(15 * 60);
+    });
+
+    test('attempts are allowed again once the window has passed', async () => {
+      for (let i = 0; i < 6; i += 1) await wrong();
+      expect((await wrong()).status).toBe(429);
+
+      for (const key of [...counterKeys('login', 'email'), ...counterKeys('login', 'ip')]) {
+        redis.client.expiry.set(key, Date.now() - 1);
+      }
+      expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+    });
+
+    test('requests rejected as malformed are not counted', async () => {
+      await postLogin({});
+      await postLogin({ email: '', password: 'x' });
+      expect(counterKeys('login', 'ip')).toHaveLength(0);
+    });
+  });
+
+  describe('forgot password', () => {
+    test('allows 3 requests per email, then answers 429 and stores nothing more', async () => {
+      for (let i = 0; i < 3; i += 1) expect((await forgot(ADMIN.email)).status).toBe(200);
+
+      const blocked = await forgot(ADMIN.email);
+      expect(blocked.status).toBe(429);
+      expect(blocked.body).toEqual({
+        success: false,
+        error: { message: 'Too many attempts. Try again later.', code: 'RATE_LIMITED' },
+      });
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+      expect(Number(blocked.headers['retry-after'])).toBeLessThanOrEqual(60 * 60);
+      expect(await db('password_reset_requests')).toHaveLength(3);
+    });
+
+    test('allows 5 requests per IP across different emails, then answers 429', async () => {
+      for (let i = 0; i < 5; i += 1) expect((await forgot(`user${i}@psp.test`)).status).toBe(200);
+      expect((await forgot('fresh@psp.test')).status).toBe(429);
+    });
+
+    test('unknown emails are limited the same way as known ones', async () => {
+      for (let i = 0; i < 3; i += 1) await forgot('nobody@psp.test');
+      expect((await forgot('nobody@psp.test')).status).toBe(429);
+    });
+
+    test('the counters expire after one hour', async () => {
+      await forgot(ADMIN.email);
+      expect(redis.client.ttl(counterKeys('forgot', 'email')[0])).toBe(60 * 60);
+      expect(redis.client.ttl(counterKeys('forgot', 'ip')[0])).toBe(60 * 60);
+    });
+
+    test('is counted separately from login', async () => {
+      for (let i = 0; i < 4; i += 1) await forgot(ADMIN.email);
+      expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+    });
+
+    test('fails closed with 503 when Redis is down, storing nothing', async () => {
+      redis.client.failing = true;
+      const res = await forgot(ADMIN.email);
+
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ success: false, error: { message: 'Service temporarily unavailable' } });
+      redis.client.failing = false;
+      expect(await db('password_reset_requests')).toHaveLength(0);
+    });
   });
 });
 
