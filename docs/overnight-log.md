@@ -326,3 +326,26 @@
 **Notes for the user**
 - The Collision Guard hook reported an edit to this log by another session (9a0d51db) about 2 minutes before this entry. The file's tail was re-read first and was unchanged, so nothing was overwritten.
 - M1.7 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.6 Dark/light theme (sixth attempt, TICKED)
+
+**Changed**
+- `web/src/index.css`: new `--border-strong` token (light `#7d9093`, dark `#6a8084`), and an extra line in the header comment.
+- `web/src/management/auth/auth.css`: `.field-input` uses `--border-strong` instead of `--border`.
+- Why: the input border was the only visible edge of the login fields (the input background is the same as the card), and `--border` reached only about 1.4:1 (light) and about 1.6:1 (dark). WCAG 1.4.11 (AA) asks for 3:1. Cards, dividers and the secondary button keep `--border`; they are identified by their text or are decorative.
+- The rest of M1.6 (pre-paint theme script in `web/index.html`, tokens, auth.css) is from commit ff0cad9 and is unchanged.
+
+**Verified**
+- `npm run build` (web): passed. `npm run lint` (web): passed, no warnings. `node` tests: not run (no backend changes).
+- No hard-coded colours: a grep for hex/rgb/hsl over `web/src` `*.css`/`*.tsx` finds colours only in the token blocks of `index.css`. No inline styles, no placeholders. So every shell and auth screen draws only from the light/dark token sets.
+- WCAG ratios for every text/background pair used, in both themes. **Worked out by hand** from the token values: this shell would not run a script (`node -e` needs approval, writing a temp file was refused). Lowest results:
+  - Light: `--ink-subtle` on `--surface-muted` 4.96, `--primary` on `--primary-soft` 5.2, `--primary` on `--surface-muted` 5.42, `--danger` on `--danger-soft` 5.43, white on `--primary-hover` 8.1; `--border-strong` on `--surface` 3.34 (needs 3).
+  - Dark: `--primary` on `--primary-soft` 5.31, `--ink-subtle` on `--surface` 6.05, `--danger` on `--danger-soft` 6.82, `--on-primary` on `--primary` 7.66; focus ring (`--primary`) on `--surface` about 7.3; `--border-strong` on `--surface` 3.83 (needs 3).
+  - All pass: AA 4.5:1 for text and 3:1 for non-text. `--ink`/`--ink-muted` pairs pass by a wide margin. Disabled controls are exempt.
+- **Not done: a visual browser check.** The Chrome DevTools tools still have no permission. So "readable" rests on the token-only check above, not on screenshots.
+
+**Suggested follow-up for the user**
+- Open `/office/auth/login` and an office page once in each theme (switch the OS theme, or set `localStorage['psp-theme']` to `light`/`dark`). It will look a little different: the login inputs now have a darker outline.
+
+**Notes for the user**
+- M1.6 ticked; current step set to **M1.7**. M1.7 was not started. Nothing was committed by this run.

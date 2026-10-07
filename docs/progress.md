@@ -1,7 +1,7 @@
 # Management Progress
 
 Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" checks pass.
-Current step: **M1.6**
+Current step: **M1.7**
 
 ## M1 — Management Shell
 
@@ -10,7 +10,7 @@ Current step: **M1.6**
 - [x] M1.3 Placeholder workspace pages
 - [x] M1.4 Header
 - [x] M1.5 Responsive/mobile
-- [ ] M1.6 Dark/light theme
+- [x] M1.6 Dark/light theme
 - [ ] M1.7 Settings + logout
 
 ## M2 — Authentication Completion

@@ -1,12 +1,14 @@
 /* Design tokens taken from PSP-Engineering-Group-Preview.html.
    index.html sets data-theme="light" | "dark" on <html> before first paint.
-   Text tokens meet WCAG AA (4.5:1) on --surface, --surface-muted and --page. */
+   Text tokens meet WCAG AA (4.5:1) on --surface, --surface-muted and --page.
+   --border-strong outlines form inputs and meets 3:1 on --surface. */
 :root {
   color-scheme: light;
   --ink: #0f2326;
   --ink-muted: #4a5f63;
   --ink-subtle: #56696d;
   --border: #cfdcdd;
+  --border-strong: #7d9093;
   --surface: #ffffff;
   --surface-muted: #e8eff0;
   --page: #f5f8f8;
@@ -39,6 +41,7 @@
   --ink-muted: #a9babd;
   --ink-subtle: #8fa3a6;
   --border: #2e4448;
+  --border-strong: #6a8084;
   --surface: #152427;
   --surface-muted: #0f1c1f;
   --page: #0b1517;

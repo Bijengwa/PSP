@@ -279,3 +279,24 @@ This is the fifth run to stop here. No file grants the browser tools: `.claude/s
 I didn't start M1.7 and didn't commit anything.
 
 Separately, the claude.ai Linear connector needs authorising in your claude.ai connector settings before it can be used. This step didn't need it.
+M1.6 (dark/light theme) is ticked in `docs/progress.md` and the current step is now **M1.7**. The contrast check was worked out by hand, not run as a script, and nobody has looked at the screens in a browser yet.
+
+**What changed**
+- The theme itself (light/dark tokens, the System default, and applying the theme before the page first draws) was already done in commit ff0cad9. I left it as it was.
+- I fixed one contrast failure. On the login page the input outline was the only thing showing where each field is, and it was too faint: about 1.4:1 in light and 1.6:1 in dark, where WCAG AA asks for 3:1. I added a stronger border colour:
+  - `web/src/index.css`: new `--border-strong` token (light `#7d9093`, dark `#6a8084`).
+  - `web/src/management/auth/auth.css`: login inputs use `--border-strong`.
+
+**What I checked**
+- `npm run build` and `npm run lint` in `web` both pass, with no warnings. I didn't run the `node` tests because nothing on the backend changed.
+- All colours come from the light/dark tokens: no fixed colours elsewhere, no inline styles, no placeholders. So every shell and login screen changes with the theme.
+- I couldn't run a contrast script here (it needed approval and writing a temp file was refused), so I calculated each text/background pair from the token values by hand. All pass in both themes. The tightest are:
+  - **Light:** `--ink-subtle` text on `--surface-muted` at 4.96 (needs 4.5), and the new input border at 3.34 (needs 3).
+  - **Dark:** the new input border at 3.83 (needs 3).
+
+**Not done**
+- The browser tools still don't have permission, so there are no screenshots of either theme. When you have a minute, open the login page and one office page in each theme. The login inputs will look a little different because their outline is now darker.
+
+The full notes are in `docs/overnight-log.md`. I didn't start M1.7 and didn't commit anything.
+
+Separately, the Linear connector needs authorising in your claude.ai connector settings before it can be used.
