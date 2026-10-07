@@ -8,6 +8,29 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
     <title>PSP Engineering Group</title>
+    <script>
+      // Apply the theme before first paint so there is no flash. The preference
+      // ('light' | 'dark' | 'system', default 'system') is the only thing the
+      // office keeps in localStorage. System follows the OS setting live.
+      (function () {
+        var media = window.matchMedia('(prefers-color-scheme: dark)')
+        function apply() {
+          var pref = null
+          try {
+            pref = localStorage.getItem('psp-theme')
+          } catch (e) {
+            // Storage blocked: fall back to System.
+          }
+          var dark = pref === 'dark' || (pref !== 'light' && media.matches)
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        }
+        apply()
+        media.addEventListener('change', apply)
+        window.addEventListener('storage', function (event) {
+          if (event.key === 'psp-theme') apply()
+        })
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

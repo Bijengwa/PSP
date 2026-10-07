@@ -221,3 +221,27 @@
 - 1280px: sidebar always visible (256px), no hamburger, no horizontal scroll.
 - `npm run lint` initially failed on the redesign; fixed as above. Build/lint re-run to be confirmed by the user.
 - M1.5 ticked in `docs/progress.md`; current step is now **M1.6**. M1.6 was not started.
+
+## 2026-10-07 — M1.6 Dark/light theme (implemented, NOT ticked: browser check pending)
+
+**Changed**
+- `web/index.html`: an inline script in `<head>` runs before first paint and sets `data-theme="light" | "dark"` on `<html>`. It reads the localStorage key `psp-theme` (`'light' | 'dark' | 'system'`). A missing or unknown value means System, and so does blocked storage. With System it follows the OS live (`matchMedia` change listener). A `storage` listener keeps other tabs in sync. It writes nothing; the Light/Dark/System picker that writes the key is M1.7.
+- `web/src/index.css`: light tokens on `:root`, dark tokens on `:root[data-theme='dark']`, and `color-scheme` set for each theme so native controls match. New tokens: `--primary-hover`, `--on-primary`, `--hover-overlay`, `--shadow-sm`, `--shadow-popover`, `--shadow-drawer`, `--backdrop`. All hard-coded colours in rules now use tokens (primary button text and hover, brand mark, nav hover, active-link shadow, popover shadow, drawer shadow, backdrop).
+- Light `--ink-subtle` changed from `#7d9194` to `#56696d`. The old value failed WCAG AA: 3.31:1 on white and 2.84:1 on the sidebar.
+- `web/src/management/auth/auth.css`: the login spinner now uses `currentColor` instead of hard-coded white, so it shows on the dark-theme primary button (dark text on light teal).
+
+**Verified**
+- `npm run build` (web): passed. `dist/index.html` keeps the inline theme script.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- WCAG contrast was computed for every text/background token pair. All pass AA (4.5:1). Lowest light pair: `--ink-subtle` on `--surface-muted`, 4.96. Lowest dark pair: `--primary` on `--primary-soft`, 5.31. Primary button text: 6.31 (light), 7.66 (dark). Danger text on danger-soft: 5.44 (light), 6.82 (dark).
+- **Not done: the visual check in a browser.** Permission for the Chrome DevTools tool (`new_page`) was refused again, so no one has looked at the shell and login screens in either theme yet.
+- So, as CLAUDE.md requires, M1.6 stays unticked in `docs/progress.md`, and the current step stays **M1.6**.
+
+**To finish M1.6**
+- Open `/office/auth/login` and the office shell: home, a placeholder page, the open notifications and profile popovers, and the mobile drawer at 360px. Check each in light and in dark. Switch the theme with `localStorage.setItem('psp-theme', 'dark')` (or `'light'` / `'system'`) in DevTools, or change the OS theme while the preference is System. Hard-reload and confirm there is no light flash before dark. If everything is readable, tick M1.6 and set the current step to **M1.7**.
+
+**Notes for the user**
+- The theme applies to the whole SPA, including the shop placeholder at `/`, because the tokens are global. If the shop should ignore the office preference, that needs a decision.
+- No CSP covers `index.html` today (Helmet runs on the API only). If one is added later, it needs a hash for the inline theme script.
+- M1.7 was not started. Nothing was committed by this run.

@@ -1,17 +1,27 @@
-/* Design tokens taken from PSP-Engineering-Group-Preview.html. */
+/* Design tokens taken from PSP-Engineering-Group-Preview.html.
+   index.html sets data-theme="light" | "dark" on <html> before first paint.
+   Text tokens meet WCAG AA (4.5:1) on --surface, --surface-muted and --page. */
 :root {
+  color-scheme: light;
   --ink: #0f2326;
   --ink-muted: #4a5f63;
-  --ink-subtle: #7d9194;
+  --ink-subtle: #56696d;
   --border: #cfdcdd;
   --surface: #ffffff;
   --surface-muted: #e8eff0;
   --page: #f5f8f8;
   --primary: #0a6b6b;
+  --primary-hover: #085959;
   --primary-soft: #d6eeec;
+  --on-primary: #ffffff;
   --navy: #0d2b3e;
   --danger: #b42318;
   --danger-soft: #fde4e1;
+  --hover-overlay: rgb(255 255 255 / 55%);
+  --shadow-sm: 0 1px 2px rgb(15 35 38 / 8%);
+  --shadow-popover: 0 8px 24px rgb(15 35 38 / 12%);
+  --shadow-drawer: 0 8px 24px rgb(15 35 38 / 18%);
+  --backdrop: rgb(15 35 38 / 40%);
 
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -21,6 +31,29 @@
   color: var(--ink);
   background: var(--page);
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ink: #e4edee;
+  --ink-muted: #a9babd;
+  --ink-subtle: #8fa3a6;
+  --border: #2e4448;
+  --surface: #152427;
+  --surface-muted: #0f1c1f;
+  --page: #0b1517;
+  --primary: #4fc1b6;
+  --primary-hover: #6fd0c6;
+  --primary-soft: #173f3d;
+  --on-primary: #062221;
+  --navy: #0d2b3e;
+  --danger: #ff8a80;
+  --danger-soft: #3d1916;
+  --hover-overlay: rgb(255 255 255 / 5%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-popover: 0 8px 24px rgb(0 0 0 / 50%);
+  --shadow-drawer: 0 8px 24px rgb(0 0 0 / 60%);
+  --backdrop: rgb(0 0 0 / 60%);
 }
 
 *,
@@ -72,11 +105,11 @@ a {
 
 .button-primary {
   background: var(--primary);
-  color: #ffffff;
+  color: var(--on-primary);
 }
 
 .button-primary:hover:not(:disabled) {
-  background: #085959;
+  background: var(--primary-hover);
 }
 
 .button-secondary {
@@ -155,7 +188,7 @@ a {
   flex-shrink: 0;
   border-radius: var(--radius);
   background: var(--primary);
-  color: var(--surface);
+  color: var(--on-primary);
   font-size: 17px;
   font-weight: 700;
 }
@@ -231,7 +264,7 @@ a {
 }
 
 .office-nav-link:hover {
-  background: rgb(255 255 255 / 55%);
+  background: var(--hover-overlay);
 }
 
 .office-nav-link:hover .office-nav-icon {
@@ -249,7 +282,7 @@ a {
   background: var(--surface);
   color: var(--primary);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgb(15 35 38 / 8%);
+  box-shadow: var(--shadow-sm);
 }
 
 .office-nav-link.active .office-nav-icon {
@@ -399,7 +432,7 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 8px 24px rgb(15 35 38 / 12%);
+  box-shadow: var(--shadow-popover);
 }
 
 .office-popover-heading {
@@ -524,7 +557,7 @@ a {
     padding: 16px 14px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    box-shadow: 0 8px 24px rgb(15 35 38 / 18%);
+    box-shadow: var(--shadow-drawer);
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -543,7 +576,7 @@ a {
     position: fixed;
     inset: 0;
     z-index: 30;
-    background: rgb(15 35 38 / 40%);
+    background: var(--backdrop);
   }
 
   .office-menu-toggle,

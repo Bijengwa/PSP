@@ -187,3 +187,26 @@ Either way, stop any leftover Vite process on port 5199.
 - **Possible second run:** another Claude session (0187fd40) edited the same log file about a minute before me. I re-read the file first and nothing was overwritten, but two runs may be going at once.
 - **Linear connector:** it needs authorising in your claude.ai connector settings before it can be used.
 You've hit your session limit ┬╖ resets 4:10am (Africa/Kampala)
+I built M1.6 (dark/light theme), and the build and lint pass. I did **not** mark it done in `docs/progress.md`, because no one has looked at the screens in either theme yet. "Current step" is still **M1.6**.
+
+**Why it isn't ticked:** M1.6 is done when "all shell and auth screens are readable in both themes and contrast meets WCAG AA." The contrast part is checked by calculation, but readability needs someone to look at the pages. My request to use the Chrome DevTools browser tool was refused again, as in the M1.5 runs. CLAUDE.md says to tick a step only when its checks pass, so I left it open rather than following your "mark it done" instruction.
+
+**What changed**
+- **`web/index.html`:** a small script in `<head>` sets `data-theme="light"` or `"dark"` on `<html>` before the page first draws, so there's no flash. It only reads the stored preference (`psp-theme`: `light`, `dark` or `system`; default System). On System it follows the OS setting as it changes. Nothing writes the preference yet; the Light/Dark/System picker is part of M1.7.
+- **`web/src/index.css`:** separate light and dark colour sets. Every colour that was typed directly into a rule (button text and hover, shadows, backdrop, nav hover) now comes from the theme.
+- **Light-theme fix:** the faint grey text colour was too faint for WCAG AA (3.31:1 on white, 2.84:1 on the sidebar), so I darkened it from `#7d9194` to `#56696d`. It is now 4.96:1 at worst.
+- **`web/src/management/auth/auth.css`:** the login spinner now takes the button's text colour instead of fixed white, so it shows on the dark-theme button.
+
+**What I checked**
+- `npm run build` and `npm run lint` in `web/` both pass, and the built `index.html` still has the theme script.
+- I calculated contrast for every text/background pair, and all meet WCAG AA (4.5:1). The lowest are 4.96 in light and 5.31 in dark.
+- I didn't run `node` tests because nothing on the backend changed. I made no commit and didn't start M1.7.
+- I couldn't run `git status` because it needed approval, so the changed files listed here are the ones I edited directly.
+
+**To finish M1.6:** open the login page and the office shell in both themes, including the notifications and profile pop-ups and the mobile menu at 360px. You can switch with `localStorage.setItem('psp-theme', 'dark')` (or `'light'` / `'system'`) in DevTools, or change the OS theme. Hard-reload to confirm there's no light flash. If everything reads well, tick M1.6 and set the current step to M1.7. The full steps are in `docs/overnight-log.md`.
+
+**Two things for you to decide**
+- The theme also applies to the shop placeholder at `/`, because the colours are shared across the whole site. Tell me if the shop should ignore the office preference.
+- Nothing restricts inline scripts on `index.html` today. If a Content Security Policy is added later, it will need an exception for the theme script.
+
+The Linear connector also needs authorising in your claude.ai connector settings before it can be used.
