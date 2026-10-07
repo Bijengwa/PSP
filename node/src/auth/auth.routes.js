@@ -1,6 +1,15 @@
 const express = require('express');
 const sessions = require('./session.store');
-const { login, changePassword, requestPasswordReset, toPublicStaff } = require('./auth.service');
+const {
+  RESET_REQUEST_STATUSES,
+  login,
+  changePassword,
+  requestPasswordReset,
+  listResetRequests,
+  dismissResetRequest,
+  resetStaffPassword,
+  toPublicStaff,
+} = require('./auth.service');
 const {
   httpError,
   readSessionCookie,
@@ -8,6 +17,7 @@ const {
   clearSessionCookie,
   requireSameOrigin,
   requireAuth,
+  requireRole,
 } = require('./auth.middleware');
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
@@ -105,4 +115,57 @@ router.post('/logout', async (req, res) => {
   res.json({ success: true, data: null });
 });
 
+// ---------- IT's side of password resets, mounted at /api/office ----------
+// Admin only. The role is read from Postgres on every request by requireAuth.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function uuidParam(req, name) {
+  if (!UUID_PATTERN.test(req.params[name])) throw httpError(404, 'Not found');
+  return req.params[name];
+}
+
+const officeRouter = express.Router();
+officeRouter.use(requireSameOrigin, requireAuth(), requireRole('admin'));
+
+officeRouter.get('/reset-requests', async (req, res) => {
+  const status = req.query.status ?? 'pending';
+  if (!RESET_REQUEST_STATUSES.includes(status)) {
+    throw httpError(400, `status must be one of: ${RESET_REQUEST_STATUSES.join(', ')}`);
+  }
+  res.json({ success: true, data: await listResetRequests({ status }) });
+});
+
+officeRouter.post('/reset-requests/:id/dismiss', async (req, res) => {
+  const id = uuidParam(req, 'id');
+  const result = await dismissResetRequest({ id, dismissedBy: req.staff.id });
+  if (result === 'not_found') throw httpError(404, 'Not found');
+  if (result === 'not_pending') throw httpError(409, 'This request has already been handled', 'NOT_PENDING');
+
+  req.log.info({ event: 'reset_request.dismissed', requestId: id, by: req.staff.id }, 'Reset request dismissed');
+  res.json({ success: true, data: null });
+});
+
+officeRouter.post('/staff/:id/reset-password', async (req, res) => {
+  const staffId = uuidParam(req, 'id');
+  const { temporaryPassword } = req.body ?? {};
+  if (typeof temporaryPassword !== 'string' || !temporaryPassword) {
+    throw httpError(400, 'A temporary password is required');
+  }
+
+  const result = await resetStaffPassword({ staffId, temporaryPassword, resetBy: req.staff.id });
+  if (!result) throw httpError(404, 'Not found');
+  if (result.error === 'weak') {
+    throw Object.assign(httpError(400, 'The temporary password does not meet the rules', 'WEAK_PASSWORD'), {
+      details: result.problems,
+    });
+  }
+
+  req.log.info(
+    { event: 'staff.password_reset', staffId, by: req.staff.id, resolvedRequests: result.resolvedRequests },
+    'Password reset by IT',
+  );
+  res.json({ success: true, data: { staff: result.staff, resolvedRequests: result.resolvedRequests } });
+});
+
 module.exports = router;
+module.exports.officeRouter = officeRouter;

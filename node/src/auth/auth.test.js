@@ -652,6 +652,182 @@ describe('POST /api/auth/forgot-password', () => {
   });
 });
 
+describe('IT password resets (/api/office)', () => {
+  const TARGET = { email: 'tech@psp.test', fullName: 'Juma Technician' };
+  const TEMPORARY = 'Temp-Bridge-2026!';
+  let targetId;
+
+  function asAdmin(sessionId, method, path) {
+    return request(app)[method](path).set('Origin', ORIGIN).set('Cookie', `psp_sid=${sessionId}`);
+  }
+
+  function resetPassword(sessionId, staffId, temporaryPassword = TEMPORARY) {
+    return asAdmin(sessionId, 'post', `/api/office/staff/${staffId}/reset-password`).send({ temporaryPassword });
+  }
+
+  async function loginAsTarget(password = PASSWORD) {
+    const res = await postLogin({ email: TARGET.email, password });
+    expect(res.status).toBe(200);
+    return sessionIdFrom(res);
+  }
+
+  beforeAll(async () => {
+    const [role] = await db('roles').insert({ name: 'staff', description: 'Office staff' }).returning('id');
+    const [target] = await db('staff_profiles')
+      .insert({ full_name: TARGET.fullName, email: TARGET.email, password_hash: passwordHash, role_id: role.id, must_change_password: false })
+      .returning('id');
+    targetId = target.id;
+  });
+
+  beforeEach(async () => {
+    await db('password_reset_requests').del();
+    await db('staff_profiles').where({ id: targetId }).update({ password_hash: passwordHash, must_change_password: false });
+  });
+
+  test("after a reset the person's sessions stop at once and the next login forces a change", async () => {
+    const laptop = await loginAsTarget();
+    const phone = await loginAsTarget();
+    const admin = await loginAsAdmin();
+
+    const res = await resetPassword(admin, targetId);
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff).toMatchObject({ id: targetId, mustChangePassword: true });
+
+    expect((await me(laptop)).status).toBe(401);
+    expect((await me(phone)).status).toBe(401);
+    expect((await postLogin({ email: TARGET.email, password: PASSWORD })).status).toBe(401);
+
+    const next = await loginAsTarget(TEMPORARY);
+    expect((await me(next)).body.data.staff.mustChangePassword).toBe(true);
+    const blocked = await asAdmin(next, 'get', '/api/office/reset-requests');
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    // The admin's own session is untouched.
+    expect((await me(admin)).status).toBe(200);
+  });
+
+  test("resolves that person's pending requests and leaves the others", async () => {
+    await db('password_reset_requests').insert([
+      { email: TARGET.email, staff_id: targetId },
+      { email: TARGET.email, staff_id: targetId },
+      { email: ADMIN.email, staff_id: adminId },
+    ]);
+    const admin = await loginAsAdmin();
+
+    const res = await resetPassword(admin, targetId);
+    expect(res.body.data.resolvedRequests).toBe(2);
+
+    const rows = await db('password_reset_requests');
+    for (const row of rows.filter((r) => r.staff_id === targetId)) {
+      expect(row).toMatchObject({ status: 'resolved', resolved_by: adminId });
+      expect(row.resolved_at).toBeInstanceOf(Date);
+    }
+    expect(rows.find((r) => r.staff_id === adminId)).toMatchObject({ status: 'pending', resolved_by: null });
+  });
+
+  test('a weak temporary password is refused and changes nothing', async () => {
+    const session = await loginAsTarget();
+    const admin = await loginAsAdmin();
+
+    for (const weak of ['short1!A', 'alllowercase-123', 'Juma-Strong-2026!', 'Password123!']) {
+      const res = await resetPassword(admin, targetId, weak);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('WEAK_PASSWORD');
+      expect(res.body.error.details.length).toBeGreaterThan(0);
+    }
+    expect((await resetPassword(admin, targetId, '')).status).toBe(400);
+
+    expect((await me(session)).status).toBe(200);
+    const row = await db('staff_profiles').where({ id: targetId }).first('password_hash', 'must_change_password');
+    expect(row).toEqual({ password_hash: passwordHash, must_change_password: false });
+  });
+
+  test('an unknown or malformed staff ID is 404', async () => {
+    const admin = await loginAsAdmin();
+    expect((await resetPassword(admin, crypto.randomUUID())).status).toBe(404);
+    expect((await resetPassword(admin, 'not-a-uuid')).status).toBe(404);
+  });
+
+  test('the queue lists pending requests oldest first, with the matching person or none', async () => {
+    await db('password_reset_requests').insert([
+      { email: 'stranger@psp.test', staff_id: null, created_at: new Date('2026-10-07T08:00:00Z') },
+      { email: TARGET.email, staff_id: targetId, created_at: new Date('2026-10-07T07:00:00Z') },
+      { email: ADMIN.email, staff_id: adminId, status: 'dismissed' },
+    ]);
+    const admin = await loginAsAdmin();
+
+    const res = await asAdmin(admin, 'get', '/api/office/reset-requests?status=pending');
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(2);
+    expect(res.body.data.requests).toEqual([
+      expect.objectContaining({
+        email: TARGET.email,
+        status: 'pending',
+        staff: { id: targetId, fullName: TARGET.fullName, isActive: true },
+      }),
+      expect.objectContaining({ email: 'stranger@psp.test', staff: null }),
+    ]);
+
+    expect((await asAdmin(admin, 'get', '/api/office/reset-requests?status=bogus')).status).toBe(400);
+  });
+
+  test('dismissing a request takes it out of the queue, once', async () => {
+    const [pending] = await db('password_reset_requests').insert({ email: 'stranger@psp.test' }).returning('id');
+    const admin = await loginAsAdmin();
+    const dismiss = (id) => asAdmin(admin, 'post', `/api/office/reset-requests/${id}/dismiss`);
+
+    expect((await dismiss(pending.id)).status).toBe(200);
+    expect(await db('password_reset_requests').where({ id: pending.id }).first()).toMatchObject({
+      status: 'dismissed',
+      resolved_by: adminId,
+    });
+    expect((await asAdmin(admin, 'get', '/api/office/reset-requests')).body.data.total).toBe(0);
+
+    expect((await dismiss(pending.id)).status).toBe(409);
+    expect((await dismiss(crypto.randomUUID())).status).toBe(404);
+    expect((await dismiss('nope')).status).toBe(404);
+  });
+
+  test('only a signed-in admin from the app origin gets in', async () => {
+    const staff = await loginAsTarget();
+    const admin = await loginAsAdmin();
+
+    expect((await request(app).get('/api/office/reset-requests')).status).toBe(401);
+    expect((await asAdmin(staff, 'get', '/api/office/reset-requests')).status).toBe(403);
+    expect((await resetPassword(staff, adminId)).status).toBe(403);
+
+    const crossSite = await request(app)
+      .post(`/api/office/staff/${targetId}/reset-password`)
+      .set('Origin', 'https://evil.example')
+      .set('Cookie', `psp_sid=${admin}`)
+      .send({ temporaryPassword: TEMPORARY });
+    expect(crossSite.status).toBe(403);
+    expect((await db('staff_profiles').where({ id: targetId }).first()).must_change_password).toBe(false);
+  });
+
+  test('with Redis down the reset fails closed and changes nothing', async () => {
+    const admin = await loginAsAdmin();
+    redis.client.failing = true;
+
+    expect((await resetPassword(admin, targetId)).status).toBe(503);
+    redis.client.failing = false;
+    const row = await db('staff_profiles').where({ id: targetId }).first('password_hash', 'must_change_password');
+    expect(row).toEqual({ password_hash: passwordHash, must_change_password: false });
+  });
+
+  test('the temporary password never reaches the logs', async () => {
+    mockLogLines.length = 0;
+    const admin = await loginAsAdmin();
+    const res = await resetPassword(admin, targetId);
+    expect(res.status).toBe(200);
+
+    const logged = mockLogLines.join('\n');
+    expect(logged).toContain('staff.password_reset');
+    expect(logged).not.toContain(TEMPORARY);
+  });
+});
+
 describe('when Redis is unavailable', () => {
   test('login fails closed with 503 and sets no cookie', async () => {
     redis.client.failing = true;

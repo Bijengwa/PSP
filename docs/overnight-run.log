@@ -415,3 +415,28 @@ Both "Done when" checks are covered by tests and pass: known and unknown emails 
 - The Linear connector needs authorizing in your claude.ai connector settings before it can be used.
 
 Notes are in `docs/overnight-log.md`.
+M2.4 (Reset password by IT) is built and its "Done when" check passes. After IT resets someone, that person's open sessions get 401 straight away, and their next login forces the M2.1 password change. M2.4 is ticked in `docs/progress.md`, the current step is now **M2.5**, and the notes are in `docs/overnight-log.md`. I didn't start M2.5 and didn't commit anything.
+
+**Backend**
+- **Endpoints (admins only):** three new endpoints under `/api/office`:
+  - `GET /reset-requests?status=pending` returns the queue, oldest first.
+  - `POST /reset-requests/:id/dismiss`
+  - `POST /staff/:id/reset-password` sets a temporary password that passes the existing strength rules and sets `must_change_password = true`. It resolves that person's pending requests and ends all their sessions. The sessions are ended both before and after the database write, so if Redis is down the request fails with 503 and nothing changes.
+- **Files:** the logic is in `node/src/auth/auth.service.js` and the routes are in `node/src/auth/auth.routes.js`; `server.js` mounts them at `/api/office`. No migration and no new dependencies.
+
+**Frontend**
+- **Queue page:** at `/office/reset-requests`. Each request has "Reset password" (opens a small inline form) and "Dismiss".
+- **Sidebar:** a new admin-only "Reset requests" item under Management, with a badge showing the pending count. The badge refreshes every minute and right after a reset or dismissal.
+- **Styles:** in `index.css`, using the existing colour variables so they work in light and dark themes.
+
+**Checks**
+- **Backend tests:** `npm test` passes 90 of 90, including 9 new tests. They cover the "Done when" case plus weak passwords, admin-only access, cross-site requests, Redis down, and the temporary password never appearing in logs.
+- **Web:** `npm run build` and `npm run lint` both pass with no warnings.
+- **Not run in a browser:** the UI is checked only through the code and the build, because a live check needs Postgres, Redis, the API and Vite running.
+
+**Decisions for you** (more detail in the log)
+1. **Sidebar item:** the plan says the sidebar is final from M1, but this step needs a queue page and a badge, so I added one admin-only item. If you'd rather have the badge on "Staff", it's a one-line change.
+2. **Badge count:** the auth spec describes a separate count endpoint cached in Redis. This step's scope lists only the three endpoints above, so the badge uses the queue's `total` straight from Postgres.
+3. **File placement:** to avoid creating files without asking, the routes went into `auth.routes.js` and the page into `OfficeHome.tsx`. If you want them in their own files, I suggest `node/src/auth/office.routes.js` and `web/src/management/inApp/pages/ResetRequests.tsx` ΓÇö tell me and I'll move them.
+
+Other sessions had edited several of these files recently, but `git status` was clean before I started, so nothing was overwritten. Separately, the Linear connector needs authorising in your claude.ai connector settings before it can be used; nothing in this step needed it.

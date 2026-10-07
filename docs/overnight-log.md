@@ -530,3 +530,59 @@
 - Run `npm run migrate` (or `knex migrate:latest`) in `node/` to create the new table in your dev database. The tests run migrations themselves.
 - The timing test has a tolerance margin, but it is still a wall-clock test and could fail on a heavily loaded machine.
 - The Collision Guard flagged recent edits by sessions d9796bda and 1a14375f to `auth.service.js`, `auth.routes.js`, `auth.test.js`, `login.tsx`, `auth.css`, `App.tsx` and `AuthProvider.tsx`. `git status` showed no uncommitted changes in those files before I edited them (they are in 89337ff), so nothing was overwritten.
+
+## M2.4 Reset password (2026-10-07)
+
+**Changed: backend**
+- `node/src/auth/auth.service.js`: three new functions.
+  - `listResetRequests({ status })`: oldest first, at most 100 rows, joined to the matching staff member (or `null`), plus `total`.
+  - `dismissResetRequest({ id, dismissedBy })`.
+  - `resetStaffPassword({ staffId, temporaryPassword, resetBy })`: checks strength with the existing `passwordProblems` (the person's name and email are forbidden), hashes with argon2, sets `must_change_password = true` and resolves that person's pending requests in one transaction. It revokes all their sessions synchronously **before** the write (Redis down means 503 and nothing changes) and again **after** it (a login with the old password that raced the write cannot survive).
+- `node/src/auth/auth.routes.js`: new `officeRouter` (named export), protected by `requireSameOrigin`, `requireAuth()` and `requireRole('admin')`.
+  - `GET /reset-requests?status=pending` (default `pending`; any other value outside the enum gets 400).
+  - `POST /reset-requests/:id/dismiss` (404 if unknown, 409 `NOT_PENDING` if already handled).
+  - `POST /staff/:id/reset-password` `{ temporaryPassword }` (400 `WEAK_PASSWORD` with reasons in `details`; 404 if unknown).
+  - Malformed UUIDs get 404 instead of a Postgres error.
+  - Logs `staff.password_reset` and `reset_request.dismissed` with IDs only, never the password.
+- `node/src/server.js`: mounts it at `/api/office`.
+- No migration, no new files, no new dependencies.
+
+**Changed: backend tests** (`node/src/auth/auth.test.js`, 9 new)
+- Done-when: after a reset, the person's laptop and phone sessions get 401 at once, the old password fails, and the temporary password logs in with `mustChangePassword: true`. Office API calls then get 403 `PASSWORD_CHANGE_REQUIRED`, which the M2.1 guard turns into the forced change. The admin's own session is untouched.
+- A reset resolves only that person's pending requests (`resolved_by` and `resolved_at` set).
+- Weak, personal, common and empty temporary passwords are refused and change nothing.
+- An unknown or malformed staff ID gets 404.
+- The queue's order, staff match and `total` are checked, and a bad `status` gets 400.
+- Dismissing works once; repeats get 409; unknown or malformed IDs get 404.
+- No session gets 401, a non-admin gets 403, a cross-site POST gets 403.
+- With Redis down: 503 and nothing changed.
+- The temporary password never appears in the logs.
+
+**Changed: frontend**
+- `web/src/management/inApp/pages/OfficeHome.tsx`: new `ResetRequestsPage`, placed in this existing file like `SettingsPage`, so no new file.
+  - It shows a pending list (email exactly as typed, request time, matching person or "No matching account", "(inactive)" where relevant).
+  - Each row has "Reset password" (opens an inline temporary-password form with server reasons shown in an alert) and "Dismiss".
+  - Results are announced in a `role="status"` region.
+  - A non-admin who opens the URL sees "Only administrators can see reset requests."
+- `web/src/App.tsx`: route `/office/reset-requests` (lazy).
+- `web/src/management/inApp/layout/Sidebar.tsx`:
+  - New admin-only item "Reset requests" under Management, with a line key icon and a pending-count badge (`99+` cap). The badge refreshes every 60s and right after a reset or dismissal (window event `psp:reset-requests-changed`). It is hidden for non-admins and when the count is 0.
+  - Screen readers hear "Reset requests, N pending".
+  - The header title comes from `NAV_GROUPS` automatically.
+- `web/src/index.css`: `.office-nav-badge` and `.office-queue*`/`.office-reset-*` classes, using theme tokens only, so they work in light and dark themes. The rows wrap on narrow screens.
+
+**Verified**
+- `npm test` (node): 90/90 passed (81 before, plus 9 new).
+- `npm run build` (web): passed. `npm run lint` (web): passed, no warnings.
+- The UI was **checked in the code and build only, not in a live browser**, because that needs Postgres, Redis, the API and Vite running.
+
+**Decisions to review**
+- **Sidebar item:** plan §2 says navigation is final from M1, but M2.4 needs a queue page and a sidebar badge. I added one admin-only item, "Reset requests" (`/office/reset-requests`, the auth spec §8 lists "reset requests" in the office area). If you prefer the badge on "Staff" instead, it is a one-line change.
+- **Badge count source:** the auth spec §5/§6 describes `GET /api/office/reset-requests/count`, served from the Redis cache `psp:reset-requests:pending-count`, with event-bus invalidation. M2.4's Scope lists only the three endpoints and the event bus does not exist yet. So the badge reads `total` from the queue endpoint, straight from Postgres, once a minute. Adding the cached count endpoint later does not change the UI.
+- **Code placement:** the office routes live in `auth.routes.js` (`officeRouter`) and the page lives in `OfficeHome.tsx`, to avoid new files without your approval. Suggested homes if you want them split out: `node/src/auth/office.routes.js` and `web/src/management/inApp/pages/ResetRequests.tsx`. Please confirm before anyone creates them.
+- No live password-rule checklist on the temporary-password form. It shows a one-line hint plus the server's reasons. The M2.2 checklist is tied to the signed-in person, and sharing it would need the rules module discussed under M2.2.
+- An admin can reset their own password through this endpoint; that ends their own sessions too. It is not blocked, because M2.4 does not say to.
+
+**Notes for the user**
+- M2.4 ticked; current step set to **M2.5**. M2.5 was not started. Nothing was committed by this run.
+- The Collision Guard flagged recent edits by other sessions (30a36625, d9796bda, 22b8c3ea) to `auth.service.js`, `auth.routes.js`, `auth.test.js`, `OfficeHome.tsx`, `App.tsx`, `index.css` and `progress.md`. `git status` was clean before I edited (those edits are in 04fbb1a and earlier), so nothing was overwritten.

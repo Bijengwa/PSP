@@ -10,6 +10,9 @@ const ChangePassword = lazy(() => import('./management/auth/login').then((m) => 
 const OfficeLayout = lazy(() => import('./management/inApp/layout/OfficeLayout'))
 const OfficeHome = lazy(() => import('./management/inApp/pages/OfficeHome'))
 const SettingsPage = lazy(() => import('./management/inApp/pages/OfficeHome').then((m) => ({ default: m.SettingsPage })))
+const ResetRequestsPage = lazy(() =>
+  import('./management/inApp/pages/OfficeHome').then((m) => ({ default: m.ResetRequestsPage })),
+)
 const PlaceholderPage = lazy(() => import('./management/inApp/pages/PlaceholderPage'))
 const OfficeNotFound = lazy(() => import('./management/inApp/pages/OfficeNotFound'))
 
@@ -65,6 +68,7 @@ export default function App() {
             <Route path="orders" element={<PlaceholderPage title="Orders" />} />
             <Route path="customers" element={<PlaceholderPage title="Customers" />} />
             <Route path="staff" element={<PlaceholderPage title="Staff" />} />
+            <Route path="reset-requests" element={<ResetRequestsPage />} />
             <Route path="reports" element={<PlaceholderPage title="Reports" />} />
             <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
             <Route path="settings" element={<SettingsPage />} />

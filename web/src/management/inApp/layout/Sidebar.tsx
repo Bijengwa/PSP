@@ -1,6 +1,7 @@
-import type { ReactNode, RefObject } from 'react'
+import { useEffect, useState, type ReactNode, type RefObject } from 'react'
 import { Link, NavLink } from 'react-router'
-import { OFFICE_HOME_PATH } from '../../auth/AuthProvider'
+import { apiRequest } from '../../../api/client'
+import { OFFICE_HOME_PATH, useAuth } from '../../auth/AuthProvider'
 
 // Simple line icons (24x24, stroke = currentColor) so they follow the theme.
 const ICON_PATHS: Record<string, ReactNode> = {
@@ -48,6 +49,12 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <rect x="4" y="3" width="16" height="18" rx="2" />
       <circle cx="12" cy="10" r="3" />
       <path d="M7.5 18a4.5 4.5 0 0 1 9 0" />
+    </>
+  ),
+  resetRequests: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M11 12l8-8M16 7l2 2M14 9l2 2" />
     </>
   ),
   reports: (
@@ -101,11 +108,20 @@ function NavIcon({ name, size = 20 }: { name: IconName; size?: number }) {
   )
 }
 
+export const RESET_REQUESTS_PATH = '/office/reset-requests'
+// The reset-requests page fires this after a reset or dismissal, so the badge
+// updates without waiting for its next refresh.
+export const RESET_REQUESTS_CHANGED = 'psp:reset-requests-changed'
+const BADGE_REFRESH_MS = 60 * 1000
+
 // Sidebar navigation, grouped as in docs/management-plan.md §2.
 // Header.tsx reads it for page titles. Exporting it here only costs a full reload
 // (instead of fast refresh) when this file changes.
 // eslint-disable-next-line react-refresh/only-export-components
-export const NAV_GROUPS: { label: string; items: { label: string; to: string; icon: IconName }[] }[] = [
+export const NAV_GROUPS: {
+  label: string
+  items: { label: string; to: string; icon: IconName; adminOnly?: boolean }[]
+}[] = [
   { label: 'Overview', items: [{ label: 'Home', to: OFFICE_HOME_PATH, icon: 'home' }] },
   {
     label: 'Catalog',
@@ -126,6 +142,7 @@ export const NAV_GROUPS: { label: string; items: { label: string; to: string; ic
     label: 'Management',
     items: [
       { label: 'Staff', to: '/office/staff', icon: 'staff' },
+      { label: 'Reset requests', to: RESET_REQUESTS_PATH, icon: 'resetRequests', adminOnly: true },
       { label: 'Reports', to: '/office/reports', icon: 'reports' },
     ],
   },
@@ -146,6 +163,37 @@ function CloseIcon() {
   )
 }
 
+// Pending forgot-password requests, for the sidebar badge. Admins only; it
+// refreshes every minute and whenever the reset-requests page changes the queue.
+function usePendingResetCount(enabled: boolean) {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    if (!enabled) return
+    let controller: AbortController | null = null
+    function load() {
+      controller?.abort()
+      controller = new AbortController()
+      apiRequest<{ total: number }>('/api/office/reset-requests?status=pending', { signal: controller.signal }).then(
+        (result) => {
+          if (result.ok) setCount(result.data.total)
+        },
+        () => {}, // aborted
+      )
+    }
+    load()
+    const timer = window.setInterval(load, BADGE_REFRESH_MS)
+    window.addEventListener(RESET_REQUESTS_CHANGED, load)
+    return () => {
+      controller?.abort()
+      window.clearInterval(timer)
+      window.removeEventListener(RESET_REQUESTS_CHANGED, load)
+    }
+  }, [enabled])
+
+  return enabled ? count : 0
+}
+
 type SidebarProps = {
   id: string
   drawerOpen: boolean
@@ -156,6 +204,10 @@ type SidebarProps = {
 
 // The office sidebar. On mobile it is an overlay drawer; OfficeLayout owns its state.
 export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, onClose }: SidebarProps) {
+  const { state } = useAuth()
+  const isAdmin = state.status === 'authenticated' && state.staff.role === 'admin'
+  const pendingResets = usePendingResetCount(isAdmin)
+
   return (
     <aside
       id={id}
@@ -192,15 +244,31 @@ export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, o
               {group.label}
             </h2>
             <ul className="office-nav-list" aria-labelledby={`office-nav-${group.label}`}>
-              {group.items.map((item) => (
-                <li key={item.to}>
-                  {/* `end` keeps Products from staying active on /office/products/new. */}
-                  <NavLink to={item.to} end className="office-nav-link" onClick={onClose}>
-                    <NavIcon name={item.icon} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                </li>
-              ))}
+              {group.items
+                .filter((item) => isAdmin || !item.adminOnly)
+                .map((item) => {
+                  const badge = item.to === RESET_REQUESTS_PATH ? pendingResets : 0
+                  return (
+                    <li key={item.to}>
+                      {/* `end` keeps Products from staying active on /office/products/new. */}
+                      <NavLink
+                        to={item.to}
+                        end
+                        className="office-nav-link"
+                        aria-label={badge > 0 ? `${item.label}, ${badge} pending` : undefined}
+                        onClick={onClose}
+                      >
+                        <NavIcon name={item.icon} />
+                        <span>{item.label}</span>
+                        {badge > 0 && (
+                          <span className="office-nav-badge" aria-hidden="true">
+                            {badge > 99 ? '99+' : badge}
+                          </span>
+                        )}
+                      </NavLink>
+                    </li>
+                  )
+                })}
             </ul>
           </div>
         ))}
