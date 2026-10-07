@@ -238,3 +238,27 @@ To finish M1.6, do one of these:
 Until one of these happens, every overnight run will stop at this point. I didn't start M1.7 and didn't commit anything.
 
 The Linear connector also needs to be authorised in your claude.ai connector settings before it can be used.
+I did not mark M1.6 done. Its "Done when" check (every shell and login screen readable in light and dark) needs someone to look at the pages in a browser, and that still couldn't happen. So `docs/progress.md` still shows M1.6 as the current step.
+
+**State:** The M1.6 code from an earlier overnight run is still in place, unchanged:
+- light and dark colour settings in `web/src/index.css`;
+- a script in `web/index.html` that applies the saved Light/Dark/System choice before the page first draws;
+- a login spinner fix in `web/src/management/auth/auth.css`.
+
+Earlier runs calculated the colour contrast for every text and background pair, and all pass WCAG AA.
+
+**Checks this run:**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed with no warnings.
+- `node` tests: not run, because nothing on the backend changed.
+- Browser check: not done. The Chrome DevTools tools loaded, but opening a page was refused because you haven't granted that permission, and an unattended run can't approve it. The Vite dev server also stopped by itself with exit code 1, so nothing is left running.
+
+**Changed:** I only added a "fourth attempt" entry to `docs/overnight-log.md`. Nothing was committed, and M1.7 was not started.
+
+**To finish M1.6, either:**
+1. Check it by hand: open the login page and the office shell (home, a placeholder page, the open popovers, the mobile menu at 360px) in both themes. Switch with `localStorage.setItem('psp-theme', 'dark')` (or `'light'` / `'system'`), hard-reload, and make sure there's no light flash before dark. If it all reads well, tick M1.6 and set the current step to M1.7.
+2. Or add `mcp__plugin_ecc_chrome-devtools__*` to `permissions.allow` in `.claude/settings.local.json`, so the next overnight run can do the check itself.
+
+Until one of these happens, every overnight run will stop at this same point. It's also worth running `npx vite --port 5231 --strictPort` in `web/` yourself once to see why the dev server exits in these runs.
+
+Separately, the claude.ai Linear connector needs to be authorised in your claude.ai connector settings before it can be used.
