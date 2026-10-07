@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { LOGIN_PATH, useAuth } from '../../auth/AuthProvider'
-import { CHANGE_PASSWORD_PATH } from '../layout/ProfileMenu'
+import { CHANGE_PASSWORD_PATH } from '../../auth/AuthProvider'
 
 // Home page shown in the workspace at /office.
 export default function OfficeHome() {

@@ -322,3 +322,31 @@ I've built M1.7 (Settings + logout), ticked it in `docs/progress.md` and set the
 The Collision Guard warned that another session had recently edited `index.css`, `progress.md` and the log. I re-read each one before editing, and nothing was overwritten.
 
 M2.1 hasn't been started.
+M2.1 (forced password change) is done and ticked in `docs/progress.md`, and the current step is now M2.2. Backend tests (67/67), the web build and lint all pass, but I haven't tried the flow in a live browser. Nothing is committed.
+
+**Backend**
+- The step allowed building the new `POST /api/auth/change-password` endpoint here, and I did. It works while a temporary password is set and checks the password rules from the auth spec ┬º7.
+- On success it clears the must-change flag, ends all of the person's sessions before saving, then issues a fresh session.
+- A wrong current password gets a 400, not a 401, so it doesn't look like a lost session. A weak password gets a 400 that lists the rules it breaks.
+- Four new tests in `auth.test.js`. The main one follows the "Done when" path: an admin on a temporary password gets 403 on office routes, changes it, then gets into the office. Old sessions on every device stop working.
+
+**Frontend**
+- **Guard:** `RequireAuth` sends anyone whose `/me` says they must change their password to `/office/auth/change-password`, from any office page. If any API call returns 403 `PASSWORD_CHANGE_REQUIRED`, the guard does the same. Nothing is stored in the browser.
+- **Page:** fields for the temporary or current password, the new one and a confirmation, plus a short rule hint. Server errors show in one message area. On success the person goes to `/office`. In the forced case it offers Log out; otherwise Cancel.
+- **Routing:** the page now sits outside the office layout, as the plan's ┬º2 lists it with the auth routes. During a forced change it is the only page you can reach.
+
+**Decisions for you**
+- **Page address:** the auth spec calls this page `/office/auth/reset-password`, but the plan says `/office/auth/change-password`. I used the plan's address, because the plan comes first in its own order of authority and the Profile menu already links there. Please confirm, or tell me to rename it.
+- **File placement:** I didn't create new files without asking, so the page is a named export in `login.tsx`, like `SettingsPage` in `OfficeHome.tsx`. I suggest moving it to `web/src/management/auth/changePassword.tsx`; only the import in `App.tsx` would change.
+
+**Left for later steps**
+- M2.2: the live rule checklist in the browser and the full set of password-rule tests.
+- M2.5: handling 401 and 503 across all API calls, and returning people to the page they asked for after login.
+
+**To check by hand** (needs Postgres, Redis, the API and Vite running):
+1. Log in as the seeded admin. You should land on "Choose a new password".
+2. Open `/office/staff` directly. You should be sent back to that page.
+3. Submit a weak password and check that the reasons are listed.
+4. Submit a valid password. You should land on `/office`.
+
+The full notes are in `docs/overnight-log.md`. Stopping here, as asked.

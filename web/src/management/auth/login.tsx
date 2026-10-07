@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useLocation } from 'react-router'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import type { ApiResult } from '../../api/client'
 import { LOGIN_PATH, OFFICE_HOME_PATH, useAuth } from './AuthProvider'
 import './auth.css'
@@ -119,6 +119,166 @@ export default function Login() {
             {submitting ? 'Logging in…' : 'Log in'}
           </button>
         </form>
+      </div>
+    </main>
+  )
+}
+
+type FormError = { message: string; reasons: string[] }
+
+function changeErrorMessage(result: Extract<ApiResult<unknown>, { ok: false }>): FormError {
+  const reasons = Array.isArray(result.details) ? result.details.filter((d): d is string => typeof d === 'string') : []
+  if (result.status === 503) return { message: 'The service is temporarily unavailable. Please try again shortly.', reasons }
+  return { message: result.message, reasons }
+}
+
+// /office/auth/change-password, behind RequireAuth. While a temporary password
+// is set the guard keeps the person here; otherwise it is the voluntary change
+// reached from the Profile menu or Settings.
+export function ChangePassword() {
+  const { state, changePassword, logout } = useAuth()
+  const navigate = useNavigate()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState<FormError | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const forced = state.status === 'authenticated' && state.staff.mustChangePassword
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (submitting) return
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError({ message: 'Fill in all three fields.', reasons: [] })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError({ message: 'The new passwords do not match.', reasons: [] })
+      return
+    }
+    if (newPassword === currentPassword) {
+      setError({ message: 'Choose a password different from the current one.', reasons: [] })
+      return
+    }
+
+    setError(null)
+    setSubmitting(true)
+    const result = await changePassword(currentPassword, newPassword)
+    if (result.ok) {
+      navigate(OFFICE_HOME_PATH, { replace: true })
+      return
+    }
+    setSubmitting(false)
+    if (result.code === 'INVALID_CURRENT_PASSWORD') setCurrentPassword('')
+    setError(changeErrorMessage(result))
+  }
+
+  async function handleLogout() {
+    const result = await logout()
+    if (result.ok) navigate(LOGIN_PATH, { replace: true })
+    else setError({ message: result.message, reasons: [] })
+  }
+
+  const describedBy = (...ids: string[]) => [...ids, ...(error ? ['change-error'] : [])].join(' ') || undefined
+
+  return (
+    <main className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <span className="auth-brand-name">PSP Engineering Group</span>
+          <span className="auth-brand-sub">Admin portal</span>
+        </div>
+
+        <h1 className="auth-title">{forced ? 'Choose a new password' : 'Change password'}</h1>
+        <p className="auth-lead">
+          {forced
+            ? 'You signed in with a temporary password. Choose your own password to continue.'
+            : 'Other devices will be signed out. You stay signed in here.'}
+        </p>
+
+        <form className="auth-form" onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+          <label className="field">
+            <span className="field-label">{forced ? 'Temporary password' : 'Current password'}</span>
+            <input
+              className="field-input"
+              type="password"
+              name="currentPassword"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              disabled={submitting}
+              aria-invalid={error !== null}
+              aria-describedby={describedBy()}
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span className="field-label">New password</span>
+            <input
+              className="field-input"
+              type="password"
+              name="newPassword"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              disabled={submitting}
+              aria-invalid={error !== null}
+              aria-describedby={describedBy('new-password-hint')}
+              required
+            />
+            <span id="new-password-hint" className="field-hint">
+              At least 10 characters, with upper and lower case letters, a digit and a symbol. Do not use your name
+              or email.
+            </span>
+          </label>
+
+          <label className="field">
+            <span className="field-label">Confirm new password</span>
+            <input
+              className="field-input"
+              type="password"
+              name="confirmPassword"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={submitting}
+              aria-invalid={error !== null}
+              aria-describedby={describedBy()}
+              required
+            />
+          </label>
+
+          <div id="change-error" className="auth-error" role="alert" hidden={!error}>
+            {error?.message}
+            {error && error.reasons.length > 0 && (
+              <ul className="auth-error-list">
+                {error.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <button type="submit" className="button button-primary auth-submit" disabled={submitting}>
+            {submitting && <span className="spinner" aria-hidden="true" />}
+            {submitting ? 'Saving…' : 'Change password'}
+          </button>
+        </form>
+
+        <div className="auth-alt">
+          {forced ? (
+            <button type="button" className="button button-secondary auth-submit" onClick={handleLogout} disabled={submitting}>
+              Log out
+            </button>
+          ) : (
+            <Link className="button button-secondary auth-submit" to={OFFICE_HOME_PATH}>
+              Cancel
+            </Link>
+          )}
+        </div>
       </div>
     </main>
   )

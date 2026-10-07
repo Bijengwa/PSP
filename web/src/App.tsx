@@ -5,6 +5,7 @@ import RequireAuth from './management/auth/RequireAuth'
 
 // The office is its own bundle: shop visitors never download it.
 const Login = lazy(() => import('./management/auth/login'))
+const ChangePassword = lazy(() => import('./management/auth/login').then((m) => ({ default: m.ChangePassword })))
 const OfficeLayout = lazy(() => import('./management/inApp/layout/OfficeLayout'))
 const OfficeHome = lazy(() => import('./management/inApp/pages/OfficeHome'))
 const SettingsPage = lazy(() => import('./management/inApp/pages/OfficeHome').then((m) => ({ default: m.SettingsPage })))
@@ -51,6 +52,8 @@ export default function App() {
       <Route path="/office" element={<OfficeRoot />}>
         <Route path="auth/login" element={<Login />} />
         <Route element={<RequireAuth />}>
+          {/* Outside the shell: during a forced change it is the only reachable page. */}
+          <Route path="auth/change-password" element={<ChangePassword />} />
           <Route element={<OfficeLayout />}>
             <Route index element={<OfficeHome />} />
             {/* Sidebar routes: title-only placeholders until each module is built. */}
@@ -63,8 +66,6 @@ export default function App() {
             <Route path="reports" element={<PlaceholderPage title="Reports" />} />
             <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
             <Route path="settings" element={<SettingsPage />} />
-            {/* Profile menu target; the real page is built in M2.1. */}
-            <Route path="auth/change-password" element={<PlaceholderPage title="Change password" />} />
             <Route path="*" element={<OfficeNotFound />} />
           </Route>
         </Route>

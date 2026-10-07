@@ -96,6 +96,20 @@
   width: 100%;
 }
 
+.field-hint {
+  font-size: 13px;
+  color: var(--ink-subtle);
+}
+
+.auth-error-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.auth-alt {
+  margin-top: 12px;
+}
+
 .spinner {
   width: 16px;
   height: 16px;

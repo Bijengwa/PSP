@@ -2,14 +2,13 @@ import type { RefObject } from 'react'
 import { useLocation } from 'react-router'
 import type { Staff } from '../../auth/AuthProvider'
 import NotificationsPopover from './NotificationsPopover'
-import ProfileMenu, { CHANGE_PASSWORD_PATH } from './ProfileMenu'
+import ProfileMenu from './ProfileMenu'
 import { NAV_GROUPS } from './Sidebar'
 
 // Header titles for every office route; anything else is the Not found page.
-const PAGE_TITLES: Record<string, string> = Object.fromEntries([
-  ...NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.to, item.label])),
-  [CHANGE_PASSWORD_PATH, 'Change password'],
-])
+const PAGE_TITLES: Record<string, string> = Object.fromEntries(
+  NAV_GROUPS.flatMap((group) => group.items.map((item) => [item.to, item.label])),
+)
 
 function pageTitle(pathname: string) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname

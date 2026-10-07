@@ -5,7 +5,7 @@ const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/
 
 export type ApiResult<T> =
   | { ok: true; data: T }
-  | { ok: false; status: number; message: string; code?: string }
+  | { ok: false; status: number; message: string; code?: string; details?: unknown }
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -16,7 +16,18 @@ type RequestOptions = {
 type ApiPayload = {
   success?: boolean
   data?: unknown
-  error?: { message?: string; code?: string }
+  error?: { message?: string; code?: string; details?: unknown }
+}
+
+// The auth provider listens here, so a 403 PASSWORD_CHANGE_REQUIRED from any
+// call sends the person to the change-password page.
+let passwordChangeRequiredListener: (() => void) | null = null
+
+export function onPasswordChangeRequired(listener: () => void) {
+  passwordChangeRequiredListener = listener
+  return () => {
+    if (passwordChangeRequiredListener === listener) passwordChangeRequiredListener = null
+  }
 }
 
 // Resolves to a result for every HTTP outcome, so callers branch on `ok`
@@ -41,10 +52,14 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, signal
   if (response.ok && payload?.success) {
     return { ok: true, data: payload.data as T }
   }
+  if (response.status === 403 && payload?.error?.code === 'PASSWORD_CHANGE_REQUIRED') {
+    passwordChangeRequiredListener?.()
+  }
   return {
     ok: false,
     status: response.status,
     message: payload?.error?.message ?? 'Something went wrong. Please try again.',
     code: payload?.error?.code,
+    details: payload?.error?.details,
   }
 }

@@ -128,6 +128,7 @@ const ADMIN = { email: 'admin@psp.test', fullName: 'Asha Admin' };
 const INACTIVE = { email: 'former@psp.test', fullName: 'Former Staff' };
 
 let adminId;
+let passwordHash;
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -159,7 +160,7 @@ beforeAll(async () => {
   await db.raw('truncate staff_profiles, roles restart identity cascade');
 
   const [role] = await db('roles').insert({ name: 'admin', description: 'Full access' }).returning('id');
-  const passwordHash = await hashPassword(PASSWORD);
+  passwordHash = await hashPassword(PASSWORD);
   const [admin] = await db('staff_profiles')
     .insert([
       { full_name: ADMIN.fullName, email: ADMIN.email, password_hash: passwordHash, role_id: role.id, must_change_password: false },
@@ -422,6 +423,92 @@ describe('protected management routes', () => {
     const res = await request(office).get('/office-only').set('Cookie', `psp_sid=${sessionId}`);
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+  });
+});
+
+describe('POST /api/auth/change-password', () => {
+  const NEW_PASSWORD = 'Fresh-Ledger-2026#';
+  const office = express();
+  office.get('/office-only', requireAuth(), (req, res) => res.json({ ok: true }));
+  office.use(errorHandler);
+
+  function changePassword(sessionId, body) {
+    return request(app)
+      .post('/api/auth/change-password')
+      .set('Origin', ORIGIN)
+      .set('Cookie', `psp_sid=${sessionId}`)
+      .send(body);
+  }
+
+  afterEach(async () => {
+    await db('staff_profiles').where({ id: adminId }).update({ password_hash: passwordHash });
+  });
+
+  test('a temporary password blocks the office until it is changed, then the office opens', async () => {
+    await db('staff_profiles').where({ id: adminId }).update({ must_change_password: true });
+    const temporary = await loginAsAdmin();
+    const otherDevice = await loginAsAdmin();
+
+    const blocked = await request(office).get('/office-only').set('Cookie', `psp_sid=${temporary}`);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    const res = await changePassword(temporary, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff).toMatchObject({ id: adminId, mustChangePassword: false });
+    expect(res.text).not.toContain('$argon2');
+
+    const row = await db('staff_profiles').where({ id: adminId }).first('must_change_password');
+    expect(row.must_change_password).toBe(false);
+
+    // A fresh session is issued; every earlier one, on any device, has ended.
+    const fresh = sessionIdFrom(res);
+    expect(fresh).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect((await me(temporary)).status).toBe(401);
+    expect((await me(otherDevice)).status).toBe(401);
+    expect((await request(office).get('/office-only').set('Cookie', `psp_sid=${fresh}`)).status).toBe(200);
+
+    expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(401);
+    expect((await postLogin({ email: ADMIN.email, password: NEW_PASSWORD })).status).toBe(200);
+  });
+
+  test('a wrong current password changes nothing and keeps the session', async () => {
+    await db('staff_profiles').where({ id: adminId }).update({ must_change_password: true });
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: 'Not-The-Password-1!', newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_CURRENT_PASSWORD');
+    expect(sessionCookieFrom(res)).toBeUndefined();
+    expect((await me(sessionId)).body.data.staff.mustChangePassword).toBe(true);
+  });
+
+  test('a new password that breaks the rules is refused with the reasons', async () => {
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: PASSWORD, newPassword: 'short' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining(['Use at least 10 characters.', 'Include an uppercase letter.', 'Include a digit.']),
+    );
+    expect((await me(sessionId)).status).toBe(200);
+  });
+
+  test('needs a session and the app origin', async () => {
+    const noSession = await request(app)
+      .post('/api/auth/change-password')
+      .set('Origin', ORIGIN)
+      .send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(noSession.status).toBe(401);
+
+    const sessionId = await loginAsAdmin();
+    const foreign = await request(app)
+      .post('/api/auth/change-password')
+      .set('Cookie', `psp_sid=${sessionId}`)
+      .send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(foreign.status).toBe(403);
+    expect((await me(sessionId)).status).toBe(200);
   });
 });
 

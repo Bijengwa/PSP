@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { apiRequest, type ApiResult } from '../../api/client'
+import { apiRequest, onPasswordChangeRequired, type ApiResult } from '../../api/client'
 
 export const LOGIN_PATH = '/office/auth/login'
 export const OFFICE_HOME_PATH = '/office'
+export const CHANGE_PASSWORD_PATH = '/office/auth/change-password'
 
 export type Staff = {
   id: string
@@ -22,6 +23,7 @@ type AuthContextValue = {
   state: AuthState
   login: (email: string, password: string) => Promise<ApiResult<{ staff: Staff }>>
   logout: () => Promise<ApiResult<null>>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<ApiResult<{ staff: Staff }>>
   retry: () => void
 }
 
@@ -63,7 +65,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result
   }, [])
 
-  const value = useMemo(() => ({ state, login, logout, retry }), [state, login, logout, retry])
+  // The server cleared the flag and issued a fresh session cookie.
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    const result = await apiRequest<{ staff: Staff }>('/api/auth/change-password', {
+      method: 'POST',
+      body: { currentPassword, newPassword },
+    })
+    if (result.ok) setState({ status: 'authenticated', staff: result.data.staff })
+    return result
+  }, [])
+
+  // Any API call refused with PASSWORD_CHANGE_REQUIRED flags the person, and the
+  // guard then keeps them on the change-password page.
+  useEffect(
+    () =>
+      onPasswordChangeRequired(() =>
+        setState((current) =>
+          current.status === 'authenticated' ? { ...current, staff: { ...current.staff, mustChangePassword: true } } : current,
+        ),
+      ),
+    [],
+  )
+
+  const value = useMemo(
+    () => ({ state, login, logout, changePassword, retry }),
+    [state, login, logout, changePassword, retry],
+  )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

@@ -387,3 +387,69 @@
 **Notes for the user**
 - M1.7 ticked; current step set to **M2.1**. M2.1 was not started. Nothing was committed by this run.
 - The Collision Guard reported recent edits to `index.css` and `progress.md` by session 2565b727. Both files were re-read first. `index.css` had no uncommitted changes, so nothing was overwritten.
+
+## 2026-10-07 — M2.1 Forced password change (TICKED)
+
+**Changed — backend (endpoint built inside this step, as M2.1 allows)**
+- `node/src/auth/password.js`: new `passwordProblems(password, { email, fullName })`, the auth spec §7 rules: at least 10 and at most 1024 characters; lower, upper, digit, symbol; no name or email part (3+ characters); not on a small common-password list. It returns the broken rules as messages.
+- `node/src/auth/auth.service.js`: new `changePassword()`, in this order:
+  1. Verify the current password.
+  2. Check the rules; the new password must differ from the current one.
+  3. Hash the new password.
+  4. `destroyAllForStaff` (synchronous, before the write).
+  5. Store the hash, set `must_change_password = false` and `updated_at`.
+  6. Create a fresh session.
+- `node/src/auth/auth.routes.js`: `POST /api/auth/change-password` behind `requireAuth({ allowPendingPasswordChange: true })` and the existing `requireSameOrigin`.
+  - It answers 400 `INVALID_CURRENT_PASSWORD` (deliberately not 401, so it does not look like a lost session) and 400 `WEAK_PASSWORD` with `details` (the list of broken rules).
+  - On success it sets the new `psp_sid` cookie and logs `auth.password_changed` with the staffId only.
+- `node/src/auth/auth.test.js`: 4 new tests:
+  - The full forced flow: login on a temporary password; an office route returns 403 `PASSWORD_CHANGE_REQUIRED`; the change succeeds; the flag is cleared; a fresh session ID is issued; the old session and another device's session return 401; the office route returns 200 with the new session; the old password fails and the new one works.
+  - A wrong current password changes nothing.
+  - A weak password returns the reasons.
+  - The endpoint needs a session and the app origin.
+
+**Changed — frontend**
+- `web/src/api/client.ts`: on any 403 with code `PASSWORD_CHANGE_REQUIRED`, it notifies one listener (`onPasswordChangeRequired`). The failure result now carries `details`.
+- `web/src/management/auth/AuthProvider.tsx`:
+  - `CHANGE_PASSWORD_PATH` moved here from `ProfileMenu.tsx`.
+  - New `changePassword()`: on success it stores the returned staff (flag false) in memory.
+  - It subscribes to the client's 403 listener and sets `mustChangePassword: true` in memory. Nothing is stored in the browser.
+- `web/src/management/auth/RequireAuth.tsx`: while `mustChangePassword` is set, every guarded path redirects (replace) to `/office/auth/change-password`.
+- `web/src/management/auth/login.tsx`: new named export `ChangePassword`, with temporary/current, new and confirm fields, and a static rule hint.
+  - Errors appear in one alert region, with the server's rule list.
+  - On success it goes to `/office` (replace).
+  - Forced mode shows "Log out"; voluntary mode shows "Cancel" back to the office.
+- `web/src/App.tsx`: the change-password route is lazy-loaded, sits under `RequireAuth` and is **outside** the shell (plan §2 lists it with the auth routes). That makes it the only page reachable during a forced change. The old placeholder route is removed.
+- `web/src/management/auth/auth.css`: `.field-hint`, `.auth-error-list` and `.auth-alt`, using theme tokens only (`--ink-subtle` on `--surface` was already measured in M1.6).
+- `Header.tsx`, `ProfileMenu.tsx`, `OfficeHome.tsx`: now import `CHANGE_PASSWORD_PATH` from `AuthProvider`. The header title entry for the route is gone, because the route is no longer in the shell.
+- No new files, folders or dependencies, and no migration (`must_change_password` already existed).
+
+**Why `ChangePassword` lives in `login.tsx`**
+- No new file without asking, the same precedent as `SettingsPage`. Suggested home: `web/src/management/auth/changePassword.tsx`. Moving it means changing only the lazy import in `App.tsx`.
+
+**Verified**
+- `npm test` (node): 67/67 passed (63 before, plus 4 new). Jest printed its usual "worker process has failed to exit gracefully" warning.
+- `npm run build` (web): passed. `npm run lint` (web): passed, no warnings.
+- "Done when": at the API level, the new test walks a temporary-password admin from 403 on office routes through the change into the office.
+- The browser side was **checked in the code, not in a browser**:
+  - Every office route sits under `RequireAuth`, which redirects anything except the change-password path while the flag is set.
+  - Login sends an authenticated person to `/office`, which then redirects.
+  - After the change, the in-memory flag is false and the page navigates to `/office`.
+
+**Not done / left for M2.2**
+- The live rule meter in the browser (the "shared rule list") and M2.2's full backend test matrix: same-as-current, each rule, and so on. The server-side rules already exist in `passwordProblems`. M2.2 should add the browser meter and the remaining tests.
+- 401 and 503 handling across the API client, and return-to after login: these are M2.5.
+- A live browser run. It needs Postgres, a real Redis, the API and Vite running. Suggested manual check:
+  1. Seed the admin (it has `must_change_password = true`) and log in.
+  2. You should land on "Choose a new password".
+  3. Try `/office/staff` directly: you should be bounced back.
+  4. Submit a weak password and see the listed reasons.
+  5. Submit a valid password: you should land on `/office`.
+
+**Flag for the user: plan vs auth spec**
+- The auth spec §8 names this page `/office/auth/reset-password`, while `management-plan.md` (M2.1 and §2) says `/office/auth/change-password`.
+- I followed the plan, because it is first in its own order of authority and M1.4 already linked to that path. Please confirm, or tell me to rename it.
+
+**Notes for the user**
+- M2.1 ticked; current step set to **M2.2**. M2.2 was not started. Nothing was committed by this run.
+- The Collision Guard reported recent edits by sessions 2565b727 and 22b8c3ea to `auth.css`, `App.tsx`, `Header.tsx`, `OfficeHome.tsx` and `progress.md`. `git status` showed none of them had uncommitted changes, so nothing was overwritten.

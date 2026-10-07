@@ -1,6 +1,6 @@
 const db = require('../db');
 const sessions = require('./session.store');
-const { verifyPassword, verifyAgainstDummy } = require('./password');
+const { hashPassword, verifyPassword, verifyAgainstDummy, passwordProblems } = require('./password');
 
 const PROFILE_COLUMNS = [
   's.id',
@@ -50,4 +50,27 @@ async function login({ email, password, ip, userAgent }) {
   return { sessionId: id, staff: toPublicStaff(staff) };
 }
 
-module.exports = { login, findStaffById, toPublicStaff };
+// Returns { sessionId, staff } on success, { error: 'current' } for a wrong
+// current password, or { error: 'weak', problems } when the new one breaks the
+// rules. Every session of the person ends before the new password is stored, and
+// the caller gets a fresh session, so a stolen session never survives a change.
+async function changePassword({ staff, currentPassword, newPassword, ip, userAgent }) {
+  const { password_hash: currentHash } = await db('staff_profiles').where({ id: staff.id }).first('password_hash');
+  if (!(await verifyPassword(currentHash, currentPassword))) {
+    return { error: 'current' };
+  }
+
+  const problems = passwordProblems(newPassword, { email: staff.email, fullName: staff.full_name });
+  if (newPassword === currentPassword) problems.push('Choose a password different from the current one.');
+  if (problems.length) return { error: 'weak', problems };
+
+  const passwordHash = await hashPassword(newPassword);
+  await sessions.destroyAllForStaff(staff.id);
+  await db('staff_profiles')
+    .where({ id: staff.id })
+    .update({ password_hash: passwordHash, must_change_password: false, updated_at: db.fn.now() });
+  const { id } = await sessions.create({ staffId: staff.id, ip, userAgent });
+  return { sessionId: id, staff: toPublicStaff({ ...staff, must_change_password: false }) };
+}
+
+module.exports = { login, changePassword, findStaffById, toPublicStaff };

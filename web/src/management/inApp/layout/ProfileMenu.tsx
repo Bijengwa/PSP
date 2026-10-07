@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
-import type { Staff } from '../../auth/AuthProvider'
+import { CHANGE_PASSWORD_PATH, type Staff } from '../../auth/AuthProvider'
 import { focusLeft, useDismiss } from './useDismiss'
-
-// Built in M2.1; until then this route shows a placeholder inside the shell.
-export const CHANGE_PASSWORD_PATH = '/office/auth/change-password'
 
 function initials(fullName: string) {
   return fullName
