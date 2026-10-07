@@ -7,6 +7,7 @@ import RequireAuth from './management/auth/RequireAuth'
 const Login = lazy(() => import('./management/auth/login'))
 const OfficeLayout = lazy(() => import('./management/inApp/layout/OfficeLayout'))
 const OfficeHome = lazy(() => import('./management/inApp/pages/OfficeHome'))
+const SettingsPage = lazy(() => import('./management/inApp/pages/OfficeHome').then((m) => ({ default: m.SettingsPage })))
 const PlaceholderPage = lazy(() => import('./management/inApp/pages/PlaceholderPage'))
 const OfficeNotFound = lazy(() => import('./management/inApp/pages/OfficeNotFound'))
 
@@ -61,7 +62,7 @@ export default function App() {
             <Route path="staff" element={<PlaceholderPage title="Staff" />} />
             <Route path="reports" element={<PlaceholderPage title="Reports" />} />
             <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
-            <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+            <Route path="settings" element={<SettingsPage />} />
             {/* Profile menu target; the real page is built in M2.1. */}
             <Route path="auth/change-password" element={<PlaceholderPage title="Change password" />} />
             <Route path="*" element={<OfficeNotFound />} />

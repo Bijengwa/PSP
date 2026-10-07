@@ -300,3 +300,25 @@ M1.6 (dark/light theme) is ticked in `docs/progress.md` and the current step is 
 The full notes are in `docs/overnight-log.md`. I didn't start M1.7 and didn't commit anything.
 
 Separately, the Linear connector needs authorising in your claude.ai connector settings before it can be used.
+I've built M1.7 (Settings + logout), ticked it in `docs/progress.md` and set the current step to M2.1. The "back button cannot reach office pages" check was done by reading the code, not in a browser.
+
+**What changed**
+- **Settings page** (`/office/settings`), with three sections:
+  - **Appearance:** a Light / Dark / System switch. It saves `psp-theme` and tells the existing M1.6 theme script in `index.html` to re-apply, so the theme logic stays in one place.
+  - **Security:** a link to Change password. That page is still a placeholder until M2.1.
+  - **Account:** Log out. It calls `POST /api/auth/logout`, then goes to the login page, replacing the Settings entry in the browser history. If logout fails, an error shows on the page.
+- **Top bar:** the old Log out button is gone from `Header.tsx`, and its logout state is gone from `OfficeLayout.tsx`.
+- **Styles:** new settings styles in `index.css` use only the existing theme colours. I also added `text-decoration: none` to `.button` so the Change password link isn't underlined.
+- No backend changes, no new dependencies, no commit.
+
+**Decision for you:** the rules say to ask before creating a file, and this run couldn't ask. So `SettingsPage` is a named export in `web/src/management/inApp/pages/OfficeHome.tsx`, as earlier runs did. I suggest moving it to `web/src/management/inApp/pages/Settings.tsx`; only the import in `App.tsx` would change.
+
+**Checks**
+- Web `npm run build` and `npm run lint` pass with no warnings.
+- Node `npm test`: 63 of 63 pass. The logout test confirms the session is deleted from Redis, the cookie is cleared, and a following `/me` returns 401. That meets the first "Done when" check, and the new page calls that same endpoint. Jest also printed a "worker process has failed to exit gracefully" warning; no test failed.
+- **Back button:** every office page except login sits behind `RequireAuth`, and logout marks the in-memory login state as logged out. So going Back to an earlier office page sends you to login, and after a reload `/me` returns 401.
+- I didn't run the app in a browser. The browser tools still don't have permission, and the full flow also needs the API with Postgres and Redis running. The manual check (switch themes, log out, press Back, confirm `/me` returns 401) is listed in `docs/overnight-log.md`.
+
+The Collision Guard warned that another session had recently edited `index.css`, `progress.md` and the log. I re-read each one before editing, and nothing was overwritten.
+
+M2.1 hasn't been started.

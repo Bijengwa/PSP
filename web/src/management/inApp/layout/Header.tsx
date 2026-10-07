@@ -30,12 +30,10 @@ type HeaderProps = {
   drawerShown: boolean
   menuButtonRef: RefObject<HTMLButtonElement | null>
   onOpenDrawer: () => void
-  loggingOut: boolean
-  onLogout: () => void
 }
 
-// The office header: hamburger (mobile), page title, notifications, profile menu and logout.
-export default function Header({ staff, drawerId, drawerShown, menuButtonRef, onOpenDrawer, loggingOut, onLogout }: HeaderProps) {
+// The office header: hamburger (mobile), page title, notifications and profile menu.
+export default function Header({ staff, drawerId, drawerShown, menuButtonRef, onOpenDrawer }: HeaderProps) {
   const { pathname } = useLocation()
 
   return (
@@ -56,10 +54,6 @@ export default function Header({ staff, drawerId, drawerShown, menuButtonRef, on
       <div className="office-topbar-actions">
         <NotificationsPopover />
         <ProfileMenu staff={staff} />
-        {/* Moves to Settings in M1.7. */}
-        <button type="button" className="button button-secondary" onClick={onLogout} disabled={loggingOut}>
-          {loggingOut ? 'Logging out…' : 'Log out'}
-        </button>
       </div>
     </header>
   )

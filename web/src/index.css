@@ -98,6 +98,7 @@ a {
   border: 1px solid transparent;
   font: inherit;
   font-weight: 500;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -546,6 +547,79 @@ a {
   border-radius: var(--radius);
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+/* ---------- Settings ---------- */
+.office-settings-section {
+  max-width: 640px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.office-settings-section h2 {
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.office-settings-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+/* Light / Dark / System as a segmented radio group. */
+.office-segmented {
+  display: inline-flex;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.office-segmented legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.office-segmented label {
+  position: relative;
+}
+
+.office-segmented input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.office-segmented span {
+  display: block;
+  padding: 6px 16px;
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.office-segmented input:hover + span {
+  color: var(--ink);
+}
+
+.office-segmented input:checked + span {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.office-segmented input:focus-visible + span {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 /* Mobile: the sidebar becomes an overlay drawer opened from the hamburger.

@@ -349,3 +349,41 @@
 
 **Notes for the user**
 - M1.6 ticked; current step set to **M1.7**. M1.7 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.7 Settings + logout (TICKED)
+
+**Changed**
+- `web/src/management/inApp/pages/OfficeHome.tsx`: new named export `SettingsPage` for `/office/settings`. It has three sections:
+  - Appearance: Light / Dark / System as a segmented radio group. It writes `psp-theme` to localStorage (System removes the key), then fires a `storage` event, so the M1.6 script in `index.html` re-applies the theme. The theme logic stays in that one script.
+  - Security: a link to Change password (`CHANGE_PASSWORD_PATH`, still a placeholder until M2.1).
+  - Account: Log out. It calls the existing `useAuth().logout()` (`POST /api/auth/logout`). On success it goes to the login page with `replace`; on failure it shows an error message.
+- `web/src/App.tsx`: the `settings` route renders `SettingsPage`, lazy-loaded from `OfficeHome.tsx`, instead of the placeholder.
+- `web/src/management/inApp/layout/Header.tsx`: removed the top-bar Log out button and its `loggingOut`/`onLogout` props.
+- `web/src/management/inApp/layout/OfficeLayout.tsx`: removed the logout state, the handler and the logout error banner, which now live on the Settings page.
+- `web/src/index.css`: added `.office-settings-*` and `.office-segmented` styles, using theme tokens only. Added `text-decoration: none` to `.button`, so a link styled as a button is not underlined.
+- No backend changes, no new files, no new dependencies.
+
+**Why `SettingsPage` is in `OfficeHome.tsx`**
+- CLAUDE.md says to ask before creating a new file, and this run could not ask. So I followed the earlier precedent of using an existing file. Suggested home: `web/src/management/inApp/pages/Settings.tsx`. Moving it means changing the lazy import in `App.tsx` and nothing else.
+
+**Verified**
+- `npm run build` (web): passed. `npm run lint` (web): passed, no warnings.
+- `npm test` (node): 63/63 passed. The suite includes `POST /api/auth/logout`, which checks that the Redis session and the staff session-set are deleted, the cookie is cleared, and **a following `/me` returns 401**. The frontend calls that same endpoint, with `credentials: 'include'`. Jest also printed its existing "worker process has failed to exit gracefully" warning; the tests are unaffected.
+- Back button, **checked in the code, not in a browser**:
+  - Every office route except `auth/login` sits under `RequireAuth`.
+  - `logout()` sets the in-memory auth state to `unauthenticated`, and nothing is stored in the browser.
+  - The Settings entry is replaced by the login page, so Back skips it. Back to any earlier office page re-renders `RequireAuth`, which redirects (replace) to login.
+  - After a reload, `/me` returns 401.
+- Contrast: the new styles use only pairs already measured in M1.6: `--ink-muted` on `--surface`, `--primary` on `--primary-soft` (5.2 / 5.31), and the `--border-strong` outline (3.34 / 3.83). All meet AA.
+
+**Not done**
+- A live browser run. The Chrome DevTools tools still need permission, and the full flow also needs the API with Postgres and Redis running. Suggested manual check:
+  1. Log in and open a few office pages, then go to Settings.
+  2. Switch Light/Dark/System and confirm the page follows each one.
+  3. Click Log out: you should land on the login page.
+  4. Press Back: you should stay on the login page.
+  5. In DevTools, confirm that `GET /api/auth/me` returns 401.
+
+**Notes for the user**
+- M1.7 ticked; current step set to **M2.1**. M2.1 was not started. Nothing was committed by this run.
+- The Collision Guard reported recent edits to `index.css` and `progress.md` by session 2565b727. Both files were re-read first. `index.css` had no uncommitted changes, so nothing was overwritten.

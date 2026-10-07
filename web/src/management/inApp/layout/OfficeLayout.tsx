@@ -17,13 +17,11 @@ function isMobileViewport() {
   return window.matchMedia(MOBILE_QUERY).matches
 }
 
-// The office layout: sidebar, header (page title, notifications, profile menu,
-// logout) and a workspace where the current office page renders (<Outlet />).
+// The office layout: sidebar, header (page title, notifications, profile menu)
+// and a workspace where the current office page renders (<Outlet />).
 // On mobile the sidebar is an overlay drawer opened from the header's hamburger.
 export default function OfficeLayout() {
-  const { state, logout } = useAuth()
-  const [loggingOut, setLoggingOut] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { state } = useAuth()
   const isMobile = useSyncExternalStore(subscribeToMobile, isMobileViewport)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerShown = drawerOpen && isMobile
@@ -54,17 +52,6 @@ export default function OfficeLayout() {
   if (state.status !== 'authenticated') return null
   const { staff } = state
 
-  async function handleLogout() {
-    setLoggingOut(true)
-    setError(null)
-    const result = await logout()
-    // On success the auth state changes and RequireAuth sends the person to login.
-    if (!result.ok) {
-      setLoggingOut(false)
-      setError(result.message)
-    }
-  }
-
   return (
     <div className="office">
       {/* Tapping outside the open drawer closes it; keyboard users have Escape and the close button. */}
@@ -85,16 +72,9 @@ export default function OfficeLayout() {
           drawerShown={drawerShown}
           menuButtonRef={menuButtonRef}
           onOpenDrawer={() => setDrawerOpen(true)}
-          loggingOut={loggingOut}
-          onLogout={handleLogout}
         />
 
         <main className="office-main">
-          {error && (
-            <div className="office-error" role="alert">
-              Could not log out: {error}
-            </div>
-          )}
           <Outlet />
         </main>
       </div>
