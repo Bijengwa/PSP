@@ -28,13 +28,17 @@ function read(file) {
 
 const escape = (id) => id.replace('.', '\\.');
 
+// Step IDs in the replanned roadmap (2026-10-07): M3.2 … M7.5, then C1 … C6
+// (client side), then H1 … H8 (hardening). As a regex source, for reuse.
+const STEP_ID = '(?:M\\d+\\.\\d+|[CH]\\d+)';
+
 // The "Current step: **M1.1**" line in progress.md, else the first unticked box.
 // Returns null when progress.md is missing, and { id: null } when every box is ticked.
 function currentStep() {
   const text = read(PROGRESS);
   if (text === null) return null;
-  const marked = text.match(/Current step:\s*\*{0,2}(M\d+\.\d+)/);
-  const firstOpen = text.match(/- \[ \] (M\d+\.\d+)/);
+  const marked = text.match(new RegExp(`Current step:\\s*\\*{0,2}(${STEP_ID})`));
+  const firstOpen = text.match(new RegExp(`- \\[ \\] (${STEP_ID})`));
   const id = marked ? marked[1] : firstOpen && firstOpen[1];
   if (!id) return { id: null, title: 'all tracked steps are complete' };
   const line = text.match(new RegExp(`- \\[[ xX]\\] ${escape(id)}\\s+(.+)`));
@@ -53,9 +57,14 @@ function planSection(id) {
   return lines.slice(start, end).join('\n').trim();
 }
 
+// Build order as [stage, step]: M1–M7 are stages 1–7, C (client side) is 8,
+// H (hardening) is 9. Compare stages to know what is unlocked.
+const STAGE = { C: 8, H: 9 };
 function stepNumber(id) {
-  const m = /M(\d+)\.(\d+)/.exec(id || '');
-  return m ? [Number(m[1]), Number(m[2])] : null;
+  const m = /^M(\d+)\.(\d+)$/.exec(id || '');
+  if (m) return [Number(m[1]), Number(m[2])];
+  const ch = /^([CH])(\d+)$/.exec(id || '');
+  return ch ? [STAGE[ch[1]], Number(ch[2])] : null;
 }
 
 // Repo-relative path with forward slashes; starts with ".." when outside the repo.
@@ -71,4 +80,4 @@ function emit(event, { context, message }) {
   process.stdout.write(JSON.stringify(out));
 }
 
-module.exports = { ROOT, toNative, readInput, read, currentStep, planSection, stepNumber, relPath, emit };
+module.exports = { STEP_ID, STAGE, ROOT, toNative, readInput, read, currentStep, planSection, stepNumber, relPath, emit };

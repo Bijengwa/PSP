@@ -22,6 +22,7 @@ const {
 } = require('./auth.middleware');
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
+const ACCOUNT_LOCKED = 'Account temporarily locked. Try again later or contact IT.';
 const RESET_REQUESTED = 'If this account exists, IT has been notified.';
 
 const router = express.Router();
@@ -49,7 +50,15 @@ router.post('/login', async (req, res) => {
     ip: req.ip,
     userAgent: req.get('user-agent') || null,
   });
-  if (!result) {
+  if (result.error === 'locked') {
+    if (result.justLocked) {
+      req.log.warn({ event: 'auth.account_locked', staffId: result.staffId }, 'Account locked after failed logins');
+    } else {
+      req.log.warn({ event: 'auth.login_failed', reason: 'locked', staffId: result.staffId }, 'Login refused: account locked');
+    }
+    throw httpError(423, ACCOUNT_LOCKED, 'ACCOUNT_LOCKED');
+  }
+  if (result.error) {
     req.log.warn({ event: 'auth.login_failed' }, 'Login failed');
     throw httpError(401, INVALID_CREDENTIALS);
   }

@@ -182,7 +182,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   redis.client.flush();
-  await db('staff_profiles').where({ id: adminId }).update({ is_active: true, must_change_password: false });
+  await db('staff_profiles')
+    .where({ id: adminId })
+    .update({ is_active: true, must_change_password: false, failed_login_count: 0, locked_until: null });
 });
 
 afterAll(async () => {
@@ -853,7 +855,8 @@ describe('rate limiting', () => {
     const wrong = (email = ADMIN.email) => postLogin({ email, password: 'Wrong-Pass-1234!' });
 
     test('allows 5 attempts per email, then answers 429 even for the right password', async () => {
-      for (let i = 0; i < 5; i += 1) expect((await wrong()).status).toBe(401);
+      for (let i = 0; i < 4; i += 1) expect((await wrong()).status).toBe(401);
+      expect((await wrong()).status).toBe(423); // the 5th wrong password also locks the account (M3.2)
 
       const blocked = await postLogin({ email: ADMIN.email, password: PASSWORD });
       expect(blocked.status).toBe(429);
@@ -906,7 +909,8 @@ describe('rate limiting', () => {
     });
 
     test('attempts are allowed again once the window has passed', async () => {
-      for (let i = 0; i < 6; i += 1) await wrong();
+      // Right passwords count too, and do not lock the account.
+      for (let i = 0; i < 5; i += 1) await postLogin({ email: ADMIN.email, password: PASSWORD });
       expect((await wrong()).status).toBe(429);
 
       for (const key of [...counterKeys('login', 'email'), ...counterKeys('login', 'ip')]) {
@@ -967,6 +971,147 @@ describe('rate limiting', () => {
       redis.client.failing = false;
       expect(await db('password_reset_requests')).toHaveLength(0);
     });
+  });
+});
+
+describe('failed-login protection', () => {
+  const LOCKED = { success: false, error: { message: 'Account temporarily locked. Try again later or contact IT.', code: 'ACCOUNT_LOCKED' } };
+  const wrongPassword = 'Wrong-Pass-1234!';
+
+  // Rate-limit counters are cleared before every attempt, so these tests see the
+  // lockout on its own and not the 429 from M3.1.
+  async function attempt(password) {
+    for (const key of [...redis.client.data.keys()].filter((k) => k.startsWith('psp:rl:'))) redis.client.data.delete(key);
+    return postLogin({ email: ADMIN.email, password });
+  }
+
+  const adminRow = () => db('staff_profiles').where({ id: adminId }).first('failed_login_count', 'locked_until');
+
+  test('4 wrong passwords are counted but do not lock', async () => {
+    for (let i = 0; i < 4; i += 1) expect((await attempt(wrongPassword)).status).toBe(401);
+    expect(await adminRow()).toMatchObject({ failed_login_count: 4, locked_until: null });
+    expect((await attempt(PASSWORD)).status).toBe(200);
+  });
+
+  test('the 5th wrong password locks the account for 15 minutes', async () => {
+    const before = Date.now();
+    for (let i = 0; i < 4; i += 1) await attempt(wrongPassword);
+    const fifth = await attempt(wrongPassword);
+
+    expect(fifth.status).toBe(423);
+    expect(fifth.body).toEqual(LOCKED);
+    const row = await adminRow();
+    expect(row.failed_login_count).toBe(0);
+    const lockedFor = new Date(row.locked_until).getTime() - before;
+    expect(lockedFor).toBeGreaterThan(14 * 60 * 1000);
+    expect(lockedFor).toBeLessThanOrEqual(15 * 60 * 1000 + 5000);
+  });
+
+  test('a locked account gives the same answer for the right and the wrong password, and no session', async () => {
+    for (let i = 0; i < 5; i += 1) await attempt(wrongPassword);
+
+    const right = await attempt(PASSWORD);
+    const wrong = await attempt(wrongPassword);
+    expect(right.status).toBe(423);
+    expect(wrong.status).toBe(423);
+    expect(right.body).toEqual(LOCKED);
+    expect(wrong.body).toEqual(LOCKED);
+    expect(sessionCookieFrom(right)).toBeUndefined();
+    expect(storedKeysExceptRateLimits()).toEqual([]);
+  });
+
+  test('attempts while locked do not extend the lock', async () => {
+    for (let i = 0; i < 5; i += 1) await attempt(wrongPassword);
+    const { locked_until: lockedUntil } = await adminRow();
+
+    for (let i = 0; i < 5; i += 1) await attempt(wrongPassword);
+    const row = await adminRow();
+    expect(new Date(row.locked_until).getTime()).toBe(new Date(lockedUntil).getTime());
+    expect(row.failed_login_count).toBe(0);
+  });
+
+  test('the account unlocks once the lock time has passed', async () => {
+    for (let i = 0; i < 5; i += 1) await attempt(wrongPassword);
+    await db('staff_profiles').where({ id: adminId }).update({ locked_until: db.raw("now() - interval '1 second'") });
+
+    const res = await attempt(PASSWORD);
+    expect(res.status).toBe(200);
+    expect(await adminRow()).toMatchObject({ failed_login_count: 0, locked_until: null });
+  });
+
+  test('after the lock ends the person gets 5 fresh attempts', async () => {
+    for (let i = 0; i < 5; i += 1) await attempt(wrongPassword);
+    await db('staff_profiles').where({ id: adminId }).update({ locked_until: db.raw("now() - interval '1 second'") });
+
+    for (let i = 0; i < 4; i += 1) expect((await attempt(wrongPassword)).status).toBe(401);
+    expect((await attempt(wrongPassword)).status).toBe(423);
+  });
+
+  test('a successful login resets the counter', async () => {
+    for (let i = 0; i < 4; i += 1) await attempt(wrongPassword);
+    expect((await attempt(PASSWORD)).status).toBe(200);
+    expect(await adminRow()).toMatchObject({ failed_login_count: 0, locked_until: null });
+
+    for (let i = 0; i < 4; i += 1) expect((await attempt(wrongPassword)).status).toBe(401);
+  });
+
+  test('unknown emails and inactive accounts are never locked and keep the generic answer', async () => {
+    for (const email of ['nobody@psp.test', INACTIVE.email]) {
+      for (let i = 0; i < 6; i += 1) {
+        for (const key of [...redis.client.data.keys()].filter((k) => k.startsWith('psp:rl:'))) redis.client.data.delete(key);
+        const res = await postLogin({ email, password: wrongPassword });
+        expect(res.status).toBe(401);
+        expect(res.body.error.message).toBe('Invalid email or password');
+      }
+    }
+    const inactive = await db('staff_profiles').where({ email: INACTIVE.email }).first('failed_login_count', 'locked_until');
+    expect(inactive).toMatchObject({ failed_login_count: 0, locked_until: null });
+  });
+
+  test('parallel wrong passwords are all counted', async () => {
+    await Promise.all([0, 1, 2].map(() => attempt(wrongPassword)));
+    expect((await adminRow()).failed_login_count).toBe(3);
+  });
+
+  test('locking writes auth.account_locked to the log, without the password', async () => {
+    mockLogLines.length = 0;
+    for (let i = 0; i < 5; i += 1) await attempt(wrongPassword);
+    const lines = mockLogLines.map((line) => JSON.parse(line));
+    const locked = lines.filter((line) => line.event === 'auth.account_locked');
+    expect(locked).toHaveLength(1);
+    expect(locked[0].staffId).toBe(adminId);
+    expect(mockLogLines.join('')).not.toContain(wrongPassword);
+  });
+
+  test('an IT password reset clears the lock', async () => {
+    const { id: roleId } = await db('roles').first('id');
+    const [other] = await db('staff_profiles')
+      .insert({
+        full_name: 'Locked Person',
+        email: 'locked@psp.test',
+        password_hash: passwordHash,
+        role_id: roleId,
+        must_change_password: false,
+        failed_login_count: 3,
+        locked_until: db.raw("now() + interval '15 minutes'"),
+      })
+      .returning('id');
+
+    try {
+      const adminSession = await loginAsAdmin();
+      const res = await request(app)
+        .post(`/api/office/staff/${other.id}/reset-password`)
+        .set('Origin', ORIGIN)
+        .set('Cookie', `psp_sid=${adminSession}`)
+        .send({ temporaryPassword: 'Temporary-Pass-91!' });
+
+      expect(res.status).toBe(200);
+      const row = await db('staff_profiles').where({ id: other.id }).first('failed_login_count', 'locked_until');
+      expect(row).toMatchObject({ failed_login_count: 0, locked_until: null });
+    } finally {
+      await db('password_reset_requests').where({ staff_id: other.id }).del();
+      await db('staff_profiles').where({ id: other.id }).del();
+    }
   });
 });
 
