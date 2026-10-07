@@ -554,6 +554,104 @@ describe('POST /api/auth/change-password', () => {
   });
 });
 
+describe('POST /api/auth/forgot-password', () => {
+  const UNKNOWN_EMAIL = 'nobody@psp.test';
+
+  function forgotPassword(body) {
+    return request(app).post('/api/auth/forgot-password').set('Origin', ORIGIN).send(body);
+  }
+
+  // Headers that differ per request no matter what was asked.
+  function stableHeaders(res) {
+    const { date, 'x-request-id': _requestId, etag: _etag, ...rest } = res.headers;
+    return rest;
+  }
+
+  const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+
+  beforeEach(async () => {
+    await db('password_reset_requests').del();
+  });
+
+  test('known and unknown emails get the identical answer', async () => {
+    const known = await forgotPassword({ email: ADMIN.email });
+    const unknown = await forgotPassword({ email: UNKNOWN_EMAIL });
+
+    expect(known.status).toBe(200);
+    expect(known.body).toEqual({ success: true, data: { message: 'If this account exists, IT has been notified.' } });
+    expect(unknown.status).toBe(known.status);
+    expect(unknown.body).toEqual(known.body);
+    expect(stableHeaders(unknown)).toEqual(stableHeaders(known));
+    expect(sessionCookieFrom(known)).toBeUndefined();
+  });
+
+  test('known and unknown emails take roughly the same time', async () => {
+    // Warm up both paths first, so the first query of each does not skew the result.
+    await forgotPassword({ email: ADMIN.email });
+    await forgotPassword({ email: UNKNOWN_EMAIL });
+
+    const timings = { known: [], unknown: [] };
+    for (let i = 0; i < 15; i += 1) {
+      for (const [kind, email] of [['known', ADMIN.email], ['unknown', UNKNOWN_EMAIL]]) {
+        const start = process.hrtime.bigint();
+        await forgotPassword({ email });
+        timings[kind].push(Number(process.hrtime.bigint() - start) / 1e6);
+      }
+    }
+
+    const known = median(timings.known);
+    const unknown = median(timings.unknown);
+    expect(Math.abs(known - unknown)).toBeLessThan(Math.max(known, unknown) * 0.5 + 15);
+  });
+
+  test('stores a pending request for a known email, linked to the staff member', async () => {
+    await forgotPassword({ email: '  Admin@PSP.test ' });
+
+    const rows = await db('password_reset_requests');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      email: '  Admin@PSP.test ',
+      staff_id: adminId,
+      status: 'pending',
+      resolved_by: null,
+      resolved_at: null,
+    });
+    expect(rows[0].requested_ip).toEqual(expect.any(String));
+  });
+
+  test('stores a request for an unknown email too, with no staff member', async () => {
+    await forgotPassword({ email: UNKNOWN_EMAIL });
+
+    const rows = await db('password_reset_requests');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ email: UNKNOWN_EMAIL, staff_id: null, status: 'pending' });
+  });
+
+  test('changes nothing about the account or its sessions', async () => {
+    const sessionId = await loginAsAdmin();
+    await forgotPassword({ email: ADMIN.email });
+
+    expect((await me(sessionId)).status).toBe(200);
+    expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+  });
+
+  test('a missing or oversized email is rejected with 400 and nothing is stored', async () => {
+    for (const body of [{}, { email: '' }, { email: '   ' }, { email: 42 }, { email: `${'a'.repeat(250)}@psp.test` }]) {
+      expect((await forgotPassword(body)).status).toBe(400);
+    }
+    expect(await db('password_reset_requests')).toHaveLength(0);
+  });
+
+  test('requires the app origin', async () => {
+    const res = await request(app)
+      .post('/api/auth/forgot-password')
+      .set('Origin', 'https://evil.example')
+      .send({ email: ADMIN.email });
+    expect(res.status).toBe(403);
+    expect(await db('password_reset_requests')).toHaveLength(0);
+  });
+});
+
 describe('when Redis is unavailable', () => {
   test('login fails closed with 503 and sets no cookie', async () => {
     redis.client.failing = true;

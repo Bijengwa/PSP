@@ -153,6 +153,21 @@
   margin-top: 12px;
 }
 
+.auth-inline-link {
+  align-self: flex-end;
+  margin-top: -8px;
+  font-size: 13px;
+}
+
+.auth-notice {
+  margin-top: 24px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  color: var(--ink);
+  font-size: 14px;
+}
+
 .spinner {
   width: 16px;
   height: 16px;

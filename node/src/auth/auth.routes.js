@@ -1,6 +1,6 @@
 const express = require('express');
 const sessions = require('./session.store');
-const { login, changePassword, toPublicStaff } = require('./auth.service');
+const { login, changePassword, requestPasswordReset, toPublicStaff } = require('./auth.service');
 const {
   httpError,
   readSessionCookie,
@@ -11,6 +11,7 @@ const {
 } = require('./auth.middleware');
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
+const RESET_REQUESTED = 'If this account exists, IT has been notified.';
 
 const router = express.Router();
 router.use(requireSameOrigin);
@@ -80,6 +81,19 @@ router.post('/change-password', requireAuth({ allowPendingPasswordChange: true }
   setSessionCookie(res, result.sessionId);
   req.log.info({ event: 'auth.password_changed', staffId: result.staff.id }, 'Password changed');
   res.json({ success: true, data: { staff: result.staff } });
+});
+
+// The answer is the same whether or not the email belongs to someone, so it
+// cannot be used to find staff accounts. No email is sent; IT works the queue.
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body ?? {};
+  if (typeof email !== 'string' || !email.trim() || email.length > 254) {
+    throw httpError(400, 'Enter a valid email address');
+  }
+
+  await requestPasswordReset({ email, ip: req.ip });
+  req.log.info({ event: 'reset_request.created' }, 'Password reset requested');
+  res.json({ success: true, data: { message: RESET_REQUESTED } });
 });
 
 // Works without a valid session too, so a stale cookie can always be cleared.

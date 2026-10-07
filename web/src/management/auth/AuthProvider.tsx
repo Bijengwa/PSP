@@ -4,6 +4,7 @@ import { apiRequest, onPasswordChangeRequired, type ApiResult } from '../../api/
 export const LOGIN_PATH = '/office/auth/login'
 export const OFFICE_HOME_PATH = '/office'
 export const CHANGE_PASSWORD_PATH = '/office/auth/change-password'
+export const FORGOT_PASSWORD_PATH = '/office/auth/forgot-password'
 
 export type Staff = {
   id: string

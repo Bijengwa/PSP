@@ -5,6 +5,7 @@ import RequireAuth from './management/auth/RequireAuth'
 
 // The office is its own bundle: shop visitors never download it.
 const Login = lazy(() => import('./management/auth/login'))
+const ForgotPassword = lazy(() => import('./management/auth/login').then((m) => ({ default: m.ForgotPassword })))
 const ChangePassword = lazy(() => import('./management/auth/login').then((m) => ({ default: m.ChangePassword })))
 const OfficeLayout = lazy(() => import('./management/inApp/layout/OfficeLayout'))
 const OfficeHome = lazy(() => import('./management/inApp/pages/OfficeHome'))
@@ -51,6 +52,7 @@ export default function App() {
 
       <Route path="/office" element={<OfficeRoot />}>
         <Route path="auth/login" element={<Login />} />
+        <Route path="auth/forgot-password" element={<ForgotPassword />} />
         <Route element={<RequireAuth />}>
           {/* Outside the shell: during a forced change it is the only reachable page. */}
           <Route path="auth/change-password" element={<ChangePassword />} />

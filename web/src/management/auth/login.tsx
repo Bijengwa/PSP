@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
-import type { ApiResult } from '../../api/client'
-import { LOGIN_PATH, OFFICE_HOME_PATH, useAuth } from './AuthProvider'
+import { apiRequest, type ApiResult } from '../../api/client'
+import { FORGOT_PASSWORD_PATH, LOGIN_PATH, OFFICE_HOME_PATH, useAuth } from './AuthProvider'
 import './auth.css'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -109,6 +109,9 @@ export default function Login() {
               required
             />
           </label>
+          <Link className="auth-inline-link" to={FORGOT_PASSWORD_PATH}>
+            Forgot password?
+          </Link>
 
           <div id="login-error" className="auth-error" role="alert" hidden={!error}>
             {error}
@@ -119,6 +122,90 @@ export default function Login() {
             {submitting ? 'Logging in…' : 'Log in'}
           </button>
         </form>
+      </div>
+    </main>
+  )
+}
+
+// /office/auth/forgot-password, public. No email is sent: the request goes to
+// IT's queue, and the answer is the same whether or not the account exists.
+export function ForgotPassword() {
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (submitting) return
+
+    const trimmedEmail = email.trim()
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      setError('Enter a valid email address.')
+      return
+    }
+
+    setError(null)
+    setSubmitting(true)
+    const result = await apiRequest<{ message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: { email: trimmedEmail },
+    })
+    setSubmitting(false)
+    if (result.ok) setConfirmation(result.data.message)
+    else setError(errorMessage(result))
+  }
+
+  return (
+    <main className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <span className="auth-brand-name">PSP Engineering Group</span>
+          <span className="auth-brand-sub">Admin portal</span>
+        </div>
+
+        <h1 className="auth-title">Forgot password</h1>
+        <p className="auth-lead">Enter your work email. IT will set a temporary password and give it to you in person.</p>
+
+        {confirmation ? (
+          <p className="auth-notice" role="status">
+            {confirmation}
+          </p>
+        ) : (
+          <form className="auth-form" onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+            <label className="field">
+              <span className="field-label">Email</span>
+              <input
+                className="field-input"
+                type="email"
+                name="email"
+                autoComplete="username"
+                inputMode="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={submitting}
+                aria-invalid={error !== null}
+                aria-describedby={error ? 'forgot-error' : undefined}
+                required
+              />
+            </label>
+
+            <div id="forgot-error" className="auth-error" role="alert" hidden={!error}>
+              {error}
+            </div>
+
+            <button type="submit" className="button button-primary auth-submit" disabled={submitting}>
+              {submitting && <span className="spinner" aria-hidden="true" />}
+              {submitting ? 'Sending…' : 'Notify IT'}
+            </button>
+          </form>
+        )}
+
+        <div className="auth-alt">
+          <Link className="button button-secondary auth-submit" to={LOGIN_PATH}>
+            Back to login
+          </Link>
+        </div>
       </div>
     </main>
   )

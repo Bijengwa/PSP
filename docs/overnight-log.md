@@ -487,3 +487,46 @@
 **Notes for the user**
 - M2.2 ticked; current step set to **M2.3**. M2.3 was not started. Nothing was committed by this run.
 - The Collision Guard flagged recent edits by session d9796bda to `auth.test.js`, `login.tsx` and `auth.css`. `git status` was clean before I edited, so those edits were already committed (3ea228e) and nothing was overwritten.
+
+## M2.3 Forgot password (2026-10-07)
+
+**Changed — backend**
+- New migration `node/migrations/20261007120000_create_password_reset_requests.js`. M2.3's Scope names it; it sits in the existing migrations folder.
+  - Columns follow the auth spec: `id` uuid, `email` (exactly as entered), `staff_id` uuid FK nullable, `status` native enum `pending`/`resolved`/`dismissed` (default `pending`), `requested_ip`, `resolved_by` uuid FK nullable, `resolved_at`, `created_at`.
+  - An index on `(status, created_at)` serves M2.4's pending queue.
+  - `down` drops the table and the enum type.
+- `node/src/auth/auth.service.js`: new `requestPasswordReset({ email, ip })`.
+  - It looks up the staff ID by the trimmed, lowercased email, then inserts one row (`staff_id` null when there is no match).
+  - Known and unknown emails take the same path (one select, one insert), so the timing is the same.
+- `node/src/auth/auth.routes.js`: new `POST /api/auth/forgot-password`, behind the router's existing same-origin check, with no session needed.
+  - It always answers 200 `{ success: true, data: { message: "If this account exists, IT has been notified." } }`.
+  - A missing, blank, non-string or over-254-character email gets 400 "Enter a valid email address". This is decided before any lookup, so it reveals nothing about accounts.
+  - It logs `reset_request.created` with no email.
+- No email/SMS, and no rate limiting (that is M3.1).
+
+**Changed — backend tests** (`node/src/auth/auth.test.js`, 7 new)
+- Known and unknown emails return identical status, body and headers. Only `date`, `x-request-id` and `etag` are left out of the header comparison. No cookie is set.
+- Timing: after a warm-up, 15 alternating requests of each kind. The medians must differ by less than 50% of the larger median plus 15 ms.
+- A known email stores a pending row linked to the admin, with the email kept exactly as typed (mixed case and spaces). An unknown email stores a row with `staff_id = null`.
+- The account and its sessions are untouched: an existing session still works, and the old password still logs in.
+- Bad input returns 400 and stores nothing. Another origin gets 403 and stores nothing.
+
+**Changed — frontend**
+- `web/src/management/auth/login.tsx`:
+  - New exported `ForgotPassword` page: one email field, a "Notify IT" button with a spinner while sending, and errors in the existing alert area. On success it replaces the form with the server's neutral message (`role="status"`). A "Back to login" link is always shown.
+  - The login form gets a "Forgot password?" link under the password field.
+  - The page sits next to `Login` and `ChangePassword` in the same file, so no new file was needed.
+- `web/src/App.tsx`: public route `/office/auth/forgot-password` (outside `RequireAuth`), lazy-loaded from the office bundle.
+- `web/src/management/auth/AuthProvider.tsx`: `FORGOT_PASSWORD_PATH` constant.
+- `web/src/management/auth/auth.css`: `.auth-inline-link` and `.auth-notice`. They use theme tokens only (`--primary` via the global `a` rule, `--primary-soft`, `--ink`), so they work in light and dark themes.
+
+**Verified**
+- `npm test` (node): 81/81 passed (74 before, plus 7 new). Jest printed its usual "worker process has failed to exit gracefully" warning.
+- `npm run build` (web): passed. `npm run lint` (web): passed, no warnings.
+- The page was **checked in the code and build only, not in a live browser**, because that needs Postgres, Redis, the API and Vite running.
+
+**Notes for the user**
+- M2.3 ticked; current step set to **M2.4**. M2.4 was not started. Nothing was committed by this run.
+- Run `npm run migrate` (or `knex migrate:latest`) in `node/` to create the new table in your dev database. The tests run migrations themselves.
+- The timing test has a tolerance margin, but it is still a wall-clock test and could fail on a heavily loaded machine.
+- The Collision Guard flagged recent edits by sessions d9796bda and 1a14375f to `auth.service.js`, `auth.routes.js`, `auth.test.js`, `login.tsx`, `auth.css`, `App.tsx` and `AuthProvider.tsx`. `git status` showed no uncommitted changes in those files before I edited them (they are in 89337ff), so nothing was overwritten.

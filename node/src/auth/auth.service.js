@@ -73,4 +73,11 @@ async function changePassword({ staff, currentPassword, newPassword, ip, userAge
   return { sessionId: id, staff: toPublicStaff({ ...staff, must_change_password: false }) };
 }
 
-module.exports = { login, changePassword, findStaffById, toPublicStaff };
+// Stores a request for IT and returns nothing. Known and unknown emails take the
+// same path (one lookup, one insert), so the caller cannot tell them apart.
+async function requestPasswordReset({ email, ip }) {
+  const staff = await db('staff_profiles').where({ email: email.trim().toLowerCase() }).first('id');
+  await db('password_reset_requests').insert({ email, staff_id: staff?.id ?? null, requested_ip: ip });
+}
+
+module.exports = { login, changePassword, requestPasswordReset, findStaffById, toPublicStaff };

@@ -376,3 +376,42 @@ The change-password endpoint already worked: it was built during M2.1, so this s
 - Another session (d9796bda) had recently edited the same files. The working tree was clean when I started (its edits are in commit 3ea228e), so nothing was overwritten.
 - Notes are appended to `docs/overnight-log.md`.
 - The claude.ai Linear connector needs to be authorized in your claude.ai connector settings before it can be used.
+M2.3 (Forgot password) is done and ticked in `docs/progress.md`, and the current step is now **M2.4**. I did not start M2.4 and did not commit anything.
+
+Both "Done when" checks are covered by tests and pass: known and unknown emails get the same status, body and headers, and take roughly the same time.
+
+**Backend**
+- **New migration** `node/migrations/20261007120000_create_password_reset_requests.js`: creates `password_reset_requests` with the columns from the auth spec. `status` is `pending`, `resolved` or `dismissed`, and starts as `pending`.
+- **New endpoint `POST /api/auth/forgot-password`** (`auth.routes.js`, `auth.service.js`):
+  - It always returns 200 with "If this account exists, IT has been notified."
+  - It stores a request for every email; `staff_id` is null when the email matches no one.
+  - Known and unknown emails do the same database work (one lookup, one insert), so timing doesn't reveal which accounts exist.
+  - A missing, blank or over-long email gets 400 before any lookup, so that reveals nothing either.
+  - Requests from another site are refused, as on the other auth routes. The email is never logged.
+  - No email/SMS and no rate limiting; rate limiting is M3.1.
+- **7 new tests** in `auth.test.js`:
+  - identical answer for known and unknown emails
+  - similar timing
+  - the stored row for a known email and for an unknown one
+  - the account and its sessions are unaffected
+  - bad input gets 400 and stores nothing
+  - another site gets 403
+
+**Frontend**
+- A new page at `/office/auth/forgot-password`, reachable without logging in: one email field and a "Notify IT" button. After submitting, it shows the neutral message, and there is always a link back to login. It is in `login.tsx`, next to the other auth pages.
+- The login form now has a "Forgot password?" link under the password field.
+- Smaller supporting changes: the route in `App.tsx`, a path constant in `AuthProvider.tsx`, and two styles in `auth.css` that use the existing light/dark theme colours.
+
+**Checks**
+- `npm test` (node): 81 of 81 passed (74 before, plus the 7 new ones). Jest printed its "worker process has failed to exit gracefully" warning, which earlier runs also show.
+- `npm run build` and `npm run lint` (web): both passed.
+- I did not try the page in a browser, because that needs Postgres, Redis, the API and Vite running.
+
+**Things to know**
+- I created one new file: the migration. The step's Scope requires it, and it is in the existing migrations folder.
+- Run `npm run migrate` in `node/` to create the new table in your dev database. The tests create it themselves.
+- The timing test has a margin, but it measures real time, so it could fail on a very busy machine.
+- A warning said other Claude sessions had recently edited some of these files. `git status` showed none of their changes were uncommitted, so nothing was overwritten.
+- The Linear connector needs authorizing in your claude.ai connector settings before it can be used.
+
+Notes are in `docs/overnight-log.md`.
