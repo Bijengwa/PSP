@@ -11,6 +11,17 @@ export default function RequireAuth() {
   if (state.status === 'loading') {
     return <p className="page-message">Checking your session…</p>
   }
+  if (state.status === 'unavailable') {
+    return (
+      <div className="page-message" role="alert">
+        <h1>Service temporarily unavailable</h1>
+        <p>Your session could not be checked. Please try again in a moment.</p>
+        <button type="button" className="button button-secondary" onClick={retry}>
+          Try again
+        </button>
+      </div>
+    )
+  }
   if (state.status === 'error') {
     return (
       <div className="page-message" role="alert">

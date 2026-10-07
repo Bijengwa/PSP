@@ -586,3 +586,43 @@
 **Notes for the user**
 - M2.4 ticked; current step set to **M2.5**. M2.5 was not started. Nothing was committed by this run.
 - The Collision Guard flagged recent edits by other sessions (30a36625, d9796bda, 22b8c3ea) to `auth.service.js`, `auth.routes.js`, `auth.test.js`, `OfficeHome.tsx`, `App.tsx`, `index.css` and `progress.md`. `git status` was clean before I edited (those edits are in 04fbb1a and earlier), so nothing was overwritten.
+
+## M2.5 Session/security integration (2026-10-07): implemented, NOT ticked
+
+**Why not ticked:** "Done when: frontend tests cover each redirect." `web/` has no test runner (no Vitest/Jest, no test files). Adding one means installing dev dependencies and creating new test files, and CLAUDE.md says to ask before either. So the behaviour is built but the step stays open, and current step is still **M2.5**.
+
+**Changed (frontend only, no new files, no new dependencies)**
+- `web/src/api/client.ts`: the single 403 hook from M2.1 became a general session-problem hook. New `sessionProblem(status, code)` maps 401 to `unauthenticated`, 403 `PASSWORD_CHANGE_REQUIRED` to `password-change-required` and 503 to `unavailable`; anything else maps to nothing. `onPasswordChangeRequired` was replaced by `onSessionProblem` (its only caller was `AuthProvider`).
+- `web/src/management/auth/AuthProvider.tsx`: new `AuthState` variant `{ status: 'unavailable' }`.
+  - `/api/auth/me` returning 503 leads to `unavailable`.
+  - The listener acts only while someone is signed in: a 401 from any call sets `unauthenticated`, so the guard sends them to login with `from` = the page they were on. A 503 sets `unavailable`, and the 403 still forces the password change.
+  - Outside a session, a 401 means a wrong password on the login form, so it is left to that page.
+- `web/src/management/auth/RequireAuth.tsx`: new "Service temporarily unavailable" screen (`role="alert"`, "Try again" re-runs `/api/auth/me`, and the person stays on the same URL).
+- `web/src/management/auth/login.tsx`: the return-to check is now an exported `safeReturnPath()`.
+  - It accepts only `/office` or `/office/...`, `?...` or `#...`.
+  - It rejects backslashes, control characters and `//`, and paths that leave `/office` after URL normalisation (`/office/../`, `%2e%2e`).
+  - It never returns to the login or forgot-password pages. Anything else falls back to `/office`.
+  - The old check accepted `/officeevil` and `/office//host`.
+  - The return-to path still travels in router state, as before, not in a query string.
+
+**Verified**
+- `npm run build` (web): passed. `npm run lint` (web): passed, no warnings.
+- `npm test` (node) was not run: nothing in `node/` changed.
+- Reviewed the diff by hand, including logout (an explicit `navigate(LOGIN_PATH)` still wins, so a deliberate logout does not keep a return-to) and the change-password form (a wrong current password gives 400, not 401, so it does not log the person out).
+- A throwaway script that would have exercised `apiRequest` with mocked fetch and about 24 `safeReturnPath` cases (open-redirect attempts included) could not run tonight: writing it to `%TEMP%` was not granted, and running it from stdin was blocked by a shell safety hook. **These behaviours are not executed by any test yet.**
+- Not checked in a live browser.
+
+**Proposal: needs your approval before M2.5 can be ticked**
+- Dev dependencies: `vitest`, `jsdom`, `@testing-library/react`. They are needed because the Done-when requires frontend tests and none of the tooling exists.
+- `web/package.json`: script `"test": "vitest run"`, plus a `test` block in `vite.config.js` (`environment: 'jsdom'`).
+- Proposed test files, next to the code:
+  - `web/src/api/client.test.ts`: 401, 403 `PASSWORD_CHANGE_REQUIRED`, other 403, 503, 200, 400 and network error each reach (or don't reach) the listener.
+  - `web/src/management/auth/login.test.tsx`: `safeReturnPath` accepted and rejected paths; after login the person lands on the page they asked for.
+  - `web/src/management/auth/RequireAuth.test.tsx`: in a `MemoryRouter`, a 401 mid-session leads to login with `from`, a 403 to change-password, and a 503 to the unavailable screen, where Retry returns to the page.
+
+**Decision to review**
+- A 503 from *any* signed-in call (including the sidebar's 60-second reset-request poll) replaces the office with the unavailable screen. That matches "fail closed", but it discards unsaved form input. If you prefer, only `/api/auth/me` could trigger it and other pages would show their own inline error.
+
+**Notes**
+- The Collision Guard flagged earlier edits by sessions d9796bda and 30a36625 to `client.ts`, `AuthProvider.tsx`, `RequireAuth.tsx` and `login.tsx`. `git status` was clean before editing, so those edits are committed and nothing was overwritten.
+- `docs/progress.md` was not changed. Nothing was committed.

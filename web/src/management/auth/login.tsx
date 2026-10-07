@@ -19,13 +19,27 @@ function errorMessage(result: Extract<ApiResult<unknown>, { ok: false }>) {
   }
 }
 
-// Only send people back to office pages, never to an arbitrary location.
+const OFFICE_PATH_PATTERN = /^\/office(?:[/?#]|$)/
+const SAME_SITE_BASE = 'https://psp.invalid'
+
+// Where to go after login. Only same-site office pages are accepted ("/office"
+// or "/office/..."), so the return-to path can never become an open redirect:
+// no other origin, no "//host" or backslash tricks, no "/office/../" escapes,
+// and never back to the login or forgot-password pages.
+// eslint-disable-next-line react-refresh/only-export-components
+export function safeReturnPath(from: unknown) {
+  if (typeof from !== 'string' || !OFFICE_PATH_PATTERN.test(from)) return OFFICE_HOME_PATH
+  // eslint-disable-next-line no-control-regex
+  if (/[\\\u0000-\u001f\u007f]|\/\//.test(from)) return OFFICE_HOME_PATH
+  const url = new URL(from, SAME_SITE_BASE)
+  if (url.origin !== SAME_SITE_BASE || !OFFICE_PATH_PATTERN.test(url.pathname)) return OFFICE_HOME_PATH
+  const path = url.pathname.replace(/\/+$/, '')
+  if (path === LOGIN_PATH || path === FORGOT_PASSWORD_PATH) return OFFICE_HOME_PATH
+  return url.pathname + url.search + url.hash
+}
+
 function redirectTarget(state: unknown) {
-  const from = (state as { from?: unknown } | null)?.from
-  if (typeof from === 'string' && from.startsWith(OFFICE_HOME_PATH) && !from.startsWith(LOGIN_PATH)) {
-    return from
-  }
-  return OFFICE_HOME_PATH
+  return safeReturnPath((state as { from?: unknown } | null)?.from)
 }
 
 export default function Login() {

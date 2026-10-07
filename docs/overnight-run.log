@@ -440,3 +440,26 @@ M2.4 (Reset password by IT) is built and its "Done when" check passes. After IT 
 3. **File placement:** to avoid creating files without asking, the routes went into `auth.routes.js` and the page into `OfficeHome.tsx`. If you want them in their own files, I suggest `node/src/auth/office.routes.js` and `web/src/management/inApp/pages/ResetRequests.tsx` ΓÇö tell me and I'll move them.
 
 Other sessions had edited several of these files recently, but `git status` was clean before I started, so nothing was overwritten. Separately, the Linear connector needs authorising in your claude.ai connector settings before it can be used; nothing in this step needed it.
+I've built M2.5, but I did not tick it in `docs/progress.md`. Its "Done when" requires frontend tests covering each redirect, and `web/` has no test runner. Adding one means installing dependencies and creating new files, which CLAUDE.md says to ask about first. M2.5 stays the current step and progress.md is unchanged.
+
+**What changed** (four existing files, no new files, no new dependencies, nothing committed):
+- **`web/src/api/client.ts`**: the M2.1 hook that only reacted to the forced-password-change 403 now reacts to three cases from any API call:
+  - **401** (session gone): the person is sent to login, remembering the page they were on.
+  - **403 `PASSWORD_CHANGE_REQUIRED`**: the person is sent to change-password, as before.
+  - **503**: the person sees the "Service temporarily unavailable" screen.
+- **`AuthProvider.tsx`**: adds a new "unavailable" state. A 503 from the sign-in check sets it, and the three cases above only act while someone is signed in. Outside a session, a 401 just means a wrong password on the login form.
+- **`RequireAuth.tsx`**: new "Service temporarily unavailable" screen with a "Try again" button that keeps the person on the same page.
+- **`login.tsx`**: a tighter return-to check (`safeReturnPath`). It only accepts `/office` pages, rejects `//`, backslashes, control characters and `../` escapes, and never returns to the login or forgot-password pages. The old check let through `/officeevil` and `/office//host`.
+
+**Checks:**
+- `npm run build` and `npm run lint` in `web/` both pass.
+- `npm test` in `node/` was not run, because nothing there changed.
+- I reviewed the diff by hand, including logout and the wrong-current-password case on change-password.
+- The new behaviour has not been run by any test. My throwaway script outside the repo couldn't run: writing to `%TEMP%` wasn't granted, and running it from stdin was blocked by a shell safety hook.
+- Nothing was checked in a live browser.
+
+**Decisions for you:**
+1. **Test setup.** Can I add `vitest`, `jsdom` and `@testing-library/react` as dev dependencies, plus a `test` script? The proposed files are `web/src/api/client.test.ts`, `web/src/management/auth/login.test.tsx` and `web/src/management/auth/RequireAuth.test.tsx`. Once those pass, M2.5 can be ticked.
+2. **Scope of the 503 screen.** Right now a 503 from any signed-in call replaces the whole office with the unavailable screen. That includes the sidebar's once-a-minute reset-request check, and it loses anything typed into an unsaved form. The alternative is to show it only when the sign-in check itself gets a 503, and let other pages show their own error.
+
+Full notes and the test proposal are in `docs/overnight-log.md`. Stopping here.

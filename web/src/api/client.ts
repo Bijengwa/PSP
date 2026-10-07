@@ -19,14 +19,25 @@ type ApiPayload = {
   error?: { message?: string; code?: string; details?: unknown }
 }
 
-// The auth provider listens here, so a 403 PASSWORD_CHANGE_REQUIRED from any
-// call sends the person to the change-password page.
-let passwordChangeRequiredListener: (() => void) | null = null
+// What a refused request says about the staff session. The auth provider
+// listens here, so from any call a 401 sends the person to login, a 403
+// PASSWORD_CHANGE_REQUIRED to the change-password page, and a 503 to the
+// "Service temporarily unavailable" screen.
+export type SessionProblem = 'unauthenticated' | 'password-change-required' | 'unavailable'
 
-export function onPasswordChangeRequired(listener: () => void) {
-  passwordChangeRequiredListener = listener
+export function sessionProblem(status: number, code?: string): SessionProblem | null {
+  if (status === 401) return 'unauthenticated'
+  if (status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') return 'password-change-required'
+  if (status === 503) return 'unavailable'
+  return null
+}
+
+let sessionProblemListener: ((problem: SessionProblem) => void) | null = null
+
+export function onSessionProblem(listener: (problem: SessionProblem) => void) {
+  sessionProblemListener = listener
   return () => {
-    if (passwordChangeRequiredListener === listener) passwordChangeRequiredListener = null
+    if (sessionProblemListener === listener) sessionProblemListener = null
   }
 }
 
@@ -52,9 +63,8 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, signal
   if (response.ok && payload?.success) {
     return { ok: true, data: payload.data as T }
   }
-  if (response.status === 403 && payload?.error?.code === 'PASSWORD_CHANGE_REQUIRED') {
-    passwordChangeRequiredListener?.()
-  }
+  const problem = sessionProblem(response.status, payload?.error?.code)
+  if (problem) sessionProblemListener?.(problem)
   return {
     ok: false,
     status: response.status,
