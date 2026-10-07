@@ -654,3 +654,16 @@ Under CLAUDE.md (ask before new files, install only when necessary and say why),
 **Code changes this pass:** none.
 
 **To unblock (unchanged):** approve the dev dependencies `vitest`, `jsdom` and `@testing-library/react`, plus a `test` script and a vitest config block. Also approve the test files `web/src/api/client.test.ts`, `web/src/management/auth/login.test.tsx` and `web/src/management/auth/RequireAuth.test.tsx`, or name other paths. Re-running this overnight prompt without that approval will keep producing this same result.
+
+## M2.5 Session/security integration (2026-10-07, fourth pass): still blocked, NOT ticked
+
+**Status:** Nothing has changed since the third pass. `CLAUDE.md`, `docs/management-plan.md`, `docs/progress.md`, `web/package.json` and `web/vite.config.*` still say nothing about a frontend test runner, and no approval is recorded. "Done when: frontend tests cover each redirect" can't be met without new dev dependencies and new files, and both need your approval first. Current step stays **M2.5**. `docs/progress.md` is unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `npm test` (node) not run: nothing in `node/` changed.
+
+**Code changes this pass:** none.
+
+**To unblock (unchanged):** see the first-pass proposal above. It needs approval for `vitest`, `jsdom` and `@testing-library/react`, a `test` script and a vitest config block, and the three test-file paths. Until that approval is recorded, running this prompt again will not advance anything.

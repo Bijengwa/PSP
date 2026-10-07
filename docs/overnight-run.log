@@ -504,3 +504,20 @@ Once you approve, the next run can add the tests, run them and mark M2.5 done.
 **One choice to review:** right now a 503 from any call while someone is signed in replaces the whole office with the "unavailable" screen. That includes the sidebar's once-a-minute reset-request check, and it loses any unsaved form input. The alternative is to show that screen only when `GET /api/auth/me` fails, and have other pages show their own inline error.
 
 **Linear:** the claude.ai Linear connector needs authorising in your claude.ai connector settings before it can be used.
+M2.5 is still blocked, so I did not mark it done or change the current step. It stays **M2.5** in `docs/progress.md`.
+
+**Why it's blocked:** M2.5 is only done when frontend tests cover each redirect. `web/` has no test runner and no test files. Adding them means installing new dev dependencies and creating new files, and CLAUDE.md says to ask you before either. I checked `CLAUDE.md`, `docs/management-plan.md`, `docs/progress.md`, `web/package.json` and the Vite config, and none of them records an approval.
+
+**This run:**
+- **No code changes.** The M2.5 code from commit `34630d5` is unchanged: the redirects for 401, 403 `PASSWORD_CHANGE_REQUIRED` and 503, and the check that only accepts `/office` return-to paths. No test runs that code yet.
+- **Checks:** `npm run build` and `npm run lint` in `web/` both passed with no warnings. I didn't run `npm test` in `node/` because nothing there changed.
+- **Log:** I added a "fourth pass: still blocked" entry to `docs/overnight-log.md`.
+- **Possible conflict:** a guard reported that another Claude session (`a89872f1`) edited the log a couple of minutes earlier. I re-read the end of the file first and nothing new had been added, so nothing was overwritten. If that session is still running, the two may keep writing to the same file.
+
+**Decision for you:** to unblock M2.5, approve these, or tell me what to change:
+1. Install `vitest`, `jsdom` and `@testing-library/react` as dev dependencies, add a `"test": "vitest run"` script to `web/package.json`, and add a `test` block to the Vite config.
+2. Create three test files: `web/src/api/client.test.ts`, `web/src/management/auth/login.test.tsx` and `web/src/management/auth/RequireAuth.test.tsx`.
+
+Without that approval, running this overnight prompt again will produce the same result. This is the fourth pass in a row that ended this way.
+
+The log also has an open design question from the first pass. Right now a 503 from any call while signed in (including the sidebar's 60-second poll) replaces the whole office with the "Service temporarily unavailable" screen, which throws away unsaved form input. The alternative is to let only `/api/auth/me` do that, with other pages showing their own error inline.
