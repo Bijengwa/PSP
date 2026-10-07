@@ -463,3 +463,24 @@ I've built M2.5, but I did not tick it in `docs/progress.md`. Its "Done when" re
 2. **Scope of the 503 screen.** Right now a 503 from any signed-in call replaces the whole office with the unavailable screen. That includes the sidebar's once-a-minute reset-request check, and it loses anything typed into an unsaved form. The alternative is to show it only when the sign-in check itself gets a 503, and let other pages show their own error.
 
 Full notes and the test proposal are in `docs/overnight-log.md`. Stopping here.
+I didn't mark M2.5 done, because its "Done when" still isn't met. The current step stays **M2.5**, and `docs/progress.md` is unchanged.
+
+The redirect handling itself was already built in the previous run (commit 34630d5), and I re-reviewed it this time:
+- **401:** a signed-in person goes back to the login page, and the page they were on is kept as the return-to path.
+- **403 `PASSWORD_CHANGE_REQUIRED`:** the person is sent to the change-password page.
+- **503:** a "Service temporarily unavailable" screen appears with a "Try again" button.
+- **After login:** only same-site `/office` paths are accepted as the return-to. Tricks like `//host`, backslashes, `/office/../` and `/officeevil` fall back to `/office`.
+
+**Why it's still blocked:** the step needs frontend tests for each redirect, and `web/` has no test runner. Adding one means installing packages and creating new test files, and CLAUDE.md says to ask you before either. So no tests cover these redirects yet. The behaviour hasn't been tried in a browser either.
+
+**Checks:** `npm run build` and `npm run lint` in `web/` both pass. I didn't run `npm test` in `node/` because nothing there changed. I made no code changes this run; I only added a note to `docs/overnight-log.md`.
+
+The Collision Guard said another Claude session edited `docs/overnight-log.md` 7 minutes earlier. I re-read the end of the file first and only added my note at the end, so nothing was overwritten.
+
+**Decision needed:** may I add the test setup?
+- **Packages:** `vitest`, `jsdom` and `@testing-library/react`, needed because the step requires frontend tests and no test tooling exists. Plus a `test` script in `package.json` and a test section in the Vite config.
+- **New test files:** `web/src/api/client.test.ts`, `web/src/management/auth/login.test.tsx` and `web/src/management/auth/RequireAuth.test.tsx`, or other paths if you prefer.
+
+Once you approve, the next run can add the tests, run them and tick M2.5. The log also has an open question from the previous run: whether a 503 from any page should switch to the unavailable screen (which loses unsaved form input), or only a 503 from the session check.
+
+I've stopped here.

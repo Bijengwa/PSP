@@ -626,3 +626,18 @@
 **Notes**
 - The Collision Guard flagged earlier edits by sessions d9796bda and 30a36625 to `client.ts`, `AuthProvider.tsx`, `RequireAuth.tsx` and `login.tsx`. `git status` was clean before editing, so those edits are committed and nothing was overwritten.
 - `docs/progress.md` was not changed. Nothing was committed.
+
+## M2.5 Session/security integration (2026-10-07, second pass): still blocked, NOT ticked
+
+**Status:** The behaviour from the first pass (commit 34630d5) is unchanged. I reviewed it again and found no problems. Its "Done when" ("frontend tests cover each redirect") still can't be met: `web/` has no test runner, and no approval has been recorded for the proposal above (dev dependencies `vitest`, `jsdom`, `@testing-library/react`; new test files `web/src/api/client.test.ts`, `web/src/management/auth/login.test.tsx`, `web/src/management/auth/RequireAuth.test.tsx`).
+
+Under CLAUDE.md (ask before new files, install only when necessary and say why), none of these were added. Current step stays **M2.5** and `docs/progress.md` is unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `npm test` (node) not run: nothing in `node/` changed.
+
+**Code changes this pass:** none.
+
+**To unblock:** approve the dev dependencies and the three test-file paths (or name other paths). The next run can then add the tests, run them, and tick M2.5.
