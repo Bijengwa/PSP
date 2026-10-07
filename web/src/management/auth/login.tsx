@@ -124,6 +124,41 @@ export default function Login() {
   )
 }
 
+// The password rules from the auth spec §7, mirroring passwordProblems in
+// node/src/auth/password.js. The server stays authoritative; this list only
+// shows each rule live while the person types. Keep the two in step.
+const MIN_PASSWORD_LENGTH = 10
+const MIN_PERSONAL_PART = 3
+const COMMON_PASSWORDS = new Set([
+  'password1!', 'password12!', 'password123!', 'passw0rd123!', 'p@ssword123', 'p@ssw0rd123',
+  'welcome123!', 'welcome@123', 'qwerty123!', 'qwerty@123', 'admin@1234', 'admin12345!',
+  'letmein123!', 'iloveyou123!', 'changeme123!', 'abcd@12345', 'abc123456!', 'summer2026!',
+  'winter2026!', 'tanzania123!', 'company123!', 'psp@123456',
+])
+
+function personalParts(email: string, fullName: string) {
+  const localPart = email.split('@')[0]
+  return [...fullName.split(/\s+/), ...localPart.split(/[^a-z0-9]+/i)]
+    .map((part) => part.toLowerCase())
+    .filter((part) => part.length >= MIN_PERSONAL_PART)
+}
+
+function passwordRules(password: string, currentPassword: string, staff: { email: string; fullName: string } | null) {
+  const lower = password.toLowerCase()
+  const personal = staff ? personalParts(staff.email, staff.fullName) : []
+  const typed = password.length > 0
+  return [
+    { label: `At least ${MIN_PASSWORD_LENGTH} characters`, met: password.length >= MIN_PASSWORD_LENGTH },
+    { label: 'A lowercase letter', met: /[a-z]/.test(password) },
+    { label: 'An uppercase letter', met: /[A-Z]/.test(password) },
+    { label: 'A digit', met: /[0-9]/.test(password) },
+    { label: 'A symbol', met: /[^A-Za-z0-9]/.test(password) },
+    { label: 'Not your name or email', met: typed && !personal.some((part) => lower.includes(part)) },
+    { label: 'Not a common password', met: typed && !COMMON_PASSWORDS.has(lower) },
+    { label: 'Different from the current password', met: typed && password !== currentPassword },
+  ]
+}
+
 type FormError = { message: string; reasons: string[] }
 
 function changeErrorMessage(result: Extract<ApiResult<unknown>, { ok: false }>): FormError {
@@ -144,7 +179,9 @@ export function ChangePassword() {
   const [error, setError] = useState<FormError | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const forced = state.status === 'authenticated' && state.staff.mustChangePassword
+  const staff = state.status === 'authenticated' ? state.staff : null
+  const forced = staff?.mustChangePassword ?? false
+  const rules = passwordRules(newPassword, currentPassword, staff)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -158,8 +195,8 @@ export function ChangePassword() {
       setError({ message: 'The new passwords do not match.', reasons: [] })
       return
     }
-    if (newPassword === currentPassword) {
-      setError({ message: 'Choose a password different from the current one.', reasons: [] })
+    if (rules.some((rule) => !rule.met)) {
+      setError({ message: 'The new password does not meet every rule yet.', reasons: [] })
       return
     }
 
@@ -226,14 +263,19 @@ export function ChangePassword() {
               onChange={(e) => setNewPassword(e.target.value)}
               disabled={submitting}
               aria-invalid={error !== null}
-              aria-describedby={describedBy('new-password-hint')}
+              aria-describedby={describedBy('new-password-rules')}
               required
             />
-            <span id="new-password-hint" className="field-hint">
-              At least 10 characters, with upper and lower case letters, a digit and a symbol. Do not use your name
-              or email.
-            </span>
           </label>
+          <ul id="new-password-rules" className="password-rules" aria-label="Password rules">
+            {rules.map((rule) => (
+              <li key={rule.label} className={rule.met ? 'password-rule is-met' : 'password-rule'}>
+                <span className="password-rule-mark" aria-hidden="true" />
+                {rule.label}
+                <span className="visually-hidden">{rule.met ? ', met' : ', not met'}</span>
+              </li>
+            ))}
+          </ul>
 
           <label className="field">
             <span className="field-label">Confirm new password</span>

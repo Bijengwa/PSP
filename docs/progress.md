@@ -1,7 +1,7 @@
 # Management Progress
 
 Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" checks pass.
-Current step: **M2.2**
+Current step: **M2.3**
 
 ## M1 — Management Shell
 
@@ -16,7 +16,7 @@ Current step: **M2.2**
 ## M2 — Authentication Completion
 
 - [x] M2.1 Forced password change
-- [ ] M2.2 Change password
+- [x] M2.2 Change password
 - [ ] M2.3 Forgot password
 - [ ] M2.4 Reset password
 - [ ] M2.5 Session/security integration

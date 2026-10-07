@@ -453,3 +453,37 @@
 **Notes for the user**
 - M2.1 ticked; current step set to **M2.2**. M2.2 was not started. Nothing was committed by this run.
 - The Collision Guard reported recent edits by sessions 2565b727 and 22b8c3ea to `auth.css`, `App.tsx`, `Header.tsx`, `OfficeHome.tsx` and `progress.md`. `git status` showed none of them had uncommitted changes, so nothing was overwritten.
+
+## M2.2 Change password (2026-10-07)
+
+**Starting point**
+- M2.1 had already built `POST /api/auth/change-password` (current-password check, the §7 rules via `passwordProblems`, same-as-current, every session revoked before the write, a fresh session issued, flag cleared). No backend code change was needed.
+- Missing for M2.2: the live rule list in the browser and the rest of the "Done when" test matrix.
+
+**Changed — backend tests** (`node/src/auth/auth.test.js`, 7 new)
+- Weak passwords, one rule each (`test.each`): no symbol, no lowercase letter, part of the full name, the email name, a common password. Each returns 400 `WEAK_PASSWORD` with that reason, and the old password still logs in.
+- Same as current: 400 `WEAK_PASSWORD` with exactly "Choose a password different from the current one.", no new cookie, and the session is kept.
+- Voluntary change (flag already false): another device's session and the caller's old session both return 401; the fresh session works and `/me` shows `mustChangePassword: false`.
+- Already covered by M2.1: wrong current password, the flag cleared, and other sessions revoked during the forced flow.
+
+**Changed — frontend**
+- `web/src/management/auth/login.tsx`: `passwordRules()` mirrors `passwordProblems` in `node/src/auth/password.js`, with the same thresholds, personal-part logic and common-password list, plus "different from the current password".
+  - The static hint under "New password" is replaced by a live checklist (`#new-password-rules`) that updates on every keystroke and is linked to the field with `aria-describedby`.
+  - Each item has a visually hidden "met / not met" for screen readers, and a CSS shape (circle or tick) so status is not shown by colour alone.
+  - Submitting is blocked in the browser until every rule is met. The server stays authoritative, and its reasons still appear in the error area.
+- `web/src/management/auth/auth.css`: `.field-hint` (now unused) is replaced by `.password-rules`, `.password-rule`, `.password-rule-mark` and `.visually-hidden`. They use theme tokens only (`--ink`, `--ink-subtle`), so they work in light and dark themes. The grid collapses to one column on narrow screens.
+- No new files, folders, dependencies or migrations.
+
+**About "shared rule list"**
+- The plan says the rule list is shared. Truly sharing one module between `node/` (CommonJS) and `web/` would need a new file: `password.js` imports argon2, so the browser cannot import it.
+- Following the no-new-files rule, the list is **mirrored** for now, with a comment in both directions: the browser comment points to the server file.
+- Suggested path if you want one source: `node/src/auth/password-rules.js`, with no dependencies, required by `password.js` and imported by Vite. Please confirm the path before anyone creates it.
+
+**Verified**
+- `npm test` (node): 74/74 passed (67 before, plus 7 new).
+- `npm run build` (web): passed. `npm run lint` (web): passed, no warnings.
+- The browser checklist was **checked in the code and build only, not in a live browser**, because that needs Postgres, Redis, the API and Vite running.
+
+**Notes for the user**
+- M2.2 ticked; current step set to **M2.3**. M2.3 was not started. Nothing was committed by this run.
+- The Collision Guard flagged recent edits by session d9796bda to `auth.test.js`, `login.tsx` and `auth.css`. `git status` was clean before I edited, so those edits were already committed (3ea228e) and nothing was overwritten.

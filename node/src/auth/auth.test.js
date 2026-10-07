@@ -495,6 +495,48 @@ describe('POST /api/auth/change-password', () => {
     expect((await me(sessionId)).status).toBe(200);
   });
 
+  test.each([
+    ['no symbol', 'FreshLedger2026', 'Include a symbol.'],
+    ['no lowercase letter', 'FRESH-LEDGER-2026#', 'Include a lowercase letter.'],
+    ['part of the full name', 'Asha-Ledger-2026#', 'Do not use your name or email in the password.'],
+    ['the email name', 'Admin-Ledger-2026#', 'Do not use your name or email in the password.'],
+    ['a common password', 'Password123!', 'This password is too common.'],
+  ])('a new password with %s is refused and the old one still works', async (_, newPassword, reason) => {
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: PASSWORD, newPassword });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    expect(res.body.error.details).toContain(reason);
+    expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+  });
+
+  test('the new password must differ from the current one', async () => {
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: PASSWORD, newPassword: PASSWORD });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    expect(res.body.error.details).toEqual(['Choose a password different from the current one.']);
+    expect(sessionCookieFrom(res)).toBeUndefined();
+    expect((await me(sessionId)).status).toBe(200);
+  });
+
+  test('a voluntary change ends every other session and keeps the person signed in', async () => {
+    const current = await loginAsAdmin();
+    const otherDevice = await loginAsAdmin();
+
+    const res = await changePassword(current, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff.mustChangePassword).toBe(false);
+
+    const fresh = sessionIdFrom(res);
+    expect(fresh).not.toBe(current);
+    expect((await me(otherDevice)).status).toBe(401);
+    expect((await me(current)).status).toBe(401);
+    expect((await me(fresh)).body.data.staff).toMatchObject({ id: adminId, mustChangePassword: false });
+  });
+
   test('needs a session and the app origin', async () => {
     const noSession = await request(app)
       .post('/api/auth/change-password')

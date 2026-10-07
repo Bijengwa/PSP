@@ -350,3 +350,29 @@ M2.1 (forced password change) is done and ticked in `docs/progress.md`, and the 
 4. Submit a valid password. You should land on `/office`.
 
 The full notes are in `docs/overnight-log.md`. Stopping here, as asked.
+M2.2 (Change password) is finished and ticked in `docs/progress.md`, and the current step is now M2.3. I didn't start M2.3 and committed nothing.
+
+The change-password endpoint already worked: it was built during M2.1, so this step needed no backend code changes. What was missing was the live password-rule list in the browser and the remaining tests.
+
+**What changed**
+- **`node/src/auth/auth.test.js`**: 7 new tests.
+  - Weak passwords, one rule each: no symbol, no lowercase letter, part of the full name, the email name, and a common password.
+  - A new password the same as the current one is refused.
+  - A voluntary change (no forced-change flag) signs out the person's other devices and keeps them signed in on the current one with a new session.
+  - Together with the M2.1 tests (wrong current password, flag cleared), every "Done when" check is now covered.
+- **`web/src/management/auth/login.tsx`**: the static hint under "New password" is now a live checklist that updates as the person types. It covers all the server's rules plus "different from the current password". It works with screen readers and doesn't rely on colour alone. The form can't be submitted until every rule is met; the server still checks too.
+- **`web/src/management/auth/auth.css`**: styles for the checklist, using only theme colours so it works in light and dark themes. The unused `.field-hint` class is removed.
+- No new files, dependencies or migrations.
+
+**Checks**
+- `npm test` (node): 74/74 passed (67 before, plus 7 new).
+- `npm run build` and `npm run lint` (web): both passed.
+- The checklist has not been tried in a live browser, which needs Postgres, Redis, the API and Vite running.
+
+**Decision for you**
+- **One shared rule list:** the plan calls for a "shared rule list", but the browser can't import the server's `password.js` (it loads the password-hashing library). Making one shared source needs a new file, which I'm not allowed to create without asking. For now the browser keeps its own copy of the rules, with a comment pointing to `node/src/auth/password.js`. If you want a single source, I suggest a dependency-free `node/src/auth/password-rules.js` used by both sides; tell me if that path is OK.
+
+**Also**
+- Another session (d9796bda) had recently edited the same files. The working tree was clean when I started (its edits are in commit 3ea228e), so nothing was overwritten.
+- Notes are appended to `docs/overnight-log.md`.
+- The claude.ai Linear connector needs to be authorized in your claude.ai connector settings before it can be used.

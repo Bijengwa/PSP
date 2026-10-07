@@ -96,9 +96,52 @@
   width: 100%;
 }
 
-.field-hint {
+.password-rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 4px 12px;
+  margin: -8px 0 0;
+  padding: 0;
+  list-style: none;
   font-size: 13px;
+}
+
+.password-rule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--ink-subtle);
+}
+
+.password-rule.is-met {
+  color: var(--ink);
+}
+
+/* An open circle until the rule is met, then a tick; shape, not colour alone. */
+.password-rule-mark {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.password-rule.is-met .password-rule-mark {
+  width: 6px;
+  height: 10px;
+  margin: 0 2px;
+  border-width: 0 2px 2px 0;
+  border-radius: 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .auth-error-list {
