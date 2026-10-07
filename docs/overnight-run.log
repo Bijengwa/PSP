@@ -186,3 +186,4 @@ Either way, stop any leftover Vite process on port 5199.
 **Also worth knowing**
 - **Possible second run:** another Claude session (0187fd40) edited the same log file about a minute before me. I re-read the file first and nothing was overwritten, but two runs may be going at once.
 - **Linear connector:** it needs authorising in your claude.ai connector settings before it can be used.
+You've hit your session limit ┬╖ resets 4:10am (Africa/Kampala)

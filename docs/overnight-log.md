@@ -208,3 +208,16 @@
 **Notes for the user**
 - The Collision Guard hook reported an edit to this log by another session (0187fd40) a minute before this entry. The file's tail was re-read and matched the fourth-attempt entry, so nothing was overwritten.
 - M1.6 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.5 Responsive/mobile (browser check done, TICKED)
+
+**Changed**
+- Sidebar redesign (requested by the user, outside the roadmap steps): logo mark, line icons on every item, active item as a white pill with a teal edge bar, muted sidebar background, sticky sidebar, "View the store" link at the bottom. First group heading renamed "Home" -> "Overview". Files: `web/src/management/inApp/layout/Sidebar.tsx`, `web/src/index.css`. One `eslint-disable-next-line react-refresh/only-export-components` on `NAV_GROUPS` (Header.tsx imports it).
+
+**Verified (in the Claude desktop browser pane, against the running Vite dev server on port 5174)**
+- The API was not reachable from the browser pane, so `/api/auth/me` was stubbed inside the page only (no code change), as planned in earlier attempts.
+- 360px: hamburger shows; opening the drawer focuses the close button; Tab and Shift+Tab stay inside the drawer; Escape, backdrop tap and choosing an item (Orders) each close it with focus back on the hamburger. No horizontal scroll (scrollWidth 360), also with the Notifications and Profile popovers open (both inside 0-360).
+- 768px: drawer behaviour as at 360px (focus to close button, Escape returns focus); no horizontal scroll.
+- 1280px: sidebar always visible (256px), no hamburger, no horizontal scroll.
+- `npm run lint` initially failed on the redesign; fixed as above. Build/lint re-run to be confirmed by the user.
+- M1.5 ticked in `docs/progress.md`; current step is now **M1.6**. M1.6 was not started.
