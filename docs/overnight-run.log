@@ -166,3 +166,23 @@ This is the fourth overnight run to stop at the same point, and more runs will k
 M1.6 was not started and nothing was committed.
 
 The Linear connector also needs authorizing in your claude.ai connector settings before it can be used. This step didn't need it.
+M1.5 is still not marked done, and the current step stays M1.5. This is the fifth run to stop at the same point.
+
+**What happened**
+- **No code changes:** the M1.5 mobile work from commit `22a066d` is unchanged.
+- **Build and lint:** `npm run build` and `npm run lint` in `web` both passed.
+- **Backend tests:** I didn't run the `node` tests because nothing on the backend changed.
+- **Browser check (still not done):** M1.5 is only done once the layout has been checked in a browser at 360px, 768px and desktop width. Permission for the Chrome DevTools tool was refused again, so that check couldn't run. The dev server on port 5199 also exited with code 1. I couldn't read its output without another permission prompt, so I don't know why. A dev server left running by an earlier run is probably still using the port.
+- **Docs:** I added a "fifth attempt" entry to `docs/overnight-log.md`. I didn't change `docs/progress.md`, I didn't start M1.6, and I committed nothing.
+
+**What you need to do**
+
+Every overnight run will stop here until one of these is done:
+- Do the check yourself at 360px, 768px and 1280px, using the steps under "To finish M1.5" in the first M1.5 log entry, then tick M1.5. Or:
+- Allow the `mcp__plugin_ecc_chrome-devtools__*` tools for this project, so a later run can do the check.
+
+Either way, stop any leftover Vite process on port 5199.
+
+**Also worth knowing**
+- **Possible second run:** another Claude session (0187fd40) edited the same log file about a minute before me. I re-read the file first and nothing was overwritten, but two runs may be going at once.
+- **Linear connector:** it needs authorising in your claude.ai connector settings before it can be used.
