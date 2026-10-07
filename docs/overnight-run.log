@@ -262,3 +262,20 @@ Earlier runs calculated the colour contrast for every text and background pair, 
 Until one of these happens, every overnight run will stop at this same point. It's also worth running `npx vite --port 5231 --strictPort` in `web/` yourself once to see why the dev server exits in these runs.
 
 Separately, the claude.ai Linear connector needs to be authorised in your claude.ai connector settings before it can be used.
+I didn't mark M1.6 done, so the current step is still M1.6. Its "Done when" needs someone to look at the screens in a browser in both themes, and I wasn't allowed to open the browser tool. CLAUDE.md says to tick a step only when that check passes, so I left `docs/progress.md` unchanged.
+
+- **Code:** I made no changes. An earlier run already built M1.6 in commit `ff0cad9`, touching `web/index.html`, `web/src/index.css` and `web/src/management/auth/auth.css`:
+  - light and dark colour settings;
+  - a Light/Dark/System preference, default System, applied before the page first draws;
+  - the login page included.
+- **Checks:** `npm run build` and `npm run lint` in `web/` both pass. I didn't run the backend tests because nothing in `node/` changed. Contrast was worked out by calculation in that earlier run, and every colour pair meets WCAG AA. Nobody has looked at the screens yet.
+- **Browser check:** this time the dev server did start (port 5241), but opening a page with the Chrome DevTools tool was refused because the permission hasn't been granted. I stopped the server afterwards, so nothing is left running.
+- **Log:** I added a "fifth attempt" entry to `docs/overnight-log.md`. A hook said another Claude session had edited the log 2 minutes earlier. I re-read the end of the file first and nothing was overwritten, but two runs may be going at once.
+
+This is the fifth run to stop here. No file grants the browser tools: `.claude/settings.local.json` doesn't exist and `.claude/settings.json` only has hooks. More runs will keep stopping here until you do one of these:
+1. **Check it by hand:** follow the first M1.6 entry in the log. Open the login page and the office pages (home, a placeholder page, both pop-ups, and the mobile menu at 360px) in light and in dark. Switch with `localStorage.setItem('psp-theme', 'dark')` and hard-reload to check there's no light flash. If everything reads well, tick M1.6 and set the current step to M1.7.
+2. **Let the next run check it:** create `.claude/settings.local.json` containing `{"permissions": {"allow": ["mcp__plugin_ecc_chrome-devtools__*"]}}`.
+
+I didn't start M1.7 and didn't commit anything.
+
+Separately, the claude.ai Linear connector needs authorising in your claude.ai connector settings before it can be used. This step didn't need it.

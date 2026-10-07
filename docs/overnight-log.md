@@ -303,3 +303,26 @@
 **Notes for the user**
 - The Collision Guard hook reported an edit to this log by another session (b90aea96) about 2 minutes before this entry. The file's tail was re-read first and was unchanged, so nothing was overwritten.
 - M1.7 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.6 Dark/light theme (fifth attempt, still NOT ticked)
+
+**Changed**
+- No code changes. The M1.6 implementation from commit ff0cad9 (`web/index.html`, `web/src/index.css`, `web/src/management/auth/auth.css`) is unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- **Browser check still not done.** This time the Vite dev server did start (port 5241, `--strictPort`, running in the background). But `mcp__plugin_ecc_chrome-devtools__new_page` was refused again with "you haven't granted it yet". The dev server was then stopped, so nothing is left running.
+- `.claude/settings.local.json` does not exist, and `.claude/settings.json` holds only hooks. No permission allows the browser tools, so every unattended run is refused at this point.
+- So, as CLAUDE.md requires, M1.6 stays unticked in `docs/progress.md`, and the current step stays **M1.6**.
+
+**To finish M1.6**
+- Do one of these:
+  - Do the manual check listed in the first M1.6 entry, then tick M1.6 and set the current step to **M1.7**.
+  - Create `.claude/settings.local.json` with `{"permissions": {"allow": ["mcp__plugin_ecc_chrome-devtools__*"]}}`, so the next unattended run can do the check itself.
+- Running again without one of these will stop at the same point. This is the fifth run to do so.
+
+**Notes for the user**
+- The Collision Guard hook reported an edit to this log by another session (9a0d51db) about 2 minutes before this entry. The file's tail was re-read first and was unchanged, so nothing was overwritten.
+- M1.7 was not started. Nothing was committed by this run.
