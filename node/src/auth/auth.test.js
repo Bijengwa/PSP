@@ -84,11 +84,18 @@ jest.mock('../redis', () => {
       this.check();
       return this.alive(key) ? [...this.data.get(key)] : [];
     }
-    async expire(key, seconds) {
+    async expire(key, seconds, mode) {
       this.check();
       if (!this.alive(key)) return 0;
+      if (mode === 'NX' && this.expiry.has(key)) return 0;
       this.expiry.set(key, Date.now() + seconds * 1000);
       return 1;
+    }
+    async incr(key) {
+      this.check();
+      const next = (this.alive(key) ? Number(this.data.get(key)) : 0) + 1;
+      this.data.set(key, String(next));
+      return next;
     }
     multi() {
       const queued = [];
@@ -128,8 +135,12 @@ const ADMIN = { email: 'admin@psp.test', fullName: 'Asha Admin' };
 const INACTIVE = { email: 'former@psp.test', fullName: 'Former Staff' };
 
 let adminId;
+let passwordHash;
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+// Session data only: the rate-limit counters are written on every login attempt.
+const storedKeysExceptRateLimits = () => [...redis.client.data.keys()].filter((key) => !key.startsWith('psp:rl:'));
 
 function sessionCookieFrom(res) {
   return (res.headers['set-cookie'] || []).find((c) => c.startsWith('psp_sid='));
@@ -159,7 +170,7 @@ beforeAll(async () => {
   await db.raw('truncate staff_profiles, roles restart identity cascade');
 
   const [role] = await db('roles').insert({ name: 'admin', description: 'Full access' }).returning('id');
-  const passwordHash = await hashPassword(PASSWORD);
+  passwordHash = await hashPassword(PASSWORD);
   const [admin] = await db('staff_profiles')
     .insert([
       { full_name: ADMIN.fullName, email: ADMIN.email, password_hash: passwordHash, role_id: role.id, must_change_password: false },
@@ -246,7 +257,7 @@ describe('POST /api/auth/login', () => {
       expect(res.status).toBe(401);
       expect(res.body).toEqual({ success: false, error: { message: 'Invalid email or password' } });
       expect(sessionCookieFrom(res)).toBeUndefined();
-      expect(redis.client.data.size).toBe(0);
+      expect(storedKeysExceptRateLimits()).toEqual([]);
     });
   });
 
@@ -376,7 +387,7 @@ describe('revocation', () => {
 
     expect((await me(laptop)).status).toBe(401);
     expect((await me(phone)).status).toBe(401);
-    expect(redis.client.data.size).toBe(0);
+    expect(storedKeysExceptRateLimits()).toEqual([]);
   });
 
   test('deactivating an account blocks its existing session on the very next request', async () => {
@@ -422,6 +433,540 @@ describe('protected management routes', () => {
     const res = await request(office).get('/office-only').set('Cookie', `psp_sid=${sessionId}`);
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+  });
+});
+
+describe('POST /api/auth/change-password', () => {
+  const NEW_PASSWORD = 'Fresh-Ledger-2026#';
+  const office = express();
+  office.get('/office-only', requireAuth(), (req, res) => res.json({ ok: true }));
+  office.use(errorHandler);
+
+  function changePassword(sessionId, body) {
+    return request(app)
+      .post('/api/auth/change-password')
+      .set('Origin', ORIGIN)
+      .set('Cookie', `psp_sid=${sessionId}`)
+      .send(body);
+  }
+
+  afterEach(async () => {
+    await db('staff_profiles').where({ id: adminId }).update({ password_hash: passwordHash });
+  });
+
+  test('a temporary password blocks the office until it is changed, then the office opens', async () => {
+    await db('staff_profiles').where({ id: adminId }).update({ must_change_password: true });
+    const temporary = await loginAsAdmin();
+    const otherDevice = await loginAsAdmin();
+
+    const blocked = await request(office).get('/office-only').set('Cookie', `psp_sid=${temporary}`);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    const res = await changePassword(temporary, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff).toMatchObject({ id: adminId, mustChangePassword: false });
+    expect(res.text).not.toContain('$argon2');
+
+    const row = await db('staff_profiles').where({ id: adminId }).first('must_change_password');
+    expect(row.must_change_password).toBe(false);
+
+    // A fresh session is issued; every earlier one, on any device, has ended.
+    const fresh = sessionIdFrom(res);
+    expect(fresh).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect((await me(temporary)).status).toBe(401);
+    expect((await me(otherDevice)).status).toBe(401);
+    expect((await request(office).get('/office-only').set('Cookie', `psp_sid=${fresh}`)).status).toBe(200);
+
+    expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(401);
+    expect((await postLogin({ email: ADMIN.email, password: NEW_PASSWORD })).status).toBe(200);
+  });
+
+  test('a wrong current password changes nothing and keeps the session', async () => {
+    await db('staff_profiles').where({ id: adminId }).update({ must_change_password: true });
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: 'Not-The-Password-1!', newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_CURRENT_PASSWORD');
+    expect(sessionCookieFrom(res)).toBeUndefined();
+    expect((await me(sessionId)).body.data.staff.mustChangePassword).toBe(true);
+  });
+
+  test('a new password that breaks the rules is refused with the reasons', async () => {
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: PASSWORD, newPassword: 'short' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining(['Use at least 10 characters.', 'Include an uppercase letter.', 'Include a digit.']),
+    );
+    expect((await me(sessionId)).status).toBe(200);
+  });
+
+  test.each([
+    ['no symbol', 'FreshLedger2026', 'Include a symbol.'],
+    ['no lowercase letter', 'FRESH-LEDGER-2026#', 'Include a lowercase letter.'],
+    ['part of the full name', 'Asha-Ledger-2026#', 'Do not use your name or email in the password.'],
+    ['the email name', 'Admin-Ledger-2026#', 'Do not use your name or email in the password.'],
+    ['a common password', 'Password123!', 'This password is too common.'],
+  ])('a new password with %s is refused and the old one still works', async (_, newPassword, reason) => {
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: PASSWORD, newPassword });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    expect(res.body.error.details).toContain(reason);
+    expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+  });
+
+  test('the new password must differ from the current one', async () => {
+    const sessionId = await loginAsAdmin();
+
+    const res = await changePassword(sessionId, { currentPassword: PASSWORD, newPassword: PASSWORD });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WEAK_PASSWORD');
+    expect(res.body.error.details).toEqual(['Choose a password different from the current one.']);
+    expect(sessionCookieFrom(res)).toBeUndefined();
+    expect((await me(sessionId)).status).toBe(200);
+  });
+
+  test('a voluntary change ends every other session and keeps the person signed in', async () => {
+    const current = await loginAsAdmin();
+    const otherDevice = await loginAsAdmin();
+
+    const res = await changePassword(current, { currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff.mustChangePassword).toBe(false);
+
+    const fresh = sessionIdFrom(res);
+    expect(fresh).not.toBe(current);
+    expect((await me(otherDevice)).status).toBe(401);
+    expect((await me(current)).status).toBe(401);
+    expect((await me(fresh)).body.data.staff).toMatchObject({ id: adminId, mustChangePassword: false });
+  });
+
+  test('needs a session and the app origin', async () => {
+    const noSession = await request(app)
+      .post('/api/auth/change-password')
+      .set('Origin', ORIGIN)
+      .send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(noSession.status).toBe(401);
+
+    const sessionId = await loginAsAdmin();
+    const foreign = await request(app)
+      .post('/api/auth/change-password')
+      .set('Cookie', `psp_sid=${sessionId}`)
+      .send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+    expect(foreign.status).toBe(403);
+    expect((await me(sessionId)).status).toBe(200);
+  });
+});
+
+describe('POST /api/auth/forgot-password', () => {
+  const UNKNOWN_EMAIL = 'nobody@psp.test';
+
+  function forgotPassword(body) {
+    return request(app).post('/api/auth/forgot-password').set('Origin', ORIGIN).send(body);
+  }
+
+  // Headers that differ per request no matter what was asked.
+  function stableHeaders(res) {
+    const { date, 'x-request-id': _requestId, etag: _etag, ...rest } = res.headers;
+    return rest;
+  }
+
+  const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+
+  beforeEach(async () => {
+    await db('password_reset_requests').del();
+  });
+
+  test('known and unknown emails get the identical answer', async () => {
+    const known = await forgotPassword({ email: ADMIN.email });
+    const unknown = await forgotPassword({ email: UNKNOWN_EMAIL });
+
+    expect(known.status).toBe(200);
+    expect(known.body).toEqual({ success: true, data: { message: 'If this account exists, IT has been notified.' } });
+    expect(unknown.status).toBe(known.status);
+    expect(unknown.body).toEqual(known.body);
+    expect(stableHeaders(unknown)).toEqual(stableHeaders(known));
+    expect(sessionCookieFrom(known)).toBeUndefined();
+  });
+
+  test('known and unknown emails take roughly the same time', async () => {
+    // Warm up both paths first, so the first query of each does not skew the result.
+    await forgotPassword({ email: ADMIN.email });
+    await forgotPassword({ email: UNKNOWN_EMAIL });
+
+    const timings = { known: [], unknown: [] };
+    for (let i = 0; i < 15; i += 1) {
+      for (const [kind, email] of [['known', ADMIN.email], ['unknown', UNKNOWN_EMAIL]]) {
+        redis.client.flush(); // this test measures timing, not the rate limit
+        const start = process.hrtime.bigint();
+        await forgotPassword({ email });
+        timings[kind].push(Number(process.hrtime.bigint() - start) / 1e6);
+      }
+    }
+
+    const known = median(timings.known);
+    const unknown = median(timings.unknown);
+    expect(Math.abs(known - unknown)).toBeLessThan(Math.max(known, unknown) * 0.5 + 15);
+  });
+
+  test('stores a pending request for a known email, linked to the staff member', async () => {
+    await forgotPassword({ email: '  Admin@PSP.test ' });
+
+    const rows = await db('password_reset_requests');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      email: '  Admin@PSP.test ',
+      staff_id: adminId,
+      status: 'pending',
+      resolved_by: null,
+      resolved_at: null,
+    });
+    expect(rows[0].requested_ip).toEqual(expect.any(String));
+  });
+
+  test('stores a request for an unknown email too, with no staff member', async () => {
+    await forgotPassword({ email: UNKNOWN_EMAIL });
+
+    const rows = await db('password_reset_requests');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ email: UNKNOWN_EMAIL, staff_id: null, status: 'pending' });
+  });
+
+  test('changes nothing about the account or its sessions', async () => {
+    const sessionId = await loginAsAdmin();
+    await forgotPassword({ email: ADMIN.email });
+
+    expect((await me(sessionId)).status).toBe(200);
+    expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+  });
+
+  test('a missing or oversized email is rejected with 400 and nothing is stored', async () => {
+    for (const body of [{}, { email: '' }, { email: '   ' }, { email: 42 }, { email: `${'a'.repeat(250)}@psp.test` }]) {
+      expect((await forgotPassword(body)).status).toBe(400);
+    }
+    expect(await db('password_reset_requests')).toHaveLength(0);
+  });
+
+  test('requires the app origin', async () => {
+    const res = await request(app)
+      .post('/api/auth/forgot-password')
+      .set('Origin', 'https://evil.example')
+      .send({ email: ADMIN.email });
+    expect(res.status).toBe(403);
+    expect(await db('password_reset_requests')).toHaveLength(0);
+  });
+});
+
+describe('IT password resets (/api/office)', () => {
+  const TARGET = { email: 'tech@psp.test', fullName: 'Juma Technician' };
+  const TEMPORARY = 'Temp-Bridge-2026!';
+  let targetId;
+
+  function asAdmin(sessionId, method, path) {
+    return request(app)[method](path).set('Origin', ORIGIN).set('Cookie', `psp_sid=${sessionId}`);
+  }
+
+  function resetPassword(sessionId, staffId, temporaryPassword = TEMPORARY) {
+    return asAdmin(sessionId, 'post', `/api/office/staff/${staffId}/reset-password`).send({ temporaryPassword });
+  }
+
+  async function loginAsTarget(password = PASSWORD) {
+    const res = await postLogin({ email: TARGET.email, password });
+    expect(res.status).toBe(200);
+    return sessionIdFrom(res);
+  }
+
+  beforeAll(async () => {
+    const [role] = await db('roles').insert({ name: 'staff', description: 'Office staff' }).returning('id');
+    const [target] = await db('staff_profiles')
+      .insert({ full_name: TARGET.fullName, email: TARGET.email, password_hash: passwordHash, role_id: role.id, must_change_password: false })
+      .returning('id');
+    targetId = target.id;
+  });
+
+  beforeEach(async () => {
+    await db('password_reset_requests').del();
+    await db('staff_profiles').where({ id: targetId }).update({ password_hash: passwordHash, must_change_password: false });
+  });
+
+  test("after a reset the person's sessions stop at once and the next login forces a change", async () => {
+    const laptop = await loginAsTarget();
+    const phone = await loginAsTarget();
+    const admin = await loginAsAdmin();
+
+    const res = await resetPassword(admin, targetId);
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff).toMatchObject({ id: targetId, mustChangePassword: true });
+
+    expect((await me(laptop)).status).toBe(401);
+    expect((await me(phone)).status).toBe(401);
+    expect((await postLogin({ email: TARGET.email, password: PASSWORD })).status).toBe(401);
+
+    const next = await loginAsTarget(TEMPORARY);
+    expect((await me(next)).body.data.staff.mustChangePassword).toBe(true);
+    const blocked = await asAdmin(next, 'get', '/api/office/reset-requests');
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    // The admin's own session is untouched.
+    expect((await me(admin)).status).toBe(200);
+  });
+
+  test("resolves that person's pending requests and leaves the others", async () => {
+    await db('password_reset_requests').insert([
+      { email: TARGET.email, staff_id: targetId },
+      { email: TARGET.email, staff_id: targetId },
+      { email: ADMIN.email, staff_id: adminId },
+    ]);
+    const admin = await loginAsAdmin();
+
+    const res = await resetPassword(admin, targetId);
+    expect(res.body.data.resolvedRequests).toBe(2);
+
+    const rows = await db('password_reset_requests');
+    for (const row of rows.filter((r) => r.staff_id === targetId)) {
+      expect(row).toMatchObject({ status: 'resolved', resolved_by: adminId });
+      expect(row.resolved_at).toBeInstanceOf(Date);
+    }
+    expect(rows.find((r) => r.staff_id === adminId)).toMatchObject({ status: 'pending', resolved_by: null });
+  });
+
+  test('a weak temporary password is refused and changes nothing', async () => {
+    const session = await loginAsTarget();
+    const admin = await loginAsAdmin();
+
+    for (const weak of ['short1!A', 'alllowercase-123', 'Juma-Strong-2026!', 'Password123!']) {
+      const res = await resetPassword(admin, targetId, weak);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('WEAK_PASSWORD');
+      expect(res.body.error.details.length).toBeGreaterThan(0);
+    }
+    expect((await resetPassword(admin, targetId, '')).status).toBe(400);
+
+    expect((await me(session)).status).toBe(200);
+    const row = await db('staff_profiles').where({ id: targetId }).first('password_hash', 'must_change_password');
+    expect(row).toEqual({ password_hash: passwordHash, must_change_password: false });
+  });
+
+  test('an unknown or malformed staff ID is 404', async () => {
+    const admin = await loginAsAdmin();
+    expect((await resetPassword(admin, crypto.randomUUID())).status).toBe(404);
+    expect((await resetPassword(admin, 'not-a-uuid')).status).toBe(404);
+  });
+
+  test('the queue lists pending requests oldest first, with the matching person or none', async () => {
+    await db('password_reset_requests').insert([
+      { email: 'stranger@psp.test', staff_id: null, created_at: new Date('2026-10-07T08:00:00Z') },
+      { email: TARGET.email, staff_id: targetId, created_at: new Date('2026-10-07T07:00:00Z') },
+      { email: ADMIN.email, staff_id: adminId, status: 'dismissed' },
+    ]);
+    const admin = await loginAsAdmin();
+
+    const res = await asAdmin(admin, 'get', '/api/office/reset-requests?status=pending');
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(2);
+    expect(res.body.data.requests).toEqual([
+      expect.objectContaining({
+        email: TARGET.email,
+        status: 'pending',
+        staff: { id: targetId, fullName: TARGET.fullName, isActive: true },
+      }),
+      expect.objectContaining({ email: 'stranger@psp.test', staff: null }),
+    ]);
+
+    expect((await asAdmin(admin, 'get', '/api/office/reset-requests?status=bogus')).status).toBe(400);
+  });
+
+  test('dismissing a request takes it out of the queue, once', async () => {
+    const [pending] = await db('password_reset_requests').insert({ email: 'stranger@psp.test' }).returning('id');
+    const admin = await loginAsAdmin();
+    const dismiss = (id) => asAdmin(admin, 'post', `/api/office/reset-requests/${id}/dismiss`);
+
+    expect((await dismiss(pending.id)).status).toBe(200);
+    expect(await db('password_reset_requests').where({ id: pending.id }).first()).toMatchObject({
+      status: 'dismissed',
+      resolved_by: adminId,
+    });
+    expect((await asAdmin(admin, 'get', '/api/office/reset-requests')).body.data.total).toBe(0);
+
+    expect((await dismiss(pending.id)).status).toBe(409);
+    expect((await dismiss(crypto.randomUUID())).status).toBe(404);
+    expect((await dismiss('nope')).status).toBe(404);
+  });
+
+  test('only a signed-in admin from the app origin gets in', async () => {
+    const staff = await loginAsTarget();
+    const admin = await loginAsAdmin();
+
+    expect((await request(app).get('/api/office/reset-requests')).status).toBe(401);
+    expect((await asAdmin(staff, 'get', '/api/office/reset-requests')).status).toBe(403);
+    expect((await resetPassword(staff, adminId)).status).toBe(403);
+
+    const crossSite = await request(app)
+      .post(`/api/office/staff/${targetId}/reset-password`)
+      .set('Origin', 'https://evil.example')
+      .set('Cookie', `psp_sid=${admin}`)
+      .send({ temporaryPassword: TEMPORARY });
+    expect(crossSite.status).toBe(403);
+    expect((await db('staff_profiles').where({ id: targetId }).first()).must_change_password).toBe(false);
+  });
+
+  test('with Redis down the reset fails closed and changes nothing', async () => {
+    const admin = await loginAsAdmin();
+    redis.client.failing = true;
+
+    expect((await resetPassword(admin, targetId)).status).toBe(503);
+    redis.client.failing = false;
+    const row = await db('staff_profiles').where({ id: targetId }).first('password_hash', 'must_change_password');
+    expect(row).toEqual({ password_hash: passwordHash, must_change_password: false });
+  });
+
+  test('the temporary password never reaches the logs', async () => {
+    mockLogLines.length = 0;
+    const admin = await loginAsAdmin();
+    const res = await resetPassword(admin, targetId);
+    expect(res.status).toBe(200);
+
+    const logged = mockLogLines.join('\n');
+    expect(logged).toContain('staff.password_reset');
+    expect(logged).not.toContain(TEMPORARY);
+  });
+});
+
+describe('rate limiting', () => {
+  const counterKeys = (scope, kind) =>
+    [...redis.client.data.keys()].filter((key) => key.startsWith(`psp:rl:${scope}:${kind}:`));
+
+  const forgot = (email) => request(app).post('/api/auth/forgot-password').set('Origin', ORIGIN).send({ email });
+
+  beforeEach(async () => {
+    await db('password_reset_requests').del();
+  });
+
+  describe('login', () => {
+    const wrong = (email = ADMIN.email) => postLogin({ email, password: 'Wrong-Pass-1234!' });
+
+    test('allows 5 attempts per email, then answers 429 even for the right password', async () => {
+      for (let i = 0; i < 5; i += 1) expect((await wrong()).status).toBe(401);
+
+      const blocked = await postLogin({ email: ADMIN.email, password: PASSWORD });
+      expect(blocked.status).toBe(429);
+      expect(blocked.body).toEqual({
+        success: false,
+        error: { message: 'Too many attempts. Try again later.', code: 'RATE_LIMITED' },
+      });
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+      expect(Number(blocked.headers['retry-after'])).toBeLessThanOrEqual(15 * 60);
+      expect(sessionCookieFrom(blocked)).toBeUndefined();
+    });
+
+    test('successful logins count too', async () => {
+      for (let i = 0; i < 5; i += 1) await postLogin({ email: ADMIN.email, password: PASSWORD });
+      expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(429);
+    });
+
+    test('the email is counted case-insensitively and trimmed', async () => {
+      for (const email of ['ADMIN@psp.test', ' admin@psp.test ', 'Admin@Psp.Test', 'admin@psp.test', 'ADMIN@PSP.TEST']) {
+        await wrong(email);
+      }
+      expect((await wrong('admin@psp.test')).status).toBe(429);
+      expect(counterKeys('login', 'email')).toEqual(['psp:rl:login:email:admin@psp.test']);
+    });
+
+    test('one email being blocked does not block other emails', async () => {
+      for (let i = 0; i < 6; i += 1) await wrong();
+      expect((await wrong()).status).toBe(429);
+      expect((await postLogin({ email: INACTIVE.email, password: 'Wrong-Pass-1234!' })).status).toBe(401);
+    });
+
+    test('allows 10 attempts per IP across different emails, then answers 429', async () => {
+      for (let i = 0; i < 10; i += 1) expect((await wrong(`user${i}@psp.test`)).status).toBe(401);
+
+      const blocked = await wrong('fresh@psp.test');
+      expect(blocked.status).toBe(429);
+      expect(blocked.body.error.code).toBe('RATE_LIMITED');
+    });
+
+    test('the counters expire after 15 minutes and the window is not extended by later attempts', async () => {
+      await wrong();
+      const [key] = counterKeys('login', 'email');
+      expect(redis.client.ttl(key)).toBe(15 * 60);
+
+      // 100 seconds left in the window: another attempt must not push that back out.
+      redis.client.expiry.set(key, Date.now() + 100 * 1000);
+      await wrong();
+      expect(redis.client.ttl(key)).toBeLessThanOrEqual(100);
+      expect(redis.client.ttl(counterKeys('login', 'ip')[0])).toBeLessThanOrEqual(15 * 60);
+    });
+
+    test('attempts are allowed again once the window has passed', async () => {
+      for (let i = 0; i < 6; i += 1) await wrong();
+      expect((await wrong()).status).toBe(429);
+
+      for (const key of [...counterKeys('login', 'email'), ...counterKeys('login', 'ip')]) {
+        redis.client.expiry.set(key, Date.now() - 1);
+      }
+      expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+    });
+
+    test('requests rejected as malformed are not counted', async () => {
+      await postLogin({});
+      await postLogin({ email: '', password: 'x' });
+      expect(counterKeys('login', 'ip')).toHaveLength(0);
+    });
+  });
+
+  describe('forgot password', () => {
+    test('allows 3 requests per email, then answers 429 and stores nothing more', async () => {
+      for (let i = 0; i < 3; i += 1) expect((await forgot(ADMIN.email)).status).toBe(200);
+
+      const blocked = await forgot(ADMIN.email);
+      expect(blocked.status).toBe(429);
+      expect(blocked.body).toEqual({
+        success: false,
+        error: { message: 'Too many attempts. Try again later.', code: 'RATE_LIMITED' },
+      });
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+      expect(Number(blocked.headers['retry-after'])).toBeLessThanOrEqual(60 * 60);
+      expect(await db('password_reset_requests')).toHaveLength(3);
+    });
+
+    test('allows 5 requests per IP across different emails, then answers 429', async () => {
+      for (let i = 0; i < 5; i += 1) expect((await forgot(`user${i}@psp.test`)).status).toBe(200);
+      expect((await forgot('fresh@psp.test')).status).toBe(429);
+    });
+
+    test('unknown emails are limited the same way as known ones', async () => {
+      for (let i = 0; i < 3; i += 1) await forgot('nobody@psp.test');
+      expect((await forgot('nobody@psp.test')).status).toBe(429);
+    });
+
+    test('the counters expire after one hour', async () => {
+      await forgot(ADMIN.email);
+      expect(redis.client.ttl(counterKeys('forgot', 'email')[0])).toBe(60 * 60);
+      expect(redis.client.ttl(counterKeys('forgot', 'ip')[0])).toBe(60 * 60);
+    });
+
+    test('is counted separately from login', async () => {
+      for (let i = 0; i < 4; i += 1) await forgot(ADMIN.email);
+      expect((await postLogin({ email: ADMIN.email, password: PASSWORD })).status).toBe(200);
+    });
+
+    test('fails closed with 503 when Redis is down, storing nothing', async () => {
+      redis.client.failing = true;
+      const res = await forgot(ADMIN.email);
+
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ success: false, error: { message: 'Service temporarily unavailable' } });
+      redis.client.failing = false;
+      expect(await db('password_reset_requests')).toHaveLength(0);
+    });
   });
 });
 

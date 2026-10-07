@@ -63,9 +63,14 @@ Already built. Every stage below builds on this; nothing here gets rewritten.
 - **Onboarding:** IT registers staff with a temporary password and `must_change_password = true`. The employee chooses their own password on first login. IT never knows the final password.
 - Forgot password always gives the same response, whether or not the email exists.
 
-### Scope
-- **M7+ (Products, Inventory, Orders, Customers, Reports, Notifications content) must not be built while M1–M6 are in progress.** Until then they are placeholder pages: a title and nothing else.
+### Scope (replanned 2026-10-07)
+- Build in this order: M3.2–M3.3 → M4 IT console → M5 Products → M6 Customers → M7 Orders → C client side → H hardening. Inventory, Reports, real Notifications, online payment and customer accounts stay locked until after H8.
+- Until a module's stage starts, its page stays a placeholder: a title and nothing else.
+- Products, Customers and Orders ship before permissions and audit. **No real customer data goes in until H8 is signed off.**
 - One roadmap step at a time. Never two at once.
+
+### Responsiveness (every step)
+- Every step that touches UI must pass at **360px, 768px and desktop**, with no horizontal scroll, before it is ticked. Tables become stacked lists on mobile.
 
 ### UI
 - Clean, professional, compact, accessible, desktop and mobile, light and dark.
@@ -80,18 +85,20 @@ Already built. Every stage below builds on this; nothing here gets rewritten.
 
 ## 2. Sidebar and routes
 
-Navigation is final from M1. Content arrives stage by stage.
+Navigation changes only through this plan. Content arrives stage by stage.
 
 | Group | Item | Route | Until its stage |
 |---|---|---|---|
 | Home | Home | `/office` | simple welcome page |
-| Catalog | Products | `/office/products` | placeholder (M7+) |
-| Catalog | Add Product | `/office/products/new` | placeholder (M7+) |
-| Catalog | Inventory | `/office/inventory` | placeholder (M7+) |
-| Sales | Orders | `/office/orders` | placeholder (M7+) |
-| Sales | Customers | `/office/customers` | placeholder (M7+) |
-| Management | Staff | `/office/staff` | placeholder until M4 |
-| Management | Reports | `/office/reports` | placeholder (M7+) |
+| Catalog | Products | `/office/products` | placeholder until M5.2 |
+| Catalog | Add Product | `/office/products/new` | placeholder until M5.3 |
+| Catalog | Inventory | `/office/inventory` | placeholder (locked) |
+| Sales | Orders | `/office/orders` | placeholder until M7.2 |
+| Sales | Customers | `/office/customers` | placeholder until M6.2 |
+| Management | Reports | `/office/reports` | placeholder (locked) |
+| IT (admins only) | Staff | `/office/staff` | placeholder until M4.2 |
+| IT (admins only) | Register Staff | `/office/staff/new` | built in M4.3 |
+| IT (admins only) | Reset Requests | `/office/reset-requests` | moved here in M4.1 |
 | System | Notifications | `/office/notifications` | "No notifications" |
 | System | Settings | `/office/settings` | built in M1.7 |
 
@@ -99,7 +106,7 @@ Auth routes (outside the shell): `/office/auth/login`, `/office/auth/forgot-pass
 
 A placeholder page is exactly the page title in the workspace. No fake data, tables, forms or "coming soon" marketing.
 
-Once M5 lands, sidebar items for Staff management are shown only to people with the matching permission.
+The IT group is shown only to admins from M4.1. Once H5 lands, every item is shown only to people with the matching permission.
 
 ---
 
@@ -204,77 +211,172 @@ Each step lists **Scope** (what to do), **Done when** (checks that must pass) an
 - **Done when:** lockout, unlock-after-time and reset-on-success are tested.
 
 #### M3.3 Session revocation
-- **Scope:** Audit every lock-out path (deactivate, IT reset, own password change, role change) to confirm it calls `destroyAllForStaff` synchronously. Add a "Log out of all devices" action in Settings → Account.
+- **Scope:** Audit every lock-out path that exists today (IT reset, own password change) to confirm it calls `destroyAllForStaff` synchronously. Add a "Log out of all devices" action in Settings → Account. Deactivate and role change get the same check when M4 builds them.
 - **Done when:** a test proves each path ends the target's sessions on the very next request.
 
-#### M3.4 Password security
-- **Scope:** Review argon2id parameters, the common-password list, the 1024-character length cap, the rule that the password must not contain the person's name or email, and that hashes and passwords never reach logs or API responses.
-- **Done when:** findings are fixed or written down, and tests for the rules pass.
+> Old M3.4 (Password security) and M3.5 (Cookie/proxy review) moved to **H1** and **H2** (replan 2026-10-07).
 
-#### M3.5 Cookie/proxy/security review
-- **Scope:** Cookie flags in production, `trust proxy` set correctly so `req.ip` (used by rate limits) is real, CORS and `requireSameOrigin`, helmet headers, error responses that leak nothing.
-- **Done when:** a short written review in this file's appendix, with each item fixed or accepted.
+### M4 — IT Console (full circle of auth)
+A new **IT** sidebar group, shown only to admins. All endpoints under `/api/office/staff` and `/api/office/reset-requests`, guarded by `requireRole('admin')` until H4 replaces that with permissions.
 
-### M4 — Staff Management
-All endpoints are under `/api/office/staff`. Guarded by `requireRole('admin')` until M5 replaces that with permissions.
+**M4 is done when the full circle works end to end:** IT registers a person → the person logs in with the temporary password → is forced to change it → works in the office → forgets the password → IT resets it → IT deactivates the person → the person is refused on the next request.
 
-#### M4.1 Staff list
-- **Scope:** `GET /api/office/staff` with search (name/email) and paging. A staff table page: name, email, role, status, last login.
-- **Done when:** paging and search are tested; no password fields appear in responses.
+#### M4.1 IT sidebar group
+- **Scope:** Add the IT group from §2 (Staff, Register Staff, Reset Requests). Move the M2.4 reset-request page and its pending badge into this group. Hide the group from non-admins (the server still checks every call).
+- **Done when:** admins see the group, non-admins do not, and calling an IT endpoint as non-admin returns 403 (tested). Checked at 360px, 768px and desktop.
 
-#### M4.2 Register staff
-- **Scope:** `POST /api/office/staff`: full name, email (lowercased, unique), phone, role, a strength-checked temporary password, `must_change_password = true`, `created_by` set. A registration form. (The pasted plan's "Department" field needs a new column; add it only if the user confirms.)
+#### M4.2 Staff list
+- **Scope:** `GET /api/office/staff` with search (name/email), status filter and paging. Staff table: name, email, role, status, last login. On mobile the table becomes a stacked list (no horizontal scroll).
+- **Done when:** paging, search and filter are tested; no password fields in responses; responsive check passes.
+
+#### M4.3 Register staff
+- **Scope:** `POST /api/office/staff`: full name, email (lowercased, unique), phone, role, a strength-checked temporary password, `must_change_password = true`, `created_by` set. A registration form. ("Department" needs a new column; add it only if the user confirms.)
 - **Done when:** duplicate emails are rejected clearly, and a new person is forced through M2.1 on first login.
 
-#### M4.3 Staff profile
-- **Scope:** A profile page; `PATCH /api/office/staff/:id` for name and phone. The Profile menu's "Profile" entry shows the signed-in person's own read-only profile.
+#### M4.4 Staff profile
+- **Scope:** Staff profile page; `PATCH /api/office/staff/:id` for name and phone. The Profile menu's "Profile" entry shows the signed-in person's own read-only profile.
+- **Done when:** edits save and show, and validation errors are clear.
 
-#### M4.4 Activate/deactivate
-- **Scope:** Deactivate/reactivate through PATCH `is_active`. Deactivation revokes sessions synchronously. Rows are never deleted. An admin cannot deactivate themselves.
+#### M4.5 Activate/deactivate
+- **Scope:** Deactivate/reactivate through PATCH `is_active`. Deactivation revokes sessions synchronously. Rows are never deleted. An admin cannot deactivate themselves; the last active admin cannot be deactivated.
 - **Done when:** a deactivated person is refused on their very next request (tested).
 
-#### M4.5 Roles (assignment)
-- **Scope:** Change a person's role. Revokes their sessions. An admin cannot remove their own admin role, and the last active admin cannot be demoted or deactivated.
-- **Not in this step:** new roles or permissions (M5).
+#### M4.6 Role assignment
+- **Scope:** Change a person's role (from the existing `roles` rows). Revokes their sessions. An admin cannot remove their own admin role, and the last active admin cannot be demoted.
+- **Not in this step:** new roles or permissions (H3–H5).
 
-#### M4.6 Password/setup workflow
-- **Scope:** "Reset password" on the staff profile, reusing the M2.4 service: IT enters a strength-checked temporary password and hands it to the person in person. It is stored only as an argon2 hash and never shown or logged afterwards.
-- **Done when:** the whole onboarding path works end to end: register, then first login, then forced change, then office.
+#### M4.7 Reset password from the profile
+- **Scope:** "Reset password" on the staff profile, reusing the M2.4 service: IT enters a strength-checked temporary password and hands it over in person. Stored only as an argon2 hash, never shown or logged again. Resolves that person's pending reset requests.
+- **Done when:** the M4 end-to-end circle above passes as one test (backend) plus a manual run in the browser.
 
-### M5 — Permissions
+### Orders vs Customers (decided 2026-10-07)
 
-#### M5.1 Roles
-- **Scope:** Finalise the role list (proposed: Administrator, IT, Manager, Staff) as rows in `roles`. A migration maps the existing `admin` role.
-- **Done when:** the user has approved the role matrix in this file before code is written.
+| | Customer | Order |
+|---|---|---|
+| What it is | A person or company PSP sells to. Long-lived. | One purchase. A snapshot of one day. |
+| Type | `individual` or `company` (both are used) | — |
+| Holds | Name; for companies: company name, TIN, contact person. Phone, email, addresses. | Order number, items with **price at that time**, totals, delivery address **copied** in, status, payment status, source (shop/staff). |
+| Changes | Edited any time (new phone, new address). | Items and prices never change after confirmation. Only status and payment move forward. |
+| Can exist alone? | Yes (walk-in, quote request, no orders yet). | Yes for shop orders: guest checkout, `customer_id` may be empty until staff link it. |
+| Staff work it as | A directory: search, open, edit. | A queue: filter by status and work through it. |
 
-#### M5.2 Permissions
-- **Scope:** `permissions` and `role_permissions` tables. Initial keys: `staff.view`, `staff.create`, `staff.update`, `staff.deactivate`, `staff.reactivate`, `staff.assign_role`, `staff.reset_password`, `reset_requests.manage`. Rule: nobody can grant a role with more permissions than they hold (so IT cannot create an unrestricted Administrator).
-- `/api/auth/me` returns the person's permission keys (read from Postgres, not cached) so the UI can hide what they cannot use.
+Decisions: customers are both individuals and companies; the shop uses **guest checkout** (no customer accounts); payment is **pay later** (on delivery, invoice or bank transfer) and staff mark it paid. No online payment.
 
-#### M5.3 Permission enforcement
-- **Scope:** `requirePermission(key)` middleware replaces `requireRole('admin')` on every office endpoint. Sidebar and buttons are hidden by permission. The server stays the authority; hiding in the UI is only for convenience.
-- **Done when:** tests prove each endpoint returns 403 without its permission, and that a permission change applies on the next request.
-- No `if (role === 'IT')` checks anywhere.
+Order life cycle: `new` → `confirmed` → `delivered` → `closed`, or `cancelled` from `new`/`confirmed`. Payment status separately: `unpaid` → `paid`.
 
-### M6 — Audit
+### M5 — Products
 
-#### M6.1 Audit foundation
-- **Scope:** `audit_logs` table and the Redis Streams event bus from the auth spec §5 (`psp:events`, consumer groups, `XACK`, `XAUTOCLAIM`, dead-letter stream, idempotent handlers with `ON CONFLICT (event_id) DO NOTHING`). A failed publish is logged and never fails the request.
-- **Done when:** a duplicate delivery writes once, and an unconfirmed event is claimed again (tested).
+#### M5.1 Product data model
+- **Scope:** Migrations for `product_categories` and `products` (name, slug, SKU, category, description, specs, price in TZS, `is_published`, `is_archived`, timestamps, `created_by`). Seed the categories from `PSP-Engineering-Group-Preview.html`.
+- **Done when:** migrate up/down works; the user approved the fields before code.
+- **Not in this step:** stock counts (Inventory comes later).
 
-#### M6.2 Authentication events
-- `auth.login_succeeded`, `auth.login_failed` (email + IP, never the password), `auth.account_locked`, `auth.logged_out`, `auth.password_changed`, `reset_request.created/resolved`.
+#### M5.2 Products list
+- **Scope:** `GET /api/office/products` with search, category filter, published/archived filter, paging. Products page (table on desktop, stacked list on mobile).
+- **Done when:** tests for search and filters pass; responsive check passes.
 
-#### M6.3 Staff events
-- `staff.created/updated/deactivated/reactivated/password_reset`, role changes, with actor and target.
-- An audit log page for people holding a new `audit.view` permission.
+#### M5.3 Add product
+- **Scope:** `POST /api/office/products` and the Add Product form, with server-side validation (unique SKU and slug, price > 0).
+- **Done when:** invalid input gives clear field errors; a new product appears in the list.
 
-#### M6.4 Security review
-- **Scope:** A full review of M1–M6: auth, sessions, permissions, audit coverage, logging hygiene. Run `/security-review` and the code review. Fix or record each finding.
-- **Done when:** the user signs off. Only then does M7 start.
+#### M5.4 Edit, publish, archive
+- **Scope:** Product detail/edit page, `PATCH /api/office/products/:id`, publish/unpublish, archive (never delete).
+- **Done when:** only published, not archived products would be visible to the shop (tested at the query level).
 
-### M7+ — Business modules (locked)
-Products, Inventory, Orders, Customers, Reports, real Notifications. Each gets its own plan section, written and approved **after M6.4**. Nothing from M7+ is built before then.
+#### M5.5 Product images
+- **Scope:** Upload, order and remove product images. Storage location (local disk or cloud) is decided by the user before this step. Type and size checks on the server.
+- **Done when:** images upload, show in the list and detail, and bad files are refused.
+
+### M6 — Customers
+
+#### M6.1 Customer data model
+- **Scope:** Migrations for `customers` (type `individual`/`company`, full name, company name, TIN, contact person, phone, email, notes, timestamps, `created_by`) and `customer_addresses`. Phone/email are indexed for matching guest orders.
+- **Done when:** migrate up/down works; the user approved the fields before code.
+
+#### M6.2 Customers list
+- **Scope:** `GET /api/office/customers` with search (name, company, phone, email), type filter and paging. Customers page.
+
+#### M6.3 Add/edit customer
+- **Scope:** Create and edit forms. Company fields appear only when type is `company`. Duplicate phone/email gives a warning with a link to the existing customer.
+
+#### M6.4 Customer detail
+- **Scope:** Detail page with contacts and addresses. An "Orders" section is left for M7.5 to fill.
+
+### M7 — Orders
+
+#### M7.1 Order data model
+- **Scope:** Migrations for `orders` (number, `customer_id` nullable, guest name/phone/email/address snapshot, status, payment status, source `shop`/`staff`, totals, notes, timestamps) and `order_items` (product id, name, SKU and unit price copied in, quantity, line total). Status changes allowed only along the life cycle above (enforced on the server).
+- **Done when:** invalid status jumps are refused (tested).
+
+#### M7.2 Orders queue
+- **Scope:** `GET /api/office/orders` filtered by status, payment status and source, with search by number/name/phone. Orders page with status tabs. Sidebar badge with the count of `new` orders.
+
+#### M7.3 Order detail and status
+- **Scope:** Detail page: items, totals, customer/guest details, status actions (confirm, deliver, close, cancel with a reason), mark paid.
+- **Done when:** each action is tested, including refusing changes to items after confirmation.
+
+#### M7.4 Staff-created orders
+- **Scope:** Staff create an order for a phone or walk-in sale: pick or create a customer, add published products, quantities. `source = staff`. (Confirm with the user before building.)
+
+#### M7.5 Link guest orders to customers
+- **Scope:** On a shop order, suggest matching customers by phone/email. Staff link to an existing customer or create one from the order. The customer detail page lists that customer's orders.
+
+**The staff side stops here.** Inventory, Reports and Notifications stay placeholders.
+
+### C — Client side (public shop)
+Follows `PSP-Engineering-Group-Preview.html`. **Mobile-first.** Public read endpoints live under `/api/shop/*` and return only published, not archived products. No customer accounts.
+
+#### C1 Shop layout
+- **Scope:** Public layout at `/`: header, navigation, footer, light/dark, mobile menu.
+- **Done when:** checked at 360px, 768px and desktop; no horizontal scroll.
+
+#### C2 Catalog
+- **Scope:** `GET /api/shop/products` (search, category, paging). Product grid with category filter and search.
+
+#### C3 Product page
+- **Scope:** `GET /api/shop/products/:slug`. Images, description, specs, price, "Add to cart".
+
+#### C4 Cart
+- **Scope:** Cart page. The cart (product ids and quantities only, no personal data) may be kept in `localStorage`. Prices are always re-read from the server.
+
+#### C5 Guest checkout
+- **Scope:** `POST /api/shop/orders`: name, phone, email (optional), delivery address, notes. The server re-prices every line from the database and creates the order (`source = shop`, `new`, `unpaid`). Rate limited per IP. A confirmation page with the order number and "PSP will contact you to confirm and arrange payment."
+- **Done when:** a tampered price in the request has no effect (tested); the order appears in the M7.2 queue.
+
+#### C6 Shop polish
+- **Scope:** Accessibility pass, page titles and meta tags, loading and empty states, image sizes for mobile data.
+
+### H — Hardening before launch
+Must be done **before real customer data goes in**. Includes everything moved out of the old M3, M5 and M6.
+
+#### H1 Password security (old M3.4)
+- **Scope:** Review argon2id parameters, the common-password list, the 1024-character cap, the "no name/email in password" rule, and that hashes and passwords never reach logs or responses.
+
+#### H2 Cookie/proxy/security review (old M3.5)
+- **Scope:** Cookie flags in production, `trust proxy` so `req.ip` is real, CORS and `requireSameOrigin`, helmet headers, error responses that leak nothing. Written in the appendix.
+
+#### H3 Roles (old M5.1)
+- **Scope:** Finalise the role list (proposed: Administrator, IT, Manager, Sales, Staff). The user approves the role matrix in this file before code.
+
+#### H4 Permissions (old M5.2)
+- **Scope:** `permissions` and `role_permissions` tables. Keys for staff and reset requests (as before) **plus** `products.*`, `customers.*`, `orders.*` and `audit.view`. Nobody can grant a role with more permissions than they hold. `/api/auth/me` returns permission keys (from Postgres, not cached).
+
+#### H5 Permission enforcement (old M5.3)
+- **Scope:** `requirePermission(key)` replaces `requireRole('admin')` on every office endpoint, including Products, Customers and Orders. Sidebar and buttons hidden by permission; the server stays the authority. No `if (role === 'IT')` checks.
+- **Done when:** each endpoint returns 403 without its permission (tested).
+
+#### H6 Audit foundation (old M6.1)
+- **Scope:** `audit_logs` and the Redis Streams event bus from the auth spec §5. A failed publish is logged and never fails the request.
+
+#### H7 Audit events (old M6.2 + M6.3)
+- **Scope:** Auth and staff events as before, **plus** product changes (price, publish, archive), customer changes and order status/payment changes, with actor and target. Audit log page for `audit.view`.
+
+#### H8 Final security review (old M6.4)
+- **Scope:** Full review of auth, sessions, permissions, audit coverage, logging hygiene, and the public shop endpoints. Run `/security-review` and the code review.
+- **Done when:** the user signs off. Only then is the system used with real customer data.
+
+### Later — locked
+Inventory, Reports, real Notifications, online payment, customer accounts. Each gets its own plan section, written and approved after H8.
 
 ---
 
@@ -285,4 +387,4 @@ Products, Inventory, Orders, Customers, Reports, real Notifications. Each gets i
 - A separate worker process for bus consumers
 
 ## Appendix — Review notes
-(Filled in by M3.5 and M6.4.)
+(Filled in by H2 and H8.)

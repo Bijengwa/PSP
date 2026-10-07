@@ -5,7 +5,16 @@ import RequireAuth from './management/auth/RequireAuth'
 
 // The office is its own bundle: shop visitors never download it.
 const Login = lazy(() => import('./management/auth/login'))
-const Dashboard = lazy(() => import('./management/inApp/dashboard'))
+const ForgotPassword = lazy(() => import('./management/auth/login').then((m) => ({ default: m.ForgotPassword })))
+const ChangePassword = lazy(() => import('./management/auth/login').then((m) => ({ default: m.ChangePassword })))
+const OfficeLayout = lazy(() => import('./management/inApp/layout/OfficeLayout'))
+const OfficeHome = lazy(() => import('./management/inApp/pages/OfficeHome'))
+const SettingsPage = lazy(() => import('./management/inApp/pages/OfficeHome').then((m) => ({ default: m.SettingsPage })))
+const ResetRequestsPage = lazy(() =>
+  import('./management/inApp/pages/OfficeHome').then((m) => ({ default: m.ResetRequestsPage })),
+)
+const PlaceholderPage = lazy(() => import('./management/inApp/pages/PlaceholderPage'))
+const OfficeNotFound = lazy(() => import('./management/inApp/pages/OfficeNotFound'))
 
 // Everything under /office shares one auth state. Shop routes stay outside it,
 // so the public side never calls the auth API.
@@ -46,9 +55,25 @@ export default function App() {
 
       <Route path="/office" element={<OfficeRoot />}>
         <Route path="auth/login" element={<Login />} />
+        <Route path="auth/forgot-password" element={<ForgotPassword />} />
         <Route element={<RequireAuth />}>
-          <Route index element={<Dashboard />} />
-          <Route path="*" element={<NotFound />} />
+          {/* Outside the shell: during a forced change it is the only reachable page. */}
+          <Route path="auth/change-password" element={<ChangePassword />} />
+          <Route element={<OfficeLayout />}>
+            <Route index element={<OfficeHome />} />
+            {/* Sidebar routes: title-only placeholders until each module is built. */}
+            <Route path="products" element={<PlaceholderPage title="Products" />} />
+            <Route path="products/new" element={<PlaceholderPage title="Add Product" />} />
+            <Route path="inventory" element={<PlaceholderPage title="Inventory" />} />
+            <Route path="orders" element={<PlaceholderPage title="Orders" />} />
+            <Route path="customers" element={<PlaceholderPage title="Customers" />} />
+            <Route path="staff" element={<PlaceholderPage title="Staff" />} />
+            <Route path="reset-requests" element={<ResetRequestsPage />} />
+            <Route path="reports" element={<PlaceholderPage title="Reports" />} />
+            <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="*" element={<OfficeNotFound />} />
+          </Route>
         </Route>
       </Route>
 

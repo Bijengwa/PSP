@@ -1,0 +1,443 @@
+﻿# PSP Development Rules
+
+PSP Engineering Group: a public shop (`/`) and a staff-only management side (`/office/*`).
+- `node/`: API. JavaScript (CommonJS), Express 5, Knex + PostgreSQL, Redis. Tests: `npm test` (Jest + Supertest).
+- `web/`: React 19 + TypeScript + Vite + react-router. Checks: `npm run build`, `npm run lint`.
+- Visual reference: `PSP-Engineering-Group-Preview.html`.
+
+## Management side
+
+The authoritative roadmap is `docs/management-plan.md`.
+Progress is tracked in `docs/progress.md`.
+Auth design details: `docs/superpowers/specs/2026-10-06-staff-auth-design.md`.
+
+If these documents disagree with each other or with a request, stop and ask.
+
+### Development method
+
+Build exactly one roadmap step at a time (e.g. M1.1, then M1.2).
+
+Before implementation:
+1. Read the step in `docs/management-plan.md` and the current state in `docs/progress.md`.
+2. Inspect the existing code it touches.
+3. Explain what will change and which files.
+4. Confirm the work stays inside that step's Scope and outside its "Not in this step".
+
+After implementation:
+1. Run the relevant checks (`node`: `npm test`; `web`: `npm run build` and `npm run lint`).
+2. Review the resulting diff.
+3. Tick only that step in `docs/progress.md` and update "Current step", and only if its "Done when" checks pass.
+4. Report exactly what changed and what was verified.
+5. Stop.
+
+Never continue to the next step automatically.
+
+### Scope
+
+Do not build real Products, Inventory, Orders, Customers, Reports or Notifications
+functionality before M6.4 is signed off. Until then they are placeholder pages
+showing only their title.
+
+Do not implement more than one roadmap step at once.
+
+### Authentication
+
+Use the existing architecture in `node/src/auth/` and `web/src/management/auth/`.
+
+- Opaque session ID in the HttpOnly `psp_sid` cookie (`Secure` in production, `SameSite=Lax`)
+- Redis-backed server sessions; PostgreSQL is authoritative for staff identity, status and roles
+- The frontend learns who is logged in only from `GET /api/auth/me`
+- No auth tokens, session IDs, credentials or staff profiles in localStorage, sessionStorage or IndexedDB
+- Redis failure must fail closed (503) for management authentication
+- Never cache staff profiles, roles or permissions for authorization
+- Revoke sessions synchronously on deactivate, password reset, password change and role change
+- No email/SMS flows: forgot password notifies IT; IT sets temporary passwords; must_change_password forces a change
+- Never log passwords, hashes or session IDs
+
+### UI
+
+Management UI must be clean, professional, compact, accessible, responsive
+(desktop and mobile), and work in light and dark themes.
+
+- No dashboard cards or statistics without real data behind them
+- No emoji icons
+- No Tailwind unless explicitly requested
+- The theme preference is the only thing the office may store in localStorage
+
+### Files
+
+The user decides file and folder placement. Use the existing folders. If a new
+file or folder is needed, propose the path and ask before creating it.
+
+### Changes
+
+- Do not modify unrelated features.
+- Prefer small, reviewable changes.
+- Do not install dependencies unless necessary, and say why.
+- Do not rewrite working architecture without explaining why first.
+# Management Progress
+
+Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" checks pass.
+Current step: **M1.5**
+
+## M1 â€” Management Shell
+
+- [x] M1.1 Layout foundation
+- [x] M1.2 Sidebar + navigation
+- [x] M1.3 Placeholder workspace pages
+- [x] M1.4 Header
+- [ ] M1.5 Responsive/mobile
+- [ ] M1.6 Dark/light theme
+- [ ] M1.7 Settings + logout
+
+## M2 â€” Authentication Completion
+
+- [ ] M2.1 Forced password change
+- [ ] M2.2 Change password
+- [ ] M2.3 Forgot password
+- [ ] M2.4 Reset password
+- [ ] M2.5 Session/security integration
+
+## M3 â€” Authentication Security
+
+- [ ] M3.1 Rate limiting
+- [ ] M3.2 Failed-login protection
+- [ ] M3.3 Session revocation
+- [ ] M3.4 Password security
+- [ ] M3.5 Security review
+
+## M4 â€” Staff Management
+
+- [ ] M4.1 Staff list
+- [ ] M4.2 Register staff
+- [ ] M4.3 Staff profile
+- [ ] M4.4 Activate/deactivate
+- [ ] M4.5 Roles
+- [ ] M4.6 Password/setup workflow
+
+## M5 â€” Permissions
+
+- [ ] M5.1 Roles
+- [ ] M5.2 Permissions
+- [ ] M5.3 Enforcement
+
+## M6 â€” Audit
+
+- [ ] M6.1 Audit foundation
+- [ ] M6.2 Authentication events
+- [ ] M6.3 Staff events
+- [ ] M6.4 Security review
+# Management Plan (Office side)
+
+Status: authoritative roadmap for the management side of PSP.
+Progress: `docs/progress.md`
+Detailed auth design: `docs/superpowers/specs/2026-10-06-staff-auth-design.md`
+Visual reference: `PSP-Engineering-Group-Preview.html`
+
+Order of authority, highest first:
+
+```
+docs/management-plan.md      what to build, in what order (this file)
+        â†“
+CLAUDE.md                    how to work
+        â†“
+docs/progress.md             where we are
+        â†“
+Claude Code                  does the work
+        â†“
+Mods                         guards and visibility only, never the authority
+```
+
+If this plan and the auth spec disagree, stop and ask. Do not resolve it silently.
+
+---
+
+## 0. Starting point (as of 2026-10-07)
+
+Already built. Every stage below builds on this; nothing here gets rewritten.
+
+**Backend (`node/`, JavaScript/CommonJS, Express 5, Knex, Postgres, Redis)**
+- Tables `roles` and `staff_profiles` (`node/migrations/20261007100000_create_staff_auth.js`). The columns `failed_login_count`, `locked_until` and `must_change_password` exist but are not used yet.
+- A seed creates the `admin` role and the first admin (`node/seeds/01_admin.js`).
+- `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` (`node/src/auth/auth.routes.js`).
+- Redis session store: hashed session IDs, 8h sliding and 12h absolute expiry, `destroyAllForStaff` (`node/src/auth/session.store.js`). Any Redis failure becomes a 503 (fails closed).
+- `requireAuth` (blocks with `PASSWORD_CHANGE_REQUIRED` while a temporary password is set), `requireRole`, `requireSameOrigin` (`node/src/auth/auth.middleware.js`).
+- Structured logging with pino (`node/src/logger.js`).
+
+**Frontend (`web/`, React 19, TypeScript, Vite, react-router)**
+- `/office/auth/login` login page.
+- `AuthProvider` + `useAuth()`, loaded from `/api/auth/me`. Nothing is kept in browser storage.
+- `RequireAuth` guard on `/office/*`.
+- `web/src/management/inApp/dashboard.tsx`: a minimal shell (sidebar with one link, top bar with name, role and a logout button).
+- `web/src/api/client.ts`: the single fetch wrapper (`credentials: 'include'`).
+
+**Not built yet:** change password, forgot password, rate limiting, lockout, staff management, permissions, audit log, event bus, theme.
+
+---
+
+## 1. Non-negotiable rules
+
+### Authentication and sessions
+- The session ID is opaque and lives only in the `psp_sid` cookie: `HttpOnly`, `SameSite=Lax`, `Secure` in production.
+- Redis stores sessions (only the SHA-256 hash of the ID). PostgreSQL stores staff identity, role and status, and is authoritative for them.
+- Staff profiles, roles and authorization decisions are **never cached**: not in Redis, not in the browser. They are read from Postgres on every request.
+- Redis unavailable = management authentication fails closed (503).
+- Never put auth tokens, session IDs, passwords or staff profiles in `localStorage`, `sessionStorage`, IndexedDB or non-HttpOnly cookies.
+- The frontend learns who is logged in only from `GET /api/auth/me`.
+- Anything that can lock a person out (deactivate, password reset, password change, role change) revokes their sessions **synchronously in the write path**.
+- Never log passwords, password hashes, session IDs or reset data.
+
+### Password and account flows (decided 2026-10-07)
+- **No email or SMS delivery.** Forgot password notifies IT. IT sets a temporary password. The person must change it at next login.
+- **Onboarding:** IT registers staff with a temporary password and `must_change_password = true`. The employee chooses their own password on first login. IT never knows the final password.
+- Forgot password always gives the same response, whether or not the email exists.
+
+### Scope
+- **M7+ (Products, Inventory, Orders, Customers, Reports, Notifications content) must not be built while M1â€“M6 are in progress.** Until then they are placeholder pages: a title and nothing else.
+- One roadmap step at a time. Never two at once.
+
+### UI
+- Clean, professional, compact, accessible, desktop and mobile, light and dark.
+- No dashboard cards or statistics until the modules behind them exist.
+- No emoji icons. No Tailwind unless requested. Follow the style of `PSP-Engineering-Group-Preview.html`.
+- The theme preference (light/dark/system) may be stored in `localStorage`. It is not auth data.
+
+### Files
+- The user decides file and folder placement. Use existing folders (`node/src/auth/`, `node/migrations/`, `web/src/management/auth/`, `web/src/management/inApp/`). If a new file or folder is needed, propose the path and ask first.
+
+---
+
+## 2. Sidebar and routes
+
+Navigation is final from M1. Content arrives stage by stage.
+
+| Group | Item | Route | Until its stage |
+|---|---|---|---|
+| Home | Home | `/office` | simple welcome page |
+| Catalog | Products | `/office/products` | placeholder (M7+) |
+| Catalog | Add Product | `/office/products/new` | placeholder (M7+) |
+| Catalog | Inventory | `/office/inventory` | placeholder (M7+) |
+| Sales | Orders | `/office/orders` | placeholder (M7+) |
+| Sales | Customers | `/office/customers` | placeholder (M7+) |
+| Management | Staff | `/office/staff` | placeholder until M4 |
+| Management | Reports | `/office/reports` | placeholder (M7+) |
+| System | Notifications | `/office/notifications` | "No notifications" |
+| System | Settings | `/office/settings` | built in M1.7 |
+
+Auth routes (outside the shell): `/office/auth/login`, `/office/auth/forgot-password` (M2.3), `/office/auth/change-password` (M2.1, forced and voluntary).
+
+A placeholder page is exactly the page title in the workspace. No fake data, tables, forms or "coming soon" marketing.
+
+Once M5 lands, sidebar items for Staff management are shown only to people with the matching permission.
+
+---
+
+## 3. Shell layout
+
+Desktop:
+```
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Sidebar       â”‚ Page title                 Notifications  Profile â”‚
+â”‚               â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ grouped nav   â”‚                 WORKSPACE                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+```
+
+Mobile (below the desktop breakpoint):
+```
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ â˜°   Page title    Notif  Avatar â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚         Workspace          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+```
+- The sidebar is hidden by default and opens as an overlay drawer from the hamburger.
+- Choosing an item, tapping outside or pressing Escape closes it. Focus moves into the drawer when it opens and back to the hamburger when it closes.
+
+Header:
+- Left: the page title (and the hamburger on mobile).
+- Right: Notifications button (popover: "No notifications") and Profile button (menu: name, role, then Profile, Change password, Settings).
+
+---
+
+## 4. Roadmap
+
+Each step lists **Scope** (what to do), **Done when** (checks that must pass) and **Not in this step** (the boundary).
+
+### M1 â€” Management Shell
+
+#### M1.1 Layout foundation
+- **Scope:** Turn the current `dashboard.tsx` into a reusable office layout (sidebar region, header region, workspace with `<Outlet />`) mounted inside `RequireAuth`. Keep the existing auth wiring. The Home page renders inside the workspace.
+- **Done when:** `/office` renders the layout with Home in the workspace. Login/logout still work. `npm run build` and `npm run lint` in `web/` pass.
+- **Not in this step:** the full sidebar list, mobile behaviour, theme, new header controls.
+
+#### M1.2 Sidebar + navigation
+- **Scope:** The grouped sidebar from Â§2 with `NavLink` active states and routes for every item.
+- **Done when:** every item navigates, the active item is highlighted, and keyboard navigation works.
+- **Not in this step:** page content and the mobile drawer.
+
+#### M1.3 Placeholder workspace pages
+- **Scope:** One placeholder page per non-Home item (title only). Unknown `/office/*` paths show Not found inside the shell.
+- **Done when:** each route shows its title. No placeholder fetches data.
+- **Not in this step:** any real module functionality.
+
+#### M1.4 Header
+- **Scope:** Page title, Notifications popover ("No notifications"), Profile menu with data from `useAuth()` (`/api/auth/me`). The "Change password" entry routes to the M2.1 path (it may land on a placeholder until M2.2).
+- **Done when:** menus open and close with mouse and keyboard, close on Escape and outside click, and have correct ARIA roles.
+- **Not in this step:** real notifications, profile editing.
+
+#### M1.5 Responsive/mobile
+- **Scope:** The Â§3 mobile behaviour: hamburger, overlay drawer, closes on select, outside tap and Escape, focus handling, no horizontal scroll at 360px.
+- **Done when:** checked at 360px, 768px and desktop widths.
+
+#### M1.6 Dark/light theme
+- **Scope:** CSS custom-property tokens for light and dark. Light/Dark/System preference stored in `localStorage` (the only allowed storage use), defaulting to System, applied before first paint to avoid a flash. Login page included.
+- **Done when:** all shell and auth screens are readable in both themes and contrast meets WCAG AA.
+
+#### M1.7 Settings + logout
+- **Scope:** `/office/settings` with Appearance (Light/Dark/System, wired to M1.6), Security (link to Change password), Account (Logout). Logout calls `POST /api/auth/logout` and goes to the login page. Remove the old top-bar logout button.
+- **Done when:** logging out destroys the server session (a following `/me` returns 401) and the back button cannot reach office pages.
+
+### M2 â€” Authentication Completion
+
+#### M2.1 Forced password change
+- **Scope:** Change-password page at `/office/auth/change-password`. When `/me` reports `mustChangePassword`, or any API call returns 403 `PASSWORD_CHANGE_REQUIRED`, the guard sends the person there and nowhere else. Uses the M2.2 endpoint, so build the endpoint first within this step if needed.
+- **Done when:** a seeded admin with a temporary password cannot reach any office page until they change it, then lands in the office.
+
+#### M2.2 Change password
+- **Scope:** `POST /api/auth/change-password` `{ currentPassword, newPassword }`, allowed while `must_change_password` is set. Password strength rules from the auth spec Â§7, enforced on the server and shown live in the browser (shared rule list). Clears `must_change_password`. Ends all other sessions of that person; keeps or reissues the current one.
+- **Done when:** backend tests cover a wrong current password, weak passwords, same-as-current, the flag cleared, and other sessions revoked.
+
+#### M2.3 Forgot password (request)
+- **Scope:** `password_reset_requests` migration. `POST /api/auth/forgot-password` `{ email }` always returns 200 with "If this account exists, IT has been notified." It stores a request even for unknown emails (`staff_id = null`). Forgot-password page linked from login.
+- **Done when:** responses for known and unknown emails are identical in body, status and roughly in timing (tested).
+- **Not in this step:** email/SMS, rate limiting (M3.1).
+
+#### M2.4 Reset password (by IT)
+- **Scope:** IT's queue: `GET /api/office/reset-requests?status=pending`, `POST /api/office/reset-requests/:id/dismiss`, and `POST /api/office/staff/:id/reset-password`, which sets a strength-checked temporary password, sets `must_change_password = true`, revokes all of that person's sessions and resolves pending requests. A minimal queue page for admins. Sidebar badge with the pending count.
+- **Done when:** after IT resets, the person's existing sessions stop working at once, and their next login forces M2.1.
+- **Not in this step:** the full staff UI (M4).
+
+#### M2.5 Session/security integration
+- **Scope:** The API client handles 401 by returning to login with a return-to path, 403 `PASSWORD_CHANGE_REQUIRED` by going to change-password, and 503 by showing "Service temporarily unavailable" with a retry. After login the person returns to the page they asked for (only same-site `/office` paths are accepted, so there is no open redirect).
+- **Done when:** frontend tests cover each redirect.
+
+### M3 â€” Authentication Security
+
+#### M3.1 Login rate limiting
+- **Scope:** Redis counters from the auth spec Â§4: login allows 10 per IP and 5 per email per 15 min; forgot-password allows 5 per IP and 3 per email per hour; 429 when exceeded. `INCR` + `EXPIRE â€¦ NX` in one `MULTI`. Redis down â†’ login fails closed (503).
+- **Done when:** tests for the limits and the 429 response pass.
+
+#### M3.2 Failed-login protection
+- **Scope:** Use `failed_login_count` / `locked_until`. Lock for 15 min after 5 failures; a successful login resets the counter. The locked message is the same whether the password was right or wrong. Unknown emails still pay the dummy argon2 cost.
+- **Done when:** lockout, unlock-after-time and reset-on-success are tested.
+
+#### M3.3 Session revocation
+- **Scope:** Audit every lock-out path (deactivate, IT reset, own password change, role change) to confirm it calls `destroyAllForStaff` synchronously. Add a "Log out of all devices" action in Settings â†’ Account.
+- **Done when:** a test proves each path ends the target's sessions on the very next request.
+
+#### M3.4 Password security
+- **Scope:** Review argon2id parameters, the common-password list, the 1024-character length cap, the rule that the password must not contain the person's name or email, and that hashes and passwords never reach logs or API responses.
+- **Done when:** findings are fixed or written down, and tests for the rules pass.
+
+#### M3.5 Cookie/proxy/security review
+- **Scope:** Cookie flags in production, `trust proxy` set correctly so `req.ip` (used by rate limits) is real, CORS and `requireSameOrigin`, helmet headers, error responses that leak nothing.
+- **Done when:** a short written review in this file's appendix, with each item fixed or accepted.
+
+### M4 â€” Staff Management
+All endpoints are under `/api/office/staff`. Guarded by `requireRole('admin')` until M5 replaces that with permissions.
+
+#### M4.1 Staff list
+- **Scope:** `GET /api/office/staff` with search (name/email) and paging. A staff table page: name, email, role, status, last login.
+- **Done when:** paging and search are tested; no password fields appear in responses.
+
+#### M4.2 Register staff
+- **Scope:** `POST /api/office/staff`: full name, email (lowercased, unique), phone, role, a strength-checked temporary password, `must_change_password = true`, `created_by` set. A registration form. (The pasted plan's "Department" field needs a new column; add it only if the user confirms.)
+- **Done when:** duplicate emails are rejected clearly, and a new person is forced through M2.1 on first login.
+
+#### M4.3 Staff profile
+- **Scope:** A profile page; `PATCH /api/office/staff/:id` for name and phone. The Profile menu's "Profile" entry shows the signed-in person's own read-only profile.
+
+#### M4.4 Activate/deactivate
+- **Scope:** Deactivate/reactivate through PATCH `is_active`. Deactivation revokes sessions synchronously. Rows are never deleted. An admin cannot deactivate themselves.
+- **Done when:** a deactivated person is refused on their very next request (tested).
+
+#### M4.5 Roles (assignment)
+- **Scope:** Change a person's role. Revokes their sessions. An admin cannot remove their own admin role, and the last active admin cannot be demoted or deactivated.
+- **Not in this step:** new roles or permissions (M5).
+
+#### M4.6 Password/setup workflow
+- **Scope:** "Reset password" on the staff profile, reusing the M2.4 service: IT enters a strength-checked temporary password and hands it to the person in person. It is stored only as an argon2 hash and never shown or logged afterwards.
+- **Done when:** the whole onboarding path works end to end: register, then first login, then forced change, then office.
+
+### M5 â€” Permissions
+
+#### M5.1 Roles
+- **Scope:** Finalise the role list (proposed: Administrator, IT, Manager, Staff) as rows in `roles`. A migration maps the existing `admin` role.
+- **Done when:** the user has approved the role matrix in this file before code is written.
+
+#### M5.2 Permissions
+- **Scope:** `permissions` and `role_permissions` tables. Initial keys: `staff.view`, `staff.create`, `staff.update`, `staff.deactivate`, `staff.reactivate`, `staff.assign_role`, `staff.reset_password`, `reset_requests.manage`. Rule: nobody can grant a role with more permissions than they hold (so IT cannot create an unrestricted Administrator).
+- `/api/auth/me` returns the person's permission keys (read from Postgres, not cached) so the UI can hide what they cannot use.
+
+#### M5.3 Permission enforcement
+- **Scope:** `requirePermission(key)` middleware replaces `requireRole('admin')` on every office endpoint. Sidebar and buttons are hidden by permission. The server stays the authority; hiding in the UI is only for convenience.
+- **Done when:** tests prove each endpoint returns 403 without its permission, and that a permission change applies on the next request.
+- No `if (role === 'IT')` checks anywhere.
+
+### M6 â€” Audit
+
+#### M6.1 Audit foundation
+- **Scope:** `audit_logs` table and the Redis Streams event bus from the auth spec Â§5 (`psp:events`, consumer groups, `XACK`, `XAUTOCLAIM`, dead-letter stream, idempotent handlers with `ON CONFLICT (event_id) DO NOTHING`). A failed publish is logged and never fails the request.
+- **Done when:** a duplicate delivery writes once, and an unconfirmed event is claimed again (tested).
+
+#### M6.2 Authentication events
+- `auth.login_succeeded`, `auth.login_failed` (email + IP, never the password), `auth.account_locked`, `auth.logged_out`, `auth.password_changed`, `reset_request.created/resolved`.
+
+#### M6.3 Staff events
+- `staff.created/updated/deactivated/reactivated/password_reset`, role changes, with actor and target.
+- An audit log page for people holding a new `audit.view` permission.
+
+#### M6.4 Security review
+- **Scope:** A full review of M1â€“M6: auth, sessions, permissions, audit coverage, logging hygiene. Run `/security-review` and the code review. Fix or record each finding.
+- **Done when:** the user signs off. Only then does M7 start.
+
+### M7+ â€” Business modules (locked)
+Products, Inventory, Orders, Customers, Reports, real Notifications. Each gets its own plan section, written and approved **after M6.4**. Nothing from M7+ is built before then.
+
+---
+
+## 5. Out of scope until further notice
+- Email/SMS delivery of any kind (reset links, notifications)
+- Two-factor authentication
+- Profile picture upload (the URL column only)
+- A separate worker process for bus consumers
+
+## Appendix â€” Review notes
+(Filled in by M3.5 and M6.4.)
+f8569c0 overnight: Current step: **M1.5**
+21c90c8 overnight: Current step: **M1.5**
+04471c8 overnight: Current step: **M1.5**
+b241081 overnight: Current step: **M1.5**
+22a066d overnight: Current step: **M1.5**
+82b3e7a overnight: Current step: **M1.4**
+0cfa947 overnight: Current step: **M1.3**
+58d68e3 overnight: Current step: **M1.2**
+1aa4dbb overnight: Current step: **M1.1**
+f17651a plan, hooks, overnight script
+42a36d2 overnight: $STEP
+1c50593 add hooks and guards
+9e2eeca preparation for mods
+3df9ba8 feat: add management authentication
+aa9403b feat: add structured application logging
+On branch overnight/m1-m2
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   docs/overnight-run.log
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	review.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")

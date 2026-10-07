@@ -50,6 +50,7 @@ app.get('/api/health', async (req, res) => {
 
 // Feature routers
 app.use('/api/auth', require('./auth/auth.routes'));
+app.use('/api/office', require('./auth/auth.routes').officeRouter);
 
 // ---------- 404 for unknown API routes ----------
 app.use('/api', (req, res) => {
