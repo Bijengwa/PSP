@@ -210,3 +210,17 @@ I built M1.6 (dark/light theme), and the build and lint pass. I did **not** mark
 - Nothing restricts inline scripts on `index.html` today. If a Content Security Policy is added later, it will need an exception for the theme script.
 
 The Linear connector also needs authorising in your claude.ai connector settings before it can be used.
+I didn't mark M1.6 done, and the current step is still M1.6. The Light/Dark/System theme is already built. An earlier overnight run added it, and the build and lint both pass. But M1.6 only counts as done when the screens are readable in both themes, and nobody has looked at them in a browser yet. CLAUDE.md says to tick a step only when that check passes, so I left `docs/progress.md` unchanged.
+
+- **Code:** I made no changes. The theme work is already in place in `web/index.html`, `web/src/index.css` and `web/src/management/auth/auth.css`.
+- **Checks:** `npm run build` and `npm run lint` in `web/` both pass with no warnings. I didn't run the backend tests because nothing in `node/` changed.
+- **Browser check:** I started a dev server on port 5231 and tried to open the pages, but permission for the Chrome DevTools tool was refused again. I then stopped the server so it doesn't keep holding the port.
+- **Log:** I added an entry to `docs/overnight-log.md`. A hook reported that another Claude session (e07af606) had edited the log a couple of minutes earlier. I re-read the end of the file first and nothing was overwritten.
+
+To finish M1.6, either:
+- **Check it yourself:** open the login page and the office pages in light and dark, using the steps in the first M1.6 entry of the overnight log. Then tick M1.6 and set the current step to M1.7.
+- **Let the next run do it:** allow the `mcp__plugin_ecc_chrome-devtools__*` tools for this project.
+
+Until one of these happens, every overnight run will stop at this same point. I didn't start M1.7 and didn't commit anything.
+
+The Linear connector needs to be authorized in your claude.ai connector settings before it can be used. Nothing in this step needed it.

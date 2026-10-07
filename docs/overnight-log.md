@@ -245,3 +245,22 @@
 - The theme applies to the whole SPA, including the shop placeholder at `/`, because the tokens are global. If the shop should ignore the office preference, that needs a decision.
 - No CSP covers `index.html` today (Helmet runs on the API only). If one is added later, it needs a hash for the inline theme script.
 - M1.7 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.6 Dark/light theme (second attempt, still NOT ticked)
+
+**Changed**
+- No code changes. The M1.6 implementation from the previous entry is in the tree unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- **Browser check still not done.** A Vite dev server started on port 5231 (`--strictPort`), but permission to use the Chrome DevTools tool (`new_page`) was refused again. The dev server was then stopped, so no stray process holds port 5231.
+- So, as CLAUDE.md requires, M1.6 stays unticked in `docs/progress.md`, and the current step stays **M1.6**.
+
+**To finish M1.6**
+- Unchanged from the first M1.6 entry. Either do the manual light/dark check listed there and then tick M1.6 (current step -> **M1.7**), or allow the `mcp__plugin_ecc_chrome-devtools__*` tools for this project. Until then, every overnight run will stop at this same point.
+
+**Notes for the user**
+- The Collision Guard hook reported an edit to this log by another session (e07af606) shortly before this entry. The file's tail was re-read and matched the first M1.6 entry, so nothing was overwritten.
+- M1.7 was not started. Nothing was committed by this run.
