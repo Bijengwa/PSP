@@ -208,3 +208,25 @@
 **Notes for the user**
 - The Collision Guard hook reported an edit to this log by another session (0187fd40) a minute before this entry. The file's tail was re-read and matched the fourth-attempt entry, so nothing was overwritten.
 - M1.6 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.5 Responsive/mobile (ticked; browser check replaced by code review)
+
+**Decision**
+- The user said to stop retrying Chrome when it fails and move forward. So the "checked at 360px, 768px and desktop widths" check was done by reading the code instead of opening a browser.
+
+**Changed**
+- Brought in the uncommitted refactor from the main checkout: `inApp/dashboard.tsx` is now split into `inApp/layout/` (OfficeLayout, Header, Sidebar, ProfileMenu, NotificationsPopover, useDismiss) and `inApp/pages/` (OfficeHome, PlaceholderPage, OfficeNotFound), with matching `App.tsx` imports and sidebar styling in `index.css`.
+- `index.css`: the breakpoint comment now names `inApp/layout/OfficeLayout.tsx` instead of the removed `dashboard.tsx`.
+
+**Verified (by code review)**
+- Hamburger: visible only at ≤768px, with `aria-expanded` and `aria-controls`.
+- Drawer: fixed overlay `min(288px, 85vw)`, `role="dialog"` and `aria-modal`; the rest of the page is `inert` while it is open.
+- Closes when an item is chosen (NavLink/brand `onClick`), on a backdrop tap, on Escape and with the close button.
+- Focus moves to the close button when the drawer opens and back to the hamburger when it closes.
+- 360px: header actions shrink to the avatar (the name stays available to screen readers), popovers are capped at `calc(100% - 24px)`, and the body and title use `min-width: 0`. Nothing is wider than the viewport.
+- `npm run build` and `npm run lint` (web) both pass. `node` tests were not run because there were no backend changes.
+
+**Open**
+- A real visual check at 360px, 768px and 1280px is still recommended when convenient.
+- At exactly 768px the drawer is used, not the full sidebar.
+- `.office-nav-link:hover` uses hard-coded white; M1.6 should turn it into a theme token.
