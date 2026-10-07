@@ -34,11 +34,18 @@ Never continue to the next step automatically.
 
 ### Scope
 
-Do not build real Products, Inventory, Orders, Customers, Reports or Notifications
-functionality before M6.4 is signed off. Until then they are placeholder pages
-showing only their title.
+Build in the order of `docs/management-plan.md` §4 (replanned 2026-10-07):
+M3.2–M3.3 → M4 IT console → M5 Products → M6 Customers → M7 Orders →
+C client side → H hardening.
+
+A module's page stays a placeholder (title only) until its stage starts.
+Inventory, Reports, real Notifications, online payment and customer accounts
+stay locked until H8 is signed off. No real customer data before H8.
 
 Do not implement more than one roadmap step at once.
+
+Every UI step must pass at 360px, 768px and desktop with no horizontal scroll
+before it is ticked.
 
 ### Authentication
 
@@ -63,6 +70,7 @@ Management UI must be clean, professional, compact, accessible, responsive
 - No emoji icons
 - No Tailwind unless explicitly requested
 - The theme preference is the only thing the office may store in localStorage
+- The public shop may store only the theme and the cart (product ids and quantities) in localStorage
 
 ### Files
 
