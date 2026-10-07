@@ -224,3 +224,17 @@ To finish M1.6, either:
 Until one of these happens, every overnight run will stop at this same point. I didn't start M1.7 and didn't commit anything.
 
 The Linear connector needs to be authorized in your claude.ai connector settings before it can be used. Nothing in this step needed it.
+M1.6 is still not marked done, and the current step is still M1.6. I didn't do the "mark it done" part of your request because the step's check hasn't passed. M1.6 counts as done when "all shell and auth screens are readable in both themes", and that needs someone to look at the screens in a browser. CLAUDE.md says to tick a step only when its check passes.
+
+- **Code:** I changed nothing. An earlier run already built the theme in `web/index.html`, `web/src/index.css` and `web/src/management/auth/auth.css`.
+- **Checks:** `npm run build` and `npm run lint` in `web/` both pass with no warnings. I didn't run the backend tests because nothing in `node/` changed. Contrast against WCAG AA was worked out by calculation in the earlier run, and every colour pair passes.
+- **Browser check:** still not done. The Chrome DevTools tool needs your permission, and it can't be granted in an unattended run. I didn't switch to a headless Chrome from the shell, because that would go around the permission you haven't given. The dev server I started stopped by itself, so nothing is left running.
+- **Log:** I added a "third attempt" entry to `docs/overnight-log.md`. A hook reported that another Claude session (a9b63461) had edited the log a few minutes earlier. I re-read the end of the file first and nothing was overwritten, but two runs may be going at the same time.
+
+To finish M1.6, do one of these:
+- **Check it yourself:** follow the steps in the first M1.6 entry of the log: open the login page and the office pages, in light and in dark. Then tick M1.6 and set the current step to M1.7.
+- **Let the next run do it:** allow `mcp__plugin_ecc_chrome-devtools__*` in the project's Claude settings.
+
+Until one of these happens, every overnight run will stop at this point. I didn't start M1.7 and didn't commit anything.
+
+The Linear connector also needs to be authorised in your claude.ai connector settings before it can be used.

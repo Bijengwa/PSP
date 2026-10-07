@@ -264,3 +264,22 @@
 **Notes for the user**
 - The Collision Guard hook reported an edit to this log by another session (e07af606) shortly before this entry. The file's tail was re-read and matched the first M1.6 entry, so nothing was overwritten.
 - M1.7 was not started. Nothing was committed by this run.
+
+## 2026-10-07 — M1.6 Dark/light theme (third attempt, still NOT ticked)
+
+**Changed**
+- No code changes. The M1.6 implementation from the first M1.6 entry is still in the tree, unchanged.
+
+**Verified**
+- `npm run build` (web): passed.
+- `npm run lint` (web): passed, no warnings.
+- `node` tests: not run, because there were no backend changes.
+- **Browser check still not done.** The plan was to stub `GET /api/auth/me` in the browser only (nothing in the code would change) so the shell could be viewed without a backend. But `mcp__plugin_ecc_chrome-devtools__new_page` was not granted, and this run is non-interactive, so the permission cannot be approved here. The run did not use a headless Chrome from the shell instead, because that would go around the missing permission. The Vite dev server it tried to start exited on its own (exit code 1; the output file could not be read without approval), so no process is left running.
+- So, as CLAUDE.md requires, M1.6 stays unticked in `docs/progress.md`, and the current step stays **M1.6**.
+
+**To finish M1.6**
+- Same as before: do the manual check in the first M1.6 entry and then tick M1.6 (current step -> **M1.7**). Or add `mcp__plugin_ecc_chrome-devtools__*` to the project's allowed permissions (`.claude/settings.json` / `settings.local.json`) so an unattended run can do the check.
+
+**Notes for the user**
+- The Collision Guard hook reported an edit to this log by another session (a9b63461) about 3 minutes before this entry. The file's tail was re-read first and was unchanged, so nothing was overwritten.
+- M1.7 was not started. Nothing was committed by this run.
