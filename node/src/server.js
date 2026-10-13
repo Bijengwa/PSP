@@ -18,6 +18,18 @@ app.use(helmet());
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 
+// Product photos (local disk). Only files the API wrote are here, under random names.
+// helmet defaults to same-origin resources; the web app is another origin.
+app.use(
+  '/uploads',
+  express.static(require('./products/products.images').UPLOADS_ROOT, {
+    index: false,
+    dotfiles: 'deny',
+    maxAge: '1d',
+    setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
+  }),
+);
+
 // ---------- Routes ----------
 app.get('/api/health', async (req, res) => {
   let database = 'ok';
@@ -50,6 +62,8 @@ app.get('/api/health', async (req, res) => {
 
 // Feature routers
 app.use('/api/auth', require('./auth/auth.routes'));
+// Products first: the office router below requires the admin role for everything under /api/office.
+app.use('/api/office/products', require('./products/products.routes'));
 app.use('/api/office', require('./auth/auth.routes').officeRouter);
 
 // ---------- 404 for unknown API routes ----------

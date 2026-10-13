@@ -12,6 +12,7 @@ const PAGE_TITLES: Record<string, string> = Object.fromEntries(
 
 function pageTitle(pathname: string) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  if (/^\/office\/products\/[^/]+$/.test(path) && !PAGE_TITLES[path]) return 'Edit Product'
   return PAGE_TITLES[path] ?? 'Not found'
 }
 

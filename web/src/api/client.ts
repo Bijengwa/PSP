@@ -3,6 +3,11 @@
 // cookie; the session ID is never visible to, or stored by, this code.
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
+// Turns an API path such as a stored photo URL ("/uploads/...") into a full URL.
+export function apiUrl(path: string) {
+  return `${API_BASE_URL}${path}`
+}
+
 export type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; message: string; code?: string; details?: unknown }
@@ -50,8 +55,9 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, signal
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       credentials: 'include',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      // FormData (photo uploads) sets its own multipart Content-Type with the boundary.
+      headers: body === undefined || body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
       signal,
     })
   } catch (err) {
