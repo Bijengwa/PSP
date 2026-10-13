@@ -68,6 +68,7 @@ export default function App() {
             <Route path="orders" element={<PlaceholderPage title="Orders" />} />
             <Route path="customers" element={<PlaceholderPage title="Customers" />} />
             <Route path="staff" element={<PlaceholderPage title="Staff" />} />
+            <Route path="staff/new" element={<PlaceholderPage title="Register Staff" />} />
             <Route path="reset-requests" element={<ResetRequestsPage />} />
             <Route path="reports" element={<PlaceholderPage title="Reports" />} />
             <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />

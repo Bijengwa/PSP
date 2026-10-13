@@ -380,7 +380,141 @@ describe('POST /api/auth/logout', () => {
   });
 });
 
+describe('POST /api/auth/logout-all', () => {
+  function logoutAll(sessionId) {
+    const req = request(app).post('/api/auth/logout-all').set('Origin', ORIGIN);
+    return sessionId ? req.set('Cookie', `psp_sid=${sessionId}`) : req;
+  }
+
+  test('ends every session of the person, this device included, on the very next request', async () => {
+    const laptop = await loginAsAdmin();
+    const phone = await loginAsAdmin();
+
+    const res = await logoutAll(laptop);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: null });
+    expect(sessionCookieFrom(res)).toMatch(/Expires=Thu, 01 Jan 1970/);
+    expect((await me(laptop)).status).toBe(401);
+    expect((await me(phone)).status).toBe(401);
+    expect(storedKeysExceptRateLimits()).toEqual([]);
+  });
+
+  test("leaves other people's sessions alone", async () => {
+    const [other] = await db('staff_profiles')
+      .insert({ full_name: 'Other Person', email: 'other@psp.test', password_hash: passwordHash, role_id: (await db('roles').first('id')).id, must_change_password: false })
+      .returning('id');
+    try {
+      const mine = await loginAsAdmin();
+      const theirs = sessionIdFrom(await postLogin({ email: 'other@psp.test', password: PASSWORD }));
+
+      expect((await logoutAll(mine)).status).toBe(200);
+
+      expect((await me(mine)).status).toBe(401);
+      expect((await me(theirs)).status).toBe(200);
+    } finally {
+      await db('staff_profiles').where({ id: other.id }).del();
+    }
+  });
+
+  test('works while a temporary password is pending', async () => {
+    const sessionId = await loginAsAdmin();
+    await db('staff_profiles').where({ id: adminId }).update({ must_change_password: true });
+
+    expect((await logoutAll(sessionId)).status).toBe(200);
+    expect((await me(sessionId)).status).toBe(401);
+  });
+
+  test('needs a session and the app origin', async () => {
+    expect((await logoutAll()).status).toBe(401);
+
+    const sessionId = await loginAsAdmin();
+    const noOrigin = await request(app).post('/api/auth/logout-all').set('Cookie', `psp_sid=${sessionId}`);
+    expect(noOrigin.status).toBe(403);
+    expect((await me(sessionId)).status).toBe(200);
+  });
+
+  test('with Redis down it fails closed with 503', async () => {
+    const sessionId = await loginAsAdmin();
+    redis.client.failing = true;
+
+    expect((await logoutAll(sessionId)).status).toBe(503);
+  });
+});
+
 describe('revocation', () => {
+  // M3.3: every path that can lock a person out ends their sessions before the
+  // next request. Deactivation and role change join this list when M4 builds them.
+  const TEMPORARY = 'Temp-Bridge-2026!';
+  const NEW_PASSWORD = 'Another-Horse-77!';
+  const SECOND = { email: 'revoked@psp.test', fullName: 'Rae Revoked' };
+  let secondId;
+
+  beforeAll(async () => {
+    const [second] = await db('staff_profiles')
+      .insert({ full_name: SECOND.fullName, email: SECOND.email, password_hash: passwordHash, role_id: (await db('roles').first('id')).id, must_change_password: false })
+      .returning('id');
+    secondId = second.id;
+  });
+
+  afterAll(async () => {
+    await db('staff_profiles').where({ id: secondId }).del();
+  });
+
+  beforeEach(async () => {
+    await db('staff_profiles').where({ id: secondId }).update({ password_hash: passwordHash, must_change_password: false });
+  });
+
+  async function loginAsSecond() {
+    const res = await postLogin({ email: SECOND.email, password: PASSWORD });
+    expect(res.status).toBe(200);
+    return sessionIdFrom(res);
+  }
+
+  test("IT password reset ends the target's sessions on the very next request", async () => {
+    const laptop = await loginAsSecond();
+    const phone = await loginAsSecond();
+    const admin = await loginAsAdmin();
+
+    const res = await request(app)
+      .post(`/api/office/staff/${secondId}/reset-password`)
+      .set('Origin', ORIGIN)
+      .set('Cookie', `psp_sid=${admin}`)
+      .send({ temporaryPassword: TEMPORARY });
+
+    expect(res.status).toBe(200);
+    expect((await me(laptop)).status).toBe(401);
+    expect((await me(phone)).status).toBe(401);
+    expect((await me(admin)).status).toBe(200);
+  });
+
+  test("the person's own password change ends their other sessions on the very next request", async () => {
+    const laptop = await loginAsSecond();
+    const phone = await loginAsSecond();
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Origin', ORIGIN)
+      .set('Cookie', `psp_sid=${laptop}`)
+      .send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect((await me(laptop)).status).toBe(401);
+    expect((await me(phone)).status).toBe(401);
+    expect((await me(sessionIdFrom(res))).status).toBe(200);
+  });
+
+  test("'Log out of all devices' ends every session of the person on the very next request", async () => {
+    const laptop = await loginAsSecond();
+    const phone = await loginAsSecond();
+
+    const res = await request(app).post('/api/auth/logout-all').set('Origin', ORIGIN).set('Cookie', `psp_sid=${phone}`);
+
+    expect(res.status).toBe(200);
+    expect((await me(laptop)).status).toBe(401);
+    expect((await me(phone)).status).toBe(401);
+  });
+
   test("revoking all of a staff member's sessions logs out every device at once", async () => {
     const laptop = await loginAsAdmin();
     const phone = await loginAsAdmin();

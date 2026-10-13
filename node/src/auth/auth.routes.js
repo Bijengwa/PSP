@@ -129,6 +129,15 @@ router.post('/logout', async (req, res) => {
   res.json({ success: true, data: null });
 });
 
+// "Log out of all devices": ends every session of the caller, this one included.
+// Reachable while a temporary password is set, since it only ever logs out.
+router.post('/logout-all', requireAuth({ allowPendingPasswordChange: true }), async (req, res) => {
+  await sessions.destroyAllForStaff(req.staff.id);
+  clearSessionCookie(res);
+  req.log.info({ event: 'auth.logged_out_all', staffId: req.staff.id }, 'Logged out of all devices');
+  res.json({ success: true, data: null });
+});
+
 // ---------- IT's side of password resets, mounted at /api/office ----------
 // Admin only. The role is read from Postgres on every request by requireAuth.
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

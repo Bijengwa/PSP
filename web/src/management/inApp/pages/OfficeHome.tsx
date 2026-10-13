@@ -51,10 +51,10 @@ function saveTheme(theme: ThemePreference) {
 
 // Settings at /office/settings: appearance, security and account (logout).
 export function SettingsPage() {
-  const { logout } = useAuth()
+  const { logout, logoutAll } = useAuth()
   const navigate = useNavigate()
   const [theme, setTheme] = useState(readTheme)
-  const [loggingOut, setLoggingOut] = useState(false)
+  const [loggingOut, setLoggingOut] = useState<'one' | 'all' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   function changeTheme(next: ThemePreference) {
@@ -62,16 +62,16 @@ export function SettingsPage() {
     saveTheme(next)
   }
 
-  async function handleLogout() {
-    setLoggingOut(true)
+  async function handleLogout(scope: 'one' | 'all') {
+    setLoggingOut(scope)
     setError(null)
-    const result = await logout()
+    const result = await (scope === 'all' ? logoutAll() : logout())
     if (result.ok) {
       // Replace this entry so Back does not return here; any other office page
       // in the history is sent to login by RequireAuth.
       navigate(LOGIN_PATH, { replace: true })
     } else {
-      setLoggingOut(false)
+      setLoggingOut(null)
       setError(result.message)
     }
   }
@@ -114,9 +114,15 @@ export function SettingsPage() {
             Could not log out: {error}
           </div>
         )}
-        <button type="button" className="button button-secondary" onClick={handleLogout} disabled={loggingOut}>
-          {loggingOut ? 'Logging out…' : 'Log out'}
-        </button>
+        <div className="office-reset-actions">
+          <button type="button" className="button button-secondary" onClick={() => handleLogout('one')} disabled={loggingOut !== null}>
+            {loggingOut === 'one' ? 'Logging out…' : 'Log out'}
+          </button>
+          <button type="button" className="button button-secondary" onClick={() => handleLogout('all')} disabled={loggingOut !== null}>
+            {loggingOut === 'all' ? 'Logging out…' : 'Log out of all devices'}
+          </button>
+        </div>
+        <p className="office-settings-hint">Log out of all devices ends every session of your account, including this one.</p>
       </section>
     </>
   )

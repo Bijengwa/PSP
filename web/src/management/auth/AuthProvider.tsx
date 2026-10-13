@@ -25,6 +25,7 @@ type AuthContextValue = {
   state: AuthState
   login: (email: string, password: string) => Promise<ApiResult<{ staff: Staff }>>
   logout: () => Promise<ApiResult<null>>
+  logoutAll: () => Promise<ApiResult<null>>
   changePassword: (currentPassword: string, newPassword: string) => Promise<ApiResult<{ staff: Staff }>>
   retry: () => void
 }
@@ -68,6 +69,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result
   }, [])
 
+  // Ends every session of this person, including this one.
+  const logoutAll = useCallback(async () => {
+    const result = await apiRequest<null>('/api/auth/logout-all', { method: 'POST' })
+    if (result.ok) setState({ status: 'unauthenticated' })
+    return result
+  }, [])
+
   // The server cleared the flag and issued a fresh session cookie.
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
     const result = await apiRequest<{ staff: Staff }>('/api/auth/change-password', {
@@ -97,8 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo(
-    () => ({ state, login, logout, changePassword, retry }),
-    [state, login, logout, changePassword, retry],
+    () => ({ state, login, logout, logoutAll, changePassword, retry }),
+    [state, login, logout, logoutAll, changePassword, retry],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

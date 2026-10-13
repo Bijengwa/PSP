@@ -1,0 +1,9 @@
+{
+  "name": "psp-guards",
+  "version": "0.1.0",
+  "description": "PSP roadmap guards: current step in view, scope warnings, progress-tick checks and edit-collision warnings",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Bijengwa"
+  }
+}
