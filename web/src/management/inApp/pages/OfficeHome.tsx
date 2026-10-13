@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
 import { LOGIN_PATH, useAuth } from '../../auth/AuthProvider'
+import { passwordRules } from '../../auth/login'
 import { CHANGE_PASSWORD_PATH } from '../../auth/AuthProvider'
 import { RESET_REQUESTS_CHANGED } from '../layout/Sidebar'
 
@@ -148,14 +149,15 @@ function queueErrorMessage(result: Extract<ApiResult<unknown>, { ok: false }>) {
   return result.message
 }
 
-// Inline form on a queue row: IT types a temporary password and hands it to the
-// person in person. The server checks its strength; its reasons are listed here.
-function TemporaryPasswordForm({
+// Inline form on a queue row or staff row: IT types a temporary password and hands
+// it to the person in person. The rules show live; the server stays the authority
+// and its reasons are listed on failure. Also used by the Staff list.
+export function TemporaryPasswordForm({
   staff,
   onDone,
   onCancel,
 }: {
-  staff: NonNullable<ResetRequest['staff']>
+  staff: { id: string; fullName: string; email?: string }
   onDone: () => void
   onCancel: () => void
 }) {
@@ -165,6 +167,7 @@ function TemporaryPasswordForm({
   const inputId = `temporary-password-${staff.id}`
   const hintId = `${inputId}-hint`
   const errorId = `${inputId}-error`
+  const rules = passwordRules(password, null, { email: staff.email ?? '', fullName: staff.fullName })
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -202,9 +205,18 @@ function TemporaryPasswordForm({
         autoFocus
       />
       <p id={hintId} className="office-settings-hint">
-        At least 10 characters with upper and lower case letters, a digit and a symbol, and not their name or email.
-        Give it to them in person; they must choose their own password at next login.
+        Give it to them in person; they must choose their own password at next login, and every session they have
+        is ended.
       </p>
+      <ul className="password-rules" aria-label="Password rules">
+        {rules.map((rule) => (
+          <li key={rule.label} className={rule.met ? 'password-rule is-met' : 'password-rule'}>
+            <span className="password-rule-mark" aria-hidden="true" />
+            {rule.label}
+            <span className="visually-hidden">{rule.met ? ', met' : ', not met'}</span>
+          </li>
+        ))}
+      </ul>
       {error && (
         <div id={errorId} className="office-error" role="alert">
           {error.message}

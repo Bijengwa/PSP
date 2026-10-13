@@ -183,6 +183,108 @@ async function resetStaffPassword({ staffId, temporaryPassword, resetBy }) {
   return { staff: toPublicStaff({ ...staff, must_change_password: true }), resolvedRequests };
 }
 
+const REGISTRABLE_ROLES = ['admin', 'staff'];
+
+// IT registers someone with a temporary password. Returns { staff }, or
+// { error: 'weak', problems }, { error: 'email_taken' } or { error: 'role' }.
+// The person must choose their own password at first login. The password is
+// hashed here and never logged or returned.
+async function registerStaff({ fullName, email, phone, role, temporaryPassword, createdBy }) {
+  const roleRow = REGISTRABLE_ROLES.includes(role) ? await db('roles').where({ name: role }).first('id') : null;
+  if (!roleRow) return { error: 'role' };
+
+  const problems = passwordProblems(temporaryPassword, { email, fullName });
+  if (problems.length) return { error: 'weak', problems };
+
+  if (await db('staff_profiles').where({ email }).first('id')) return { error: 'email_taken' };
+
+  const passwordHash = await hashPassword(temporaryPassword);
+  let row;
+  try {
+    [row] = await db('staff_profiles')
+      .insert({
+        full_name: fullName,
+        email,
+        phone_number: phone,
+        password_hash: passwordHash,
+        role_id: roleRow.id,
+        must_change_password: true,
+        created_by: createdBy,
+      })
+      .returning(['id', 'created_at']);
+  } catch (err) {
+    // Two registrations of the same email racing past the check above.
+    if (err.code === '23505') return { error: 'email_taken' };
+    throw err;
+  }
+
+  return {
+    staff: {
+      id: row.id,
+      fullName,
+      email,
+      phone,
+      role,
+      isActive: true,
+      mustChangePassword: true,
+      createdAt: row.created_at,
+    },
+  };
+}
+
+const STAFF_STATUSES = ['active', 'inactive'];
+const STAFF_PAGE_SIZE = 25;
+
+// IT's staff list: search by name or email, optional status filter, paged.
+// Never selects the password hash. `total` counts every match, not just the page.
+async function listStaff({ q, status, page = 1, limit = STAFF_PAGE_SIZE }) {
+  const filters = (query) => {
+    if (q) {
+      // Escape LIKE wildcards so a typed % or _ is matched literally.
+      const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+      query.where((b) => b.whereILike('s.full_name', like).orWhereILike('s.email', like));
+    }
+    if (status) query.where('s.is_active', status === 'active');
+    return query;
+  };
+
+  const [rows, [{ count }]] = await Promise.all([
+    filters(staffQuery())
+      .orderBy([{ column: 's.full_name', order: 'asc' }, { column: 's.id' }])
+      .limit(limit)
+      .offset((page - 1) * limit)
+      .select(
+        's.id',
+        's.full_name',
+        's.email',
+        's.phone_number',
+        's.is_active',
+        's.must_change_password',
+        's.last_login_at',
+        's.created_at',
+        'r.name as role',
+      ),
+    filters(staffQuery()).count('* as count'),
+  ]);
+
+  return {
+    total: Number(count),
+    page,
+    pageSize: limit,
+    staff: rows.map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      email: row.email,
+      phone: row.phone_number,
+      role: row.role,
+      isActive: row.is_active,
+      mustChangePassword: row.must_change_password,
+      lastLoginAt: row.last_login_at,
+      createdAt: row.created_at,
+    })),
+  };
+}
+
 module.exports = {
   LOCKOUT,
   RESET_REQUEST_STATUSES,
@@ -192,6 +294,11 @@ module.exports = {
   listResetRequests,
   dismissResetRequest,
   resetStaffPassword,
+  registerStaff,
+  REGISTRABLE_ROLES,
+  listStaff,
+  STAFF_STATUSES,
+  STAFF_PAGE_SIZE,
   findStaffById,
   toPublicStaff,
 };

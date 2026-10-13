@@ -128,15 +128,18 @@ const BADGE_REFRESH_MS = 60 * 1000
 export const NAV_GROUPS: {
   label: string
   adminOnly?: boolean
-  items: { label: string; to: string; icon: IconName }[]
+  items: { label: string; to: string; icon: IconName; adminOnly?: boolean }[]
 }[] = [
-  { label: 'Overview', items: [{ label: 'Home', to: OFFICE_HOME_PATH, icon: 'home' }] },
+  {
+    label: 'Overview',
+    items: [{ label: 'Home', to: OFFICE_HOME_PATH, icon: 'home' }],
+  },
   {
     label: 'Catalog',
     items: [
       { label: 'Products', to: '/office/products', icon: 'products' },
       { label: 'Add Product', to: '/office/products/new', icon: 'addProduct' },
-      { label: 'Inventory', to: '/office/inventory', icon: 'inventory' },
+      { label: 'Inventory', to: '/office/inventory', icon: 'inventory', adminOnly: true },
     ],
   },
   {
@@ -148,9 +151,7 @@ export const NAV_GROUPS: {
   },
   {
     label: 'Management',
-    items: [
-      { label: 'Reports', to: '/office/reports', icon: 'reports' },
-    ],
+    items: [{ label: 'Reports', to: '/office/reports', icon: 'reports', adminOnly: true }],
   },
   {
     // The server checks every IT call too; hiding the group is only a convenience.
@@ -159,22 +160,38 @@ export const NAV_GROUPS: {
     items: [
       { label: 'Staff', to: '/office/staff', icon: 'staff' },
       { label: 'Register Staff', to: '/office/staff/new', icon: 'addStaff' },
-      { label: 'Reset requests', to: RESET_REQUESTS_PATH, icon: 'resetRequests' },
+      {
+        label: 'Reset requests',
+        to: RESET_REQUESTS_PATH,
+        icon: 'resetRequests',
+      },
     ],
   },
   {
     label: 'System',
     items: [
-      { label: 'Notifications', to: '/office/notifications', icon: 'notifications' },
+      {
+        label: 'Notifications',
+        to: '/office/notifications',
+        icon: 'notifications',
+      },
       { label: 'Settings', to: '/office/settings', icon: 'settings' },
     ],
   },
 ]
 
-function CloseIcon() {
+function MenuIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
     </svg>
   )
 }
@@ -214,15 +231,36 @@ type SidebarProps = {
   id: string
   drawerOpen: boolean
   drawerShown: boolean
+  // Desktop icon-only rail. Labels stay in the DOM (visually hidden) as accessible names.
+  collapsed: boolean
+  isMobile: boolean
+  // The toggle button: closes the drawer on mobile, collapses/expands the rail on desktop.
   closeButtonRef: RefObject<HTMLButtonElement | null>
   onClose: () => void
+  onToggleRail: () => void
 }
 
-// The office sidebar. On mobile it is an overlay drawer; OfficeLayout owns its state.
-export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, onClose }: SidebarProps) {
+// The office sidebar. On mobile it is an overlay drawer; on desktop it can collapse to
+// an icon rail. OfficeLayout owns both states. The head (brand + toggle) is fixed and
+// only the navigation below it scrolls.
+export default function Sidebar({
+  id,
+  drawerOpen,
+  drawerShown,
+  collapsed,
+  isMobile,
+  closeButtonRef,
+  onClose,
+  onToggleRail,
+}: SidebarProps) {
   const { state } = useAuth()
   const isAdmin = state.status === 'authenticated' && state.staff.role === 'admin'
   const pendingResets = usePendingResetCount(isAdmin)
+  // Staff do not see admin-only items or groups (the server still checks every call);
+  // a group left with no items is dropped, heading included.
+  const visibleGroups = NAV_GROUPS.filter((group) => isAdmin || !group.adminOnly)
+    .map((group) => ({ ...group, items: group.items.filter((item) => isAdmin || !item.adminOnly) }))
+    .filter((group) => group.items.length > 0)
 
   return (
     <aside
@@ -233,7 +271,12 @@ export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, o
       aria-label={drawerShown ? 'Office navigation' : undefined}
     >
       <div className="office-aside-head">
-        <Link to={OFFICE_HOME_PATH} className="office-brand" onClick={onClose}>
+        <Link
+          to={OFFICE_HOME_PATH}
+          className="office-brand"
+          title={collapsed ? 'PSP Engineering' : undefined}
+          onClick={onClose}
+        >
           <span className="office-brand-mark" aria-hidden="true">
             P
           </span>
@@ -245,23 +288,26 @@ export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, o
         <button
           ref={closeButtonRef}
           type="button"
-          className="office-icon-button office-drawer-close"
-          aria-label="Close navigation"
-          onClick={onClose}
+          className="office-icon-button office-aside-toggle"
+          aria-label={isMobile ? 'Close navigation' : collapsed ? 'Expand navigation' : 'Collapse navigation'}
+          aria-expanded={isMobile ? drawerShown : !collapsed}
+          aria-controls={id}
+          title={isMobile ? undefined : collapsed ? 'Expand navigation' : 'Collapse navigation'}
+          onClick={isMobile ? onClose : onToggleRail}
         >
-          <CloseIcon />
+          <MenuIcon />
         </button>
       </div>
 
-      <nav className="office-nav" aria-label="Office">
-        {NAV_GROUPS.filter((group) => isAdmin || !group.adminOnly).map((group) => (
-          <div key={group.label} className="office-nav-group">
-            <h2 id={`office-nav-${group.label}`} className="office-nav-heading">
-              {group.label}
-            </h2>
-            <ul className="office-nav-list" aria-labelledby={`office-nav-${group.label}`}>
-              {group.items
-                .map((item) => {
+      <div className="office-aside-scroll">
+        <nav className="office-nav" aria-label="Office">
+          {visibleGroups.map((group) => (
+            <div key={group.label} className="office-nav-group">
+              <h2 id={`office-nav-${group.label}`} className="office-nav-heading">
+                {group.label}
+              </h2>
+              <ul className="office-nav-list" aria-labelledby={`office-nav-${group.label}`}>
+                {group.items.map((item) => {
                   const badge = item.to === RESET_REQUESTS_PATH ? pendingResets : 0
                   return (
                     <li key={item.to}>
@@ -271,10 +317,11 @@ export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, o
                         end
                         className="office-nav-link"
                         aria-label={badge > 0 ? `${item.label}, ${badge} pending` : undefined}
+                        title={collapsed ? item.label : undefined}
                         onClick={onClose}
                       >
                         <NavIcon name={item.icon} />
-                        <span>{item.label}</span>
+                        <span className="office-nav-label">{item.label}</span>
                         {badge > 0 && (
                           <span className="office-nav-badge" aria-hidden="true">
                             {badge > 99 ? '99+' : badge}
@@ -284,20 +331,29 @@ export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, o
                     </li>
                   )
                 })}
-            </ul>
-          </div>
-        ))}
-      </nav>
+              </ul>
+            </div>
+          ))}
+        </nav>
 
-      <div className="office-aside-foot">
-        <a href="/" className="office-store-link" target="_blank" rel="noopener">
-          <NavIcon name="store" />
-          <span className="office-store-text">
-            <span className="office-store-title">View the store</span>
-            <span className="office-store-sub">See it as customers do</span>
-          </span>
-          <NavIcon name="arrow" size={16} />
-        </a>
+        <div className="office-aside-foot">
+          <a
+            href="/"
+            className="office-store-link"
+            target="_blank"
+            rel="noopener"
+            title={collapsed ? 'View the store' : undefined}
+          >
+            <NavIcon name="store" />
+            <span className="office-store-text">
+              <span className="office-store-title">View the store</span>
+              <span className="office-store-sub">See it as customers do</span>
+            </span>
+            <span className="office-store-arrow">
+              <NavIcon name="arrow" size={16} />
+            </span>
+          </a>
+        </div>
       </div>
     </aside>
   )

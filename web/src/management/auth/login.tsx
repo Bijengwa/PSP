@@ -244,7 +244,14 @@ function personalParts(email: string, fullName: string) {
     .filter((part) => part.length >= MIN_PERSONAL_PART)
 }
 
-function passwordRules(password: string, currentPassword: string, staff: { email: string; fullName: string } | null) {
+// `currentPassword` is null where there is no current password to differ from
+// (IT registering someone), which drops the last rule.
+// eslint-disable-next-line react-refresh/only-export-components
+export function passwordRules(
+  password: string,
+  currentPassword: string | null,
+  staff: { email: string; fullName: string } | null,
+) {
   const lower = password.toLowerCase()
   const personal = staff ? personalParts(staff.email, staff.fullName) : []
   const typed = password.length > 0
@@ -256,7 +263,9 @@ function passwordRules(password: string, currentPassword: string, staff: { email
     { label: 'A symbol', met: /[^A-Za-z0-9]/.test(password) },
     { label: 'Not your name or email', met: typed && !personal.some((part) => lower.includes(part)) },
     { label: 'Not a common password', met: typed && !COMMON_PASSWORDS.has(lower) },
-    { label: 'Different from the current password', met: typed && password !== currentPassword },
+    ...(currentPassword === null
+      ? []
+      : [{ label: 'Different from the current password', met: typed && password !== currentPassword }]),
   ]
 }
 

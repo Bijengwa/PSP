@@ -24,7 +24,11 @@ function buildOptions({ env = process.env.NODE_ENV || 'development', level = pro
     redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
   };
   if (env === 'development') {
-    options.transport = { target: 'pino-pretty', options: { translateTime: 'SYS:HH:MM:ss' } };
+    // Request headers stay in the JSON log (redacted); the console hides them to stay readable.
+    options.transport = {
+      target: 'pino-pretty',
+      options: { translateTime: 'SYS:HH:MM:ss', ignore: 'req.headers' },
+    };
   }
   return options;
 }
