@@ -9,6 +9,11 @@ const {
   listResetRequests,
   dismissResetRequest,
   resetStaffPassword,
+  registerStaff,
+  REGISTRABLE_ROLES,
+  listStaff,
+  STAFF_STATUSES,
+  STAFF_PAGE_SIZE,
   toPublicStaff,
 } = require('./auth.service');
 const {
@@ -166,6 +171,70 @@ officeRouter.post('/reset-requests/:id/dismiss', async (req, res) => {
 
   req.log.info({ event: 'reset_request.dismissed', requestId: id, by: req.staff.id }, 'Reset request dismissed');
   res.json({ success: true, data: null });
+});
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_PATTERN = /^\+?[0-9][0-9 ()-]{5,19}$/;
+
+// Validates the registration body. Returns { values } or { fields } (field -> message).
+function parseRegistration(body) {
+  const { fullName, email, phone, role, temporaryPassword } = body ?? {};
+  const fields = {};
+  const name = typeof fullName === 'string' ? fullName.trim().replace(/\s+/g, ' ') : '';
+  const mail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const tel = typeof phone === 'string' ? phone.trim() : '';
+
+  if (!name) fields.fullName = 'Enter the full name.';
+  else if (name.length > 120) fields.fullName = 'Use at most 120 characters.';
+  if (!mail) fields.email = 'Enter an email address.';
+  else if (mail.length > 254 || !EMAIL_PATTERN.test(mail)) fields.email = 'Enter a valid email address.';
+  if (!tel) fields.phone = 'Enter a phone number.';
+  else if (!PHONE_PATTERN.test(tel)) fields.phone = 'Enter a valid phone number, for example +255 700 000 000.';
+  if (!REGISTRABLE_ROLES.includes(role)) fields.role = 'Choose Admin or Staff.';
+  if (typeof temporaryPassword !== 'string' || !temporaryPassword) {
+    fields.temporaryPassword = 'Enter a temporary password.';
+  } else if (temporaryPassword.length > 1024) {
+    fields.temporaryPassword = 'Use at most 1024 characters.';
+  }
+
+  if (Object.keys(fields).length) return { fields };
+  return { values: { fullName: name, email: mail, phone: tel, role, temporaryPassword } };
+}
+
+officeRouter.get('/staff', async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
+  const status = req.query.status || undefined;
+  if (status && !STAFF_STATUSES.includes(status)) {
+    throw httpError(400, `status must be one of: ${STAFF_STATUSES.join(', ')}`);
+  }
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  res.json({ success: true, data: await listStaff({ q, status, page, limit: STAFF_PAGE_SIZE }) });
+});
+
+officeRouter.post('/staff', async (req, res) => {
+  const parsed = parseRegistration(req.body);
+  if (parsed.fields) {
+    throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: parsed.fields });
+  }
+
+  const result = await registerStaff({ ...parsed.values, createdBy: req.staff.id });
+  if (result.error === 'email_taken') {
+    throw Object.assign(httpError(409, 'Someone is already registered with this email.', 'EMAIL_TAKEN'), {
+      details: { email: 'This email is already registered.' },
+    });
+  }
+  if (result.error === 'weak') {
+    throw Object.assign(httpError(400, 'The temporary password does not meet the rules', 'WEAK_PASSWORD'), {
+      details: result.problems,
+    });
+  }
+  if (result.error) throw httpError(400, 'Choose Admin or Staff.', 'VALIDATION_ERROR');
+
+  req.log.info(
+    { event: 'staff.registered', staffId: result.staff.id, role: result.staff.role, by: req.staff.id },
+    'Staff registered',
+  );
+  res.status(201).json({ success: true, data: { staff: result.staff } });
 });
 
 officeRouter.post('/staff/:id/reset-password', async (req, res) => {

@@ -159,18 +159,39 @@ a {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 20px 14px 16px;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--surface-muted);
   border-right: 1px solid var(--border);
 }
 
+/* Brand and toggle never scroll; only .office-aside-scroll does. */
 .office-aside-head {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 20px 14px 12px;
+}
+
+.office-aside-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+  padding: 8px 14px 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Thin scrollbar that stays invisible until the sidebar is hovered or focused. */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.office-aside:hover .office-aside-scroll,
+.office-aside-scroll:focus-within {
+  scrollbar-color: var(--border) transparent;
 }
 
 .office-brand {
@@ -402,11 +423,15 @@ a {
   height: 40px;
 }
 
-/* Hamburger, drawer close button and backdrop exist only on mobile. */
+/* The header opener and the backdrop exist only on mobile; on desktop the
+   toggle lives in the sidebar head. */
 .office-menu-toggle,
-.office-drawer-close,
 .office-backdrop {
   display: none;
+}
+
+.office-aside-toggle {
+  flex-shrink: 0;
 }
 
 .office-profile-button {
@@ -753,6 +778,82 @@ a {
   outline-offset: 1px;
 }
 
+/* Desktop: the hamburger collapses the sidebar to an icon-only rail.
+   Labels and headings are visually hidden, not removed, so names stay accessible. */
+@media (min-width: 769px) {
+  .office-aside {
+    transition: width 0.2s ease;
+  }
+
+  .office-collapsed .office-aside {
+    width: 72px;
+  }
+
+  .office-collapsed .office-aside-head {
+    flex-direction: column;
+    padding: 16px 12px 8px;
+  }
+
+  .office-collapsed .office-aside-scroll {
+    padding: 8px 12px 16px;
+  }
+
+  .office-collapsed .office-brand-text,
+  .office-collapsed .office-nav-heading,
+  .office-collapsed .office-nav-label,
+  .office-collapsed .office-store-text,
+  .office-collapsed .office-store-arrow {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .office-collapsed .office-brand {
+    padding: 4px 0;
+  }
+
+  .office-collapsed .office-nav {
+    gap: 12px;
+  }
+
+  /* A thin rule stands in for the hidden group headings. */
+  .office-collapsed .office-nav-group + .office-nav-group {
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .office-collapsed .office-nav-link {
+    justify-content: center;
+    width: 100%;
+    padding: 0;
+  }
+
+  .office-collapsed .office-nav-link.active::before {
+    left: -12px;
+  }
+
+  /* Pending count becomes a small dot-sized badge on the icon corner. */
+  .office-collapsed .office-nav-badge {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    font-size: 10px;
+    line-height: 16px;
+  }
+
+  .office-collapsed .office-store-link {
+    justify-content: center;
+    padding: 10px 0;
+  }
+}
+
 /* Mobile: the sidebar becomes an overlay drawer opened from the hamburger.
    Keep the breakpoint in sync with MOBILE_QUERY in inApp/dashboard.tsx. */
 @media (max-width: 768px) {
@@ -762,9 +863,6 @@ a {
     z-index: 40;
     width: min(288px, 85vw);
     height: auto;
-    padding: 16px 14px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
     box-shadow: var(--shadow-drawer);
     transform: translateX(-100%);
     visibility: hidden;
@@ -787,8 +885,7 @@ a {
     background: var(--backdrop);
   }
 
-  .office-menu-toggle,
-  .office-drawer-close {
+  .office-menu-toggle {
     display: inline-flex;
     flex-shrink: 0;
   }
@@ -841,4 +938,165 @@ a {
   .office-store-link {
     transition: none;
   }
+}
+
+/* ---------- Register staff ---------- */
+.office-register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 560px;
+  margin-top: 24px;
+}
+
+.office-register-form .office-error {
+  margin-bottom: 0;
+}
+
+.office-register-form .office-error ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.field-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.office-register-done {
+  max-width: 560px;
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.office-register-done h2 {
+  margin-bottom: 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.office-register-done p {
+  margin-bottom: 16px;
+  color: var(--ink-muted);
+}
+
+/* ---------- Staff list ---------- */
+.office-staff-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 0 16px;
+}
+
+.office-staff-search,
+.office-staff-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.office-staff-search .field-input {
+  width: min(320px, 100%);
+}
+
+.office-staff-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.office-staff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.office-staff-table th,
+.office-staff-table td {
+  padding: 12px 16px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.office-staff-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.office-staff-table th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.office-staff-name {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.office-staff-meta {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.office-staff-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-staff-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.office-staff-facts {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.office-staff-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.office-staff-facts dt {
+  color: var(--ink-muted);
+}
+
+.office-staff-facts dd {
+  margin: 0;
+  text-align: right;
+}
+
+.office-staff-paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.office-staff-paging .office-reset-actions {
+  align-items: center;
 }

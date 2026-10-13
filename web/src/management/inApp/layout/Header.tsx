@@ -31,7 +31,8 @@ type HeaderProps = {
   onOpenDrawer: () => void
 }
 
-// The office header: hamburger (mobile), page title, notifications and profile menu.
+// The office header: drawer opener (mobile only; on desktop the toggle lives in the
+// sidebar), page title, notifications and profile menu.
 export default function Header({ staff, drawerId, drawerShown, menuButtonRef, onOpenDrawer }: HeaderProps) {
   const { pathname } = useLocation()
 

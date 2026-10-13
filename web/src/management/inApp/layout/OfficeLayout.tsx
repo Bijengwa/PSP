@@ -24,7 +24,10 @@ export default function OfficeLayout() {
   const { state } = useAuth()
   const isMobile = useSyncExternalStore(subscribeToMobile, isMobileViewport)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Desktop rail state. Kept in memory only: the theme is the one thing the office may store.
+  const [navCollapsed, setNavCollapsed] = useState(false)
   const drawerShown = drawerOpen && isMobile
+  const railCollapsed = navCollapsed && !isMobile
   const drawerId = useId()
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
@@ -53,15 +56,18 @@ export default function OfficeLayout() {
   const { staff } = state
 
   return (
-    <div className="office">
+    <div className={railCollapsed ? 'office office-collapsed' : 'office'}>
       {/* Tapping outside the open drawer closes it; keyboard users have Escape and the close button. */}
       {drawerShown && <div className="office-backdrop" aria-hidden="true" onClick={closeDrawer} />}
       <Sidebar
         id={drawerId}
         drawerOpen={drawerOpen}
         drawerShown={drawerShown}
+        collapsed={railCollapsed}
+        isMobile={isMobile}
         closeButtonRef={closeButtonRef}
         onClose={closeDrawer}
+        onToggleRail={() => setNavCollapsed((value) => !value)}
       />
 
       {/* While the drawer is open the rest of the page cannot be focused or clicked. */}
