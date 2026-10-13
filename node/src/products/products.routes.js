@@ -2,6 +2,7 @@ const express = require('express');
 const { httpError, requireSameOrigin, requireAuth } = require('../auth/auth.middleware');
 const {
   PRODUCT_STATUSES,
+  STOCK_FILTERS,
   PRODUCT_PAGE_SIZE,
   MAX_IMAGES,
   listCategories,
@@ -178,6 +179,10 @@ router.get('/', async (req, res) => {
   if (status && !PRODUCT_STATUSES.includes(status)) {
     throw httpError(400, `status must be one of: ${PRODUCT_STATUSES.join(', ')}`);
   }
+  const stock = req.query.stock || undefined;
+  if (stock && !STOCK_FILTERS.includes(stock)) {
+    throw httpError(400, `stock must be one of: ${STOCK_FILTERS.join(', ')}`);
+  }
   const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
   if (categoryId !== undefined && (!Number.isInteger(categoryId) || categoryId < 1)) {
     throw httpError(400, 'categoryId must be a positive whole number');
@@ -186,7 +191,7 @@ router.get('/', async (req, res) => {
 
   res.json({
     success: true,
-    data: await listProducts({ q, categoryId, status, page, limit: PRODUCT_PAGE_SIZE }),
+    data: await listProducts({ q, categoryId, status, stock, page, limit: PRODUCT_PAGE_SIZE }),
   });
 });
 

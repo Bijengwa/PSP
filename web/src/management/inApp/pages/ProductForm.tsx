@@ -323,6 +323,13 @@ function ProductEditor({ product, notice: initialNotice = null }: EditorProps) {
   const fileInput = useRef<HTMLInputElement>(null)
   const objectUrls = useRef<string[]>([])
 
+  // "Changes saved." goes away on its own.
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
   useEffect(() => {
     const urls = objectUrls.current
     return () => urls.forEach((url) => URL.revokeObjectURL(url))

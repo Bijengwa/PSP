@@ -147,10 +147,19 @@ function escapeLike(value) {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
-// Search by name, SKU or brand, filter by category and status, paged. `total`
-// counts every match, not just the page.
-async function listProducts({ q, categoryId, status, page = 1, limit = PRODUCT_PAGE_SIZE }) {
-  const filters = (query) => {
+const STOCK_FILTERS = ['in_stock', 'low_stock', 'out_of_stock'];
+
+const STOCK_CONDITIONS = {
+  out_of_stock: 'p.quantity_in_stock <= 0',
+  low_stock: 'p.quantity_in_stock > 0 and p.quantity_in_stock <= p.low_stock_at',
+  in_stock: 'p.quantity_in_stock > p.low_stock_at',
+};
+
+// Search by name, SKU or brand, filter by category, status and stock level, paged.
+// `total` counts every match, not just the page. `counts` is how many products
+// each stock tab would show with the same search, category and status filters.
+async function listProducts({ q, categoryId, status, stock, page = 1, limit = PRODUCT_PAGE_SIZE }) {
+  const filters = (query, { withStock = true } = {}) => {
     if (q) {
       const like = `%${escapeLike(q)}%`;
       query.where((b) =>
@@ -161,19 +170,37 @@ async function listProducts({ q, categoryId, status, page = 1, limit = PRODUCT_P
     if (status === 'archived') query.where('p.is_archived', true);
     if (status === 'published') onlyLive(query);
     if (status === 'draft') query.where({ 'p.is_published': false, 'p.is_archived': false });
+    if (withStock && stock) query.whereRaw(STOCK_CONDITIONS[stock]);
     return query;
   };
 
-  const [rows, [{ count }]] = await Promise.all([
+  const [rows, [{ count }], [counts]] = await Promise.all([
     filters(productQuery())
       .orderBy([{ column: 'p.created_at', order: 'desc' }, { column: 'p.id' }])
       .limit(limit)
       .offset((page - 1) * limit)
       .select(PRODUCT_COLUMNS),
     filters(productQuery()).count('* as count'),
+    filters(productQuery(), { withStock: false }).select(
+      db.raw('count(*) as all_count'),
+      db.raw(`count(*) filter (where ${STOCK_CONDITIONS.in_stock}) as in_stock`),
+      db.raw(`count(*) filter (where ${STOCK_CONDITIONS.low_stock}) as low_stock`),
+      db.raw(`count(*) filter (where ${STOCK_CONDITIONS.out_of_stock}) as out_of_stock`),
+    ),
   ]);
 
-  return { total: Number(count), page, pageSize: limit, products: await withImages(rows) };
+  return {
+    total: Number(count),
+    page,
+    pageSize: limit,
+    counts: {
+      all: Number(counts.all_count),
+      in_stock: Number(counts.in_stock),
+      low_stock: Number(counts.low_stock),
+      out_of_stock: Number(counts.out_of_stock),
+    },
+    products: await withImages(rows),
+  };
 }
 
 async function findProduct(id) {
@@ -333,6 +360,7 @@ async function reorderImages(productId, orderedIds) {
 
 module.exports = {
   PRODUCT_STATUSES,
+  STOCK_FILTERS,
   PRODUCT_PAGE_SIZE,
   MAX_IMAGES,
   listCategories,

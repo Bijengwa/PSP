@@ -408,6 +408,27 @@ describe('products API', () => {
     expect(many.body.error.code).toBe('TOO_MANY_FILES');
   });
 
+  test('stock tabs: filter and counts', async () => {
+    const make = (sku, quantityInStock) =>
+      as(adminCookie).post('/api/office/products', valid({ name: sku, sku, quantityInStock, lowStockAt: 3 }));
+    await make('A-0', 0);
+    await make('A-1', 1);
+    await make('A-3', 3);
+    await make('A-9', 9);
+    await make('B-0', 0);
+
+    const list = async (qs) => (await as(adminCookie).get(`/api/office/products?${qs}`)).body.data;
+    const all = await list('');
+    expect(all.counts).toEqual({ all: 5, in_stock: 1, low_stock: 2, out_of_stock: 2 });
+    expect((await list('stock=low_stock')).products.map((p) => p.sku).sort()).toEqual(['A-1', 'A-3']);
+    expect((await list('stock=out_of_stock')).total).toBe(2);
+    // Counts ignore the stock tab itself but follow the search.
+    const searched = await list('stock=in_stock&q=B-');
+    expect(searched.total).toBe(0);
+    expect(searched.counts).toEqual({ all: 1, in_stock: 0, low_stock: 0, out_of_stock: 1 });
+    expect((await as(adminCookie).get('/api/office/products?stock=nope')).status).toBe(400);
+  });
+
   test('only published, not archived products are live (query level)', async () => {
     await as(adminCookie).post('/api/office/products', valid({ isPublished: true }));
     await as(adminCookie).post('/api/office/products', valid({ name: 'Draft', sku: 'D-1' }));
