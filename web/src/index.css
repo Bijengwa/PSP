@@ -19,6 +19,8 @@
   --navy: #0d2b3e;
   --danger: #b42318;
   --danger-soft: #fde4e1;
+  --warning: #8a5300;
+  --warning-soft: #fdecc8;
   --hover-overlay: rgb(255 255 255 / 55%);
   --shadow-sm: 0 1px 2px rgb(15 35 38 / 8%);
   --shadow-popover: 0 8px 24px rgb(15 35 38 / 12%);
@@ -52,6 +54,8 @@
   --navy: #0d2b3e;
   --danger: #ff8a80;
   --danger-soft: #3d1916;
+  --warning: #f5c26b;
+  --warning-soft: #3d2e10;
   --hover-overlay: rgb(255 255 255 / 5%);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
   --shadow-popover: 0 8px 24px rgb(0 0 0 / 50%);
@@ -1099,4 +1103,651 @@ a {
 
 .office-staff-paging .office-reset-actions {
   align-items: center;
+}
+
+/* ---------- Products ---------- */
+.office-product-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.office-product-textarea {
+  height: auto;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.office-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+
+.office-number {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.office-status {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+}
+
+.office-status-published {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.office-status-archived {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .office-product-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Product editor (Add / Edit) ---------- */
+.office-product-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.office-product-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.office-product-heading {
+  min-width: 0;
+}
+
+.office-product-heading .office-title {
+  overflow-wrap: anywhere;
+}
+
+.office-product-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.office-product-actions .button {
+  gap: 8px;
+}
+
+.office-status-line:empty {
+  display: none;
+}
+
+.office-status-line {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.office-product-page .office-error {
+  margin-bottom: 0;
+}
+
+.office-product-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: 24px;
+}
+
+.office-product-main,
+.office-product-side {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.office-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.office-card h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.office-card-sub {
+  margin: -12px 0 0;
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.office-money {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.office-money span {
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.office-money .field-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.office-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.office-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.office-info-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.office-info-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.office-stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.office-stock svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The status the typed quantity gives right now (and every badge in the list). */
+.office-stock.is-current {
+  border-color: transparent;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.office-stock-low_stock.is-current {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.office-stock-out_of_stock.is-current {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.office-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 160px;
+  padding: 20px;
+  border: 2px dashed var(--border-strong);
+  border-radius: 12px;
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.office-dropzone.is-dragging {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.office-dropzone-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.office-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.office-link-button:disabled {
+  color: var(--ink-subtle);
+  cursor: not-allowed;
+}
+
+.office-photos {
+  display: grid;
+  gap: 16px;
+}
+
+.office-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-photo {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.office-photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.office-photo-main {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.office-photo-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 6px;
+}
+
+.office-photo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.office-photo-button:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.office-photo-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.office-photo-button:focus-visible,
+.office-link-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.office-spec-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-spec-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.office-spec-remove {
+  color: var(--danger);
+}
+
+.office-thumb {
+  display: block;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  object-fit: cover;
+  background: var(--surface-muted);
+}
+
+.office-product-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .office-product-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .office-card {
+    padding: 16px;
+  }
+
+  .office-product-actions {
+    width: 100%;
+  }
+
+  .office-product-actions .button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* Name stacks over value; the remove button sits beside the value. */
+  .office-spec-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .office-spec-row .field-input:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------- Products list (design: Products and inventory) ---------- */
+.office-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.office-notice-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.office-notice-close:hover {
+  background: var(--hover-overlay);
+}
+
+.office-notice-close:focus-visible,
+.office-tab:focus-visible,
+.office-icon-action:focus-visible,
+.office-stepper-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.office-list-card {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.office-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.office-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.office-tab:hover {
+  color: var(--ink);
+}
+
+.office-tab.is-active {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.office-tab-count {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-subtle);
+}
+
+.office-list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 24px;
+}
+
+.office-search {
+  position: relative;
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.office-search .field-input {
+  width: 100%;
+  padding-left: 40px;
+}
+
+.office-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  display: inline-flex;
+  color: var(--ink-subtle);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.office-list-filters > .field-input {
+  flex: 0 1 200px;
+  min-width: 0;
+}
+
+.office-list-card .office-staff-table-wrap {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.office-list-card .office-staff-table th {
+  background: var(--surface-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.office-list-card .office-staff-table td {
+  vertical-align: middle;
+}
+
+.office-col-actions {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.office-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.office-list-empty,
+.office-list-error {
+  margin: 0 24px 24px;
+}
+
+.office-list-cards {
+  padding: 0 16px 16px;
+}
+
+.office-list-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.office-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.office-stepper-button,
+.office-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.office-stepper-button:hover:not(:disabled),
+.office-icon-action:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.office-stepper-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.office-stepper-value {
+  min-width: 32px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.office-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Tint the stock tiles in the list the same way in both themes. */
+.office-staff-facts dd .office-badges {
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .office-tabs {
+    padding: 0 16px;
+    gap: 0 16px;
+  }
+
+  .office-list-filters {
+    padding: 12px 16px;
+  }
+
+  .office-list-filters > .field-input {
+    flex: 1 1 100%;
+  }
+
+  .office-list-empty,
+  .office-list-error {
+    margin: 0 16px 16px;
+  }
+
+  .office-list-footer {
+    padding: 12px 16px;
+  }
 }

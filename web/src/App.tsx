@@ -15,6 +15,9 @@ const ResetRequestsPage = lazy(() =>
 )
 const RegisterStaff = lazy(() => import('./management/inApp/pages/RegisterStaff'))
 const StaffList = lazy(() => import('./management/inApp/pages/StaffList'))
+const AddProduct = lazy(() => import('./management/inApp/pages/ProductForm'))
+const EditProduct = lazy(() => import('./management/inApp/pages/ProductForm').then((m) => ({ default: m.EditProduct })))
+const ProductsList = lazy(() => import('./management/inApp/pages/ProductsList'))
 const PlaceholderPage = lazy(() => import('./management/inApp/pages/PlaceholderPage'))
 const OfficeNotFound = lazy(() => import('./management/inApp/pages/OfficeNotFound'))
 
@@ -64,8 +67,9 @@ export default function App() {
           <Route element={<OfficeLayout />}>
             <Route index element={<OfficeHome />} />
             {/* Sidebar routes: title-only placeholders until each module is built. */}
-            <Route path="products" element={<PlaceholderPage title="Products" />} />
-            <Route path="products/new" element={<PlaceholderPage title="Add Product" />} />
+            <Route path="products" element={<ProductsList />} />
+            <Route path="products/new" element={<AddProduct />} />
+            <Route path="products/:id" element={<EditProduct />} />
             <Route path="inventory" element={<PlaceholderPage title="Inventory" />} />
             <Route path="orders" element={<PlaceholderPage title="Orders" />} />
             <Route path="customers" element={<PlaceholderPage title="Customers" />} />
