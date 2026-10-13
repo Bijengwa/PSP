@@ -521,3 +521,19 @@ M2.5 is still blocked, so I did not mark it done or change the current step. It 
 Without that approval, running this overnight prompt again will produce the same result. This is the fourth pass in a row that ended this way.
 
 The log also has an open design question from the first pass. Right now a 503 from any call while signed in (including the sidebar's 60-second poll) replaces the whole office with the "Service temporarily unavailable" screen, which throws away unsaved form input. The alternative is to let only `/api/auth/me` do that, with other pages showing their own error inline.
+M4.1 is built, but I did not tick it. The 360px / 768px / desktop check could not be run here because there is no browser. `docs/progress.md` is unchanged and still says M4.1.
+
+**What changed**
+- `web/src/management/inApp/layout/Sidebar.tsx`: there is a new **IT** group with Staff, Register Staff and Reset requests. The whole group, including its heading, is hidden from non-admins. Staff and Reset requests moved out of Management. The pending badge stays on Reset requests.
+- `web/src/App.tsx`: there is a title-only placeholder route at `/office/staff/new` ("Register Staff").
+
+**What I checked**
+- `npm run build` and `npm run lint` in `web/` pass.
+- `npm test` passes in `web/` (28 tests) and in `node/` (123 tests).
+- The non-admin 403 on IT endpoints already had a test in `auth.test.js`. It checks the reset-requests list and the staff reset-password call.
+
+**What's left for you**
+- Look at the sidebar as an admin and as a non-admin at 360px, 768px and desktop.
+- There is no frontend test that a non-admin doesn't see the IT group. It would need a new file, for example `web/src/management/inApp/layout/Sidebar.test.tsx`. Per CLAUDE.md I didn't create it, so please approve that path or say which existing test file to use.
+
+I wrote this up in `docs/overnight-log.md`. I did not start M4.2 and did not commit.

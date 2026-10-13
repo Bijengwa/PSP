@@ -31,22 +31,57 @@ function toPublicStaff(staff) {
   };
 }
 
-// Returns { sessionId, staff } on success and null on any failure. Unknown emails
-// and inactive accounts still pay for a password check, so neither the response
-// nor its timing reveals whether the email exists.
+// Failed-login protection (auth spec §7): the 5th wrong password in a row locks
+// the account for 15 minutes.
+const LOCKOUT = { maxFailures: 5, minutes: 15 };
+
+// Counts one wrong password in a single UPDATE, so parallel attempts cannot
+// lose a count. Reaching the limit sets locked_until and starts the count again,
+// so after the lock ends the person gets a full 5 attempts. Returns true when
+// this failure locked the account.
+async function recordFailedLogin(staffId) {
+  const reachesLimit = db.raw('failed_login_count + 1 >= ?', [LOCKOUT.maxFailures]);
+  const [row] = await db('staff_profiles')
+    .where({ id: staffId })
+    .update({
+      failed_login_count: db.raw('case when ? then 0 else failed_login_count + 1 end', [reachesLimit]),
+      locked_until: db.raw(`case when ? then now() + make_interval(mins => ?) else locked_until end`, [
+        reachesLimit,
+        LOCKOUT.minutes,
+      ]),
+    })
+    .returning(['failed_login_count', 'locked_until']);
+  return row.failed_login_count === 0 && row.locked_until !== null;
+}
+
+// Returns { sessionId, staff } on success, { error: 'locked' } while the account
+// is locked (or when this attempt locked it), and { error: 'invalid' } for any
+// other failure. Unknown emails, inactive accounts and locked accounts still pay
+// for a password check, so the timing does not tell the cases apart. A locked
+// account answers the same whether the password was right or wrong, and attempts
+// made while locked do not extend the lock.
 async function login({ email, password, ip, userAgent }) {
-  const staff = await staffQuery().where('s.email', email).first([...PROFILE_COLUMNS, 's.password_hash']);
+  const staff = await staffQuery()
+    .where('s.email', email)
+    .first([...PROFILE_COLUMNS, 's.password_hash', db.raw('(s.locked_until > now()) as is_locked')]);
 
   if (!staff || !staff.is_active) {
     await verifyAgainstDummy(password);
-    return null;
+    return { error: 'invalid' };
+  }
+  if (staff.is_locked) {
+    await verifyAgainstDummy(password);
+    return { error: 'locked', staffId: staff.id };
   }
   if (!(await verifyPassword(staff.password_hash, password))) {
-    return null;
+    const locked = await recordFailedLogin(staff.id);
+    return locked ? { error: 'locked', staffId: staff.id, justLocked: true } : { error: 'invalid' };
   }
 
   const { id } = await sessions.create({ staffId: staff.id, ip, userAgent });
-  await db('staff_profiles').where({ id: staff.id }).update({ last_login_at: db.fn.now() });
+  await db('staff_profiles')
+    .where({ id: staff.id })
+    .update({ last_login_at: db.fn.now(), failed_login_count: 0, locked_until: null });
   return { sessionId: id, staff: toPublicStaff(staff) };
 }
 
@@ -133,7 +168,13 @@ async function resetStaffPassword({ staffId, temporaryPassword, resetBy }) {
   const resolvedRequests = await db.transaction(async (trx) => {
     await trx('staff_profiles')
       .where({ id: staff.id })
-      .update({ password_hash: passwordHash, must_change_password: true, updated_at: trx.fn.now() });
+      .update({
+        password_hash: passwordHash,
+        must_change_password: true,
+        failed_login_count: 0,
+        locked_until: null,
+        updated_at: trx.fn.now(),
+      });
     return trx('password_reset_requests')
       .where({ staff_id: staff.id, status: 'pending' })
       .update({ status: 'resolved', resolved_by: resetBy, resolved_at: trx.fn.now() });
@@ -143,6 +184,7 @@ async function resetStaffPassword({ staffId, temporaryPassword, resetBy }) {
 }
 
 module.exports = {
+  LOCKOUT,
   RESET_REQUEST_STATUSES,
   login,
   changePassword,

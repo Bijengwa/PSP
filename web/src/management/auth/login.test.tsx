@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider, LOGIN_PATH } from './AuthProvider'
 import Login, { safeReturnPath } from './login'
+import { SettingsPage } from '../inApp/pages/OfficeHome'
 
 afterEach(() => {
   cleanup()
@@ -118,5 +119,50 @@ describe('login return-to', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log in' }))
 
     expect(await screen.findByText('Office home')).not.toBeNull()
+  })
+})
+
+describe('Settings: log out of all devices', () => {
+  function renderSettings(fetchMock: ReturnType<typeof vi.fn>) {
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <MemoryRouter initialEntries={['/office/settings']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/office/settings" element={<SettingsPage />} />
+            <Route path={LOGIN_PATH} element={<p>Login page</p>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+  }
+
+  it('calls the logout-all endpoint and sends the person to login', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/auth/me')) return json(200, { success: true, data: { staff } })
+      if (url.endsWith('/api/auth/logout-all')) return json(200, { success: true, data: null })
+      return json(404, { success: false, error: { message: 'Not found' } })
+    })
+    renderSettings(fetchMock)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out of all devices' }))
+
+    expect(await screen.findByText('Login page')).not.toBeNull()
+    const called = fetchMock.mock.calls.map(([url]) => url as string)
+    expect(called.some((url) => url.endsWith('/api/auth/logout-all'))).toBe(true)
+  })
+
+  it('stays on the page and shows the reason when the call fails', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/auth/me')) return json(200, { success: true, data: { staff } })
+      if (url.endsWith('/api/auth/logout-all')) return json(500, { success: false, error: { message: 'Boom' } })
+      return json(404, { success: false, error: { message: 'Not found' } })
+    })
+    renderSettings(fetchMock)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out of all devices' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Boom')
+    expect(screen.queryByText('Login page')).toBeNull()
   })
 })

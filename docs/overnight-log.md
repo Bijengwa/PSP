@@ -700,3 +700,17 @@ M2.5 ticked; current step is **M3.1**. M3.1 was not started.
 **Verified:** `npm test` in `node`: 4 suites, 104 tests passed. `npm install` and `npm test` in `web` (M2.5 leftovers): 3 files, 26 tests passed.
 
 M3.1 ticked; current step is **M3.2**. M3.2 was not started.
+
+## M4.1 IT sidebar group (2026-10-07): implemented, NOT ticked
+
+**Changed**
+- `web/src/management/inApp/layout/Sidebar.tsx`: new admin-only **IT** group (Staff, Register Staff, Reset requests) with an `addStaff` icon. Staff and Reset requests moved out of Management. `adminOnly` is now a group flag, and the whole group (heading included) is hidden from non-admins. The pending badge stays on Reset requests (the badge hook is unchanged).
+- `web/src/App.tsx`: placeholder route `/office/staff/new` ("Register Staff").
+
+**Verified**
+- `npm run build`, `npm run lint` (web): clean. `npm test` (web): 28 passed. `npm test` (node): 123 passed.
+- Non-admin 403 on IT endpoints was already tested in `auth.test.js` ("only a signed-in admin from the app origin gets in": reset-requests list and staff reset-password return 403 for a non-admin).
+
+**Not done, so the step stays M4.1 in progress.md**
+- The 360px / 768px / desktop check was not run: no browser is available in this session. Please check the sidebar as admin and as non-admin at those widths.
+- No frontend test for "non-admin does not see the IT group". It needs a new file (e.g. `web/src/management/inApp/layout/Sidebar.test.tsx`). Please approve that path (or tell me to add it to an existing test file), then the next run can add it.

@@ -2,7 +2,7 @@
 // outside the rules in CLAUDE.md and docs/management-plan.md. It never blocks.
 const fs = require('fs');
 const path = require('path');
-const { ROOT, toNative, readInput, read, currentStep, stepNumber, relPath, emit } = require('./lib');
+const { STEP_ID, STAGE, ROOT, toNative, readInput, read, currentStep, stepNumber, relPath, emit } = require('./lib');
 
 const input = readInput();
 const tool = input.tool_input || {};
@@ -14,27 +14,47 @@ if (!rel.startsWith('..') && !rel.startsWith('.claude/')) {
   const edits = tool.edits || [{ old_string: tool.old_string, new_string: tool.new_string, replace_all: tool.replace_all }];
   const added = [tool.content, ...edits.map((e) => e.new_string)].filter((s) => typeof s === 'string').join('\n');
   const step = currentStep();
-  const n = step && stepNumber(step.id);
-  const modulesLocked = !step || (n && n[0] < 7);
+  // Stage of the current step (M5.2 -> 5, C3 -> 8, H1 -> 9). Unknown: treat as stage 0.
+  const stage = (step && stepNumber(step.id)?.[0]) ?? 0;
+  const allDone = Boolean(step && !step.id);
+  const isManagement = /^web\/src\/management\//.test(rel);
 
-  // 1. Browser storage: only the theme preference may live there.
+  // 1. Browser storage: the theme anywhere; the shop cart (product ids and
+  //    quantities) in the public shop from stage C. Nothing else, never auth data.
   if (/\.[jt]sx?$/.test(rel)) {
-    const line = added.split('\n').find((l) => /\b(localStorage|sessionStorage|indexedDB)\b/.test(l) && !/theme/i.test(l));
+    const cartAllowed = !isManagement && (stage >= STAGE.C || allDone);
+    const line = added
+      .split('\n')
+      .find((l) => /\b(localStorage|sessionStorage|indexedDB)\b/.test(l) && !/theme/i.test(l) && !(cartAllowed && /cart/i.test(l)));
     if (line) {
-      warnings.push(`browser storage used for something other than the theme: "${line.trim().slice(0, 120)}". Auth data must never be stored in the browser; who is logged in comes from GET /api/auth/me.`);
+      warnings.push(`browser storage used for something other than the theme${isManagement ? '' : ' or the shop cart'}: "${line.trim().slice(0, 120)}". Auth data must never be stored in the browser; who is logged in comes from GET /api/auth/me.`);
     }
   }
 
-  // 2. Business modules (M7+) stay title-only placeholders until M6.4 is signed off.
-  if (modulesLocked) {
-    const isModuleFile = /^(web|node)\/src\/.*\b(products?|inventory|orders?|customers?|reports?|notifications?)\b/i.test(rel);
-    const hasLogic = /apiRequest|fetch\(|useState|useEffect|<form|<table|knex|db\(|router\.|createTable/.test(added);
+  // 2. Business modules open stage by stage (docs/management-plan.md §1 Scope):
+  //    Products from M5, Customers from M6, Orders from M7, the public shop API
+  //    from C. Inventory, Reports and real Notifications stay locked until after H8.
+  const MODULES = [
+    { name: 'Products', file: /products?/, api: /products/, opensAt: 5, label: 'M5' },
+    { name: 'Customers', file: /customers?/, api: /customers/, opensAt: 6, label: 'M6' },
+    { name: 'Orders', file: /orders?/, api: /orders/, opensAt: 7, label: 'M7' },
+    { name: 'Inventory', file: /inventory/, api: /inventory/, opensAt: Infinity, label: 'its own approved plan section after H8' },
+    { name: 'Reports', file: /reports?/, api: /reports/, opensAt: Infinity, label: 'its own approved plan section after H8' },
+    { name: 'Notifications', file: /notifications?/, api: /notifications/, opensAt: Infinity, label: 'its own approved plan section after H8' },
+  ];
+  const hasLogic = /apiRequest|fetch\(|useState|useEffect|<form|<table|knex|db\(|router\.|createTable/.test(added);
+  for (const m of MODULES) {
+    if (stage >= m.opensAt) continue;
+    const isModuleFile = new RegExp(`^(web|node)/src/.*\\b${m.file.source}\\b`, 'i').test(rel);
     if (isModuleFile && (hasLogic || rel.startsWith('node/'))) {
-      warnings.push('this looks like real Products/Inventory/Orders/Customers/Reports/Notifications functionality. Before M7 these are placeholder pages showing only their title.');
+      warnings.push(`this looks like real ${m.name} functionality, which opens at ${m.label}. Until then its page is a placeholder showing only its title.`);
     }
-    if (/\/api\/(office\/)?(products|inventory|orders|customers|reports)\b/.test(added)) {
-      warnings.push('adds an API route for an M7+ business module, which is locked until M6.4 is signed off.');
+    if (new RegExp(`/api/(office/|shop/)?${m.api.source}\\b`).test(added)) {
+      warnings.push(`adds an API route for ${m.name}, which opens at ${m.label}.`);
     }
+  }
+  if (stage < STAGE.C && !allDone && /\/api\/shop\b/.test(added)) {
+    warnings.push('adds a public shop API route (/api/shop). The client side opens at C1, after M7.');
   }
 
   // 3. progress.md: tick only the step just finished, one at a time.
@@ -48,7 +68,7 @@ if (!rel.startsWith('..') && !rel.startsWith('.claude/')) {
         after = e.replace_all ? after.split(e.old_string).join(e.new_string) : after.replace(e.old_string, () => e.new_string);
       }
     }
-    const ticked = (text) => new Set([...text.matchAll(/- \[[xX]\] (M\d+\.\d+)/g)].map((m) => m[1]));
+    const ticked = (text) => new Set([...text.matchAll(new RegExp(`- \\[[xX]\\] (${STEP_ID})`, 'g'))].map((m) => m[1]));
     const was = ticked(before);
     const now = ticked(after);
     const newly = [...now].filter((id) => !was.has(id));

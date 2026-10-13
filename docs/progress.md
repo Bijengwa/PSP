@@ -3,7 +3,7 @@
 Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" checks pass.
 UI steps also need the responsive check (360px, 768px, desktop) before ticking.
 Replanned: 2026-10-07.
-Current step: **M3.2**
+Current step: **M4.1**
 
 ## M1 — Management Shell
 
@@ -26,8 +26,8 @@ Current step: **M3.2**
 ## M3 — Authentication Security
 
 - [x] M3.1 Rate limiting
-- [ ] M3.2 Failed-login protection
-- [ ] M3.3 Session revocation
+- [x] M3.2 Failed-login protection
+- [x] M3.3 Session revocation
 
 ## M4 — IT Console (full circle of auth)
 

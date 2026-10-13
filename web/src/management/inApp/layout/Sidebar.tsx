@@ -51,6 +51,13 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="M7.5 18a4.5 4.5 0 0 1 9 0" />
     </>
   ),
+  addStaff: (
+    <>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M19 8v6M16 11h6" />
+    </>
+  ),
   resetRequests: (
     <>
       <circle cx="8" cy="15" r="4" />
@@ -120,7 +127,8 @@ const BADGE_REFRESH_MS = 60 * 1000
 // eslint-disable-next-line react-refresh/only-export-components
 export const NAV_GROUPS: {
   label: string
-  items: { label: string; to: string; icon: IconName; adminOnly?: boolean }[]
+  adminOnly?: boolean
+  items: { label: string; to: string; icon: IconName }[]
 }[] = [
   { label: 'Overview', items: [{ label: 'Home', to: OFFICE_HOME_PATH, icon: 'home' }] },
   {
@@ -141,9 +149,17 @@ export const NAV_GROUPS: {
   {
     label: 'Management',
     items: [
-      { label: 'Staff', to: '/office/staff', icon: 'staff' },
-      { label: 'Reset requests', to: RESET_REQUESTS_PATH, icon: 'resetRequests', adminOnly: true },
       { label: 'Reports', to: '/office/reports', icon: 'reports' },
+    ],
+  },
+  {
+    // The server checks every IT call too; hiding the group is only a convenience.
+    label: 'IT',
+    adminOnly: true,
+    items: [
+      { label: 'Staff', to: '/office/staff', icon: 'staff' },
+      { label: 'Register Staff', to: '/office/staff/new', icon: 'addStaff' },
+      { label: 'Reset requests', to: RESET_REQUESTS_PATH, icon: 'resetRequests' },
     ],
   },
   {
@@ -238,14 +254,13 @@ export default function Sidebar({ id, drawerOpen, drawerShown, closeButtonRef, o
       </div>
 
       <nav className="office-nav" aria-label="Office">
-        {NAV_GROUPS.map((group) => (
+        {NAV_GROUPS.filter((group) => isAdmin || !group.adminOnly).map((group) => (
           <div key={group.label} className="office-nav-group">
             <h2 id={`office-nav-${group.label}`} className="office-nav-heading">
               {group.label}
             </h2>
             <ul className="office-nav-list" aria-labelledby={`office-nav-${group.label}`}>
               {group.items
-                .filter((item) => isAdmin || !item.adminOnly)
                 .map((item) => {
                   const badge = item.to === RESET_REQUESTS_PATH ? pendingResets : 0
                   return (
