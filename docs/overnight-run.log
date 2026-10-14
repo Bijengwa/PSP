@@ -1000,3 +1000,37 @@ The server side adds create, view and update for a customer, plus a duplicate lo
 - **Scope Guard** said I should tick the box before moving "Current step". I made both changes together, after every check had passed.
 
 Re-running the responsive check also rewrote about 20 older screenshots with tiny pixel differences. The same thing happened in M6.2.
+M6.4 (Customer detail) is finished and ticked in `docs/progress.md`, and the current step is now **M7.1**. All checks pass. I did not start M7.1, did not touch M7.4, and did not commit anything.
+
+**What changed**
+- **New detail page** at `/office/customers/:id`, in `web/src/management/inApp/pages/CustomerDetail.tsx`. It has:
+  - **Header:** a back link, an avatar (initials for a person, a building icon for a company), the name, the contact person, a type badge, and an "Edit customer" button.
+  - **Contact:** the phone links to a call and the email to a new message, with "Not set" when empty. Companies also show the contact person and TIN.
+  - **Addresses:** the default address comes first with a "Default" badge. With no addresses it shows a link to add one.
+  - **Orders:** one line saying orders will be listed here. M7.5 fills this in.
+  - **Notes and Record:** the notes keep their line breaks; Record shows the dates added and last changed.
+  - **Other states:** a loading skeleton, a "Customer not found" page, and an error message with a Try again button.
+- **Wiring:**
+  - The route is in `App.tsx`, and the header shows the title "Customer".
+  - Customer names in the list now open the detail page instead of the edit form.
+  - Saving an edit now goes back to the detail page with "Changes saved.", and Cancel on the edit form goes back there too.
+  - Links in the duplicate warning now open the detail page (still in a new tab).
+- **Styling:** a small "Customer detail (M6.4)" block in `index.css`, using only the existing colour variables. On phones, buttons and links are at least 44px tall.
+- **Tests and checks:**
+  - New `CustomerDetail.test.tsx` with 5 tests; the list and form tests were updated for the new links.
+  - Two new pages in the responsive check: a long-named company and an empty customer.
+- **No backend change:** the M6.3 endpoint already returns contacts, notes and addresses.
+
+**Checks**
+- **node** `npm test`: 255 passed.
+- **web** `npm test`: 116 passed. `npm run build` passed and `npm run lint` is clean.
+- **`npm run check:responsive`:** passed for every page at 360, 768 and 1280px, in light and dark.
+- **Screenshots:** I looked at several of the detail-page shots in both themes. Long names and emails wrap and nothing scrolls sideways. As the overnight rules allow, the tests and screenshots stand in for a manual browser run.
+
+**Decisions to review** (all recorded in `docs/overnight-log.md`)
+- **No "Done when" line:** the plan gives none for M6.4, so I used the same bar as the earlier steps: tests plus the responsive check.
+- **Edit flow:** saving an edit now returns to the detail page instead of staying on the form. This changes what M6.3 did.
+- **Orders section:** it shows only a line of text, with no fake numbers.
+- **No delete:** there is no way to delete a customer, the same as products and staff.
+
+The Collision Guard said another session had recently edited these files. The working tree was clean when I started, so those edits were the earlier M6.3 run, already committed, and nothing was overwritten.

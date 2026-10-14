@@ -110,6 +110,9 @@ const ROUTES = [
     },
   },
   { name: 'office-customer-edit', path: '/office/customers/c2/edit', ready: '.office-address' },
+  { name: 'office-customer-detail', path: '/office/customers/c2', ready: '.office-customer-address' },
+  // c3 is answered with no contacts, addresses or notes.
+  { name: 'office-customer-detail-empty', path: '/office/customers/c3', ready: '.office-profile-head' },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -466,6 +469,7 @@ function answer(url, request) {
   const customerOne = pathname.match(/^\/api\/office\/customers\/([^/]+)$/)
   if (customerOne) {
     const found = customers.find((item) => item.id === customerOne[1]) ?? customers[1]
+    if (found.id === 'c3') return ok({ customer: { ...found, notes: '', addresses: [] } })
     return ok({
       customer: {
         ...found,

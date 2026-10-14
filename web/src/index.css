@@ -2348,3 +2348,97 @@ a {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Customer detail (M6.4) */
+.office-customer-detail > .office-back-link {
+  margin-bottom: -8px;
+}
+
+.office-customer-detail .office-profile-head {
+  flex: 1 1 320px;
+}
+
+.office-avatar-large.office-avatar-company {
+  border-radius: 12px;
+}
+
+/* The side column is narrow: a shorter label column. */
+.office-product-side .office-profile-facts div {
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+
+.office-customer-addresses {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-customer-address {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.office-customer-address-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding-top: 1px;
+  color: var(--primary);
+}
+
+.office-customer-address-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.office-customer-address-text p {
+  margin: 0;
+}
+
+.office-customer-address-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-weight: 600;
+}
+
+.office-customer-notes-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .office-customer-detail .button {
+    min-height: 44px;
+  }
+
+  .office-customer-detail .office-back-link {
+    min-height: 44px;
+  }
+
+  .office-customer-detail .office-profile-facts dd > a,
+  .office-customer-detail .office-address-empty > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .office-product-side .office-profile-facts div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .office-customer-address {
+    padding: 12px;
+  }
+}

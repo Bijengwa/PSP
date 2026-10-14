@@ -126,7 +126,7 @@ function NameCell({ customer }: { customer: Customer }) {
     <span className="office-product-cell">
       <Avatar customer={customer} />
       <span>
-        <Link className="office-staff-name office-staff-link" to={`${CUSTOMERS_PATH}/${customer.id}/edit`}>
+        <Link className="office-staff-name office-staff-link" to={`${CUSTOMERS_PATH}/${customer.id}`}>
           {displayName(customer)}
         </Link>
         {customer.type === 'company' && customer.contactPerson && (
@@ -155,7 +155,7 @@ function Contacts({ customer }: { customer: Customer }) {
 }
 
 // /office/customers: the customer directory. Type tabs with counts, search by name,
-// company, phone or email, paged. A name opens the edit form (the detail page is M6.4).
+// company, phone or email, paged. A name opens the customer's detail page.
 export default function CustomersList() {
   const compact = useSyncExternalStore(subscribeToCompact, () => window.matchMedia(COMPACT_QUERY).matches)
   const location = useLocation()

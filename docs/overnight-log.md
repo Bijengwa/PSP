@@ -1484,3 +1484,34 @@ M6.2 ticked; current step is **M6.3**. M6.3 was not started. Nothing committed.
 - Collision Guard: it said `CustomersList.tsx` was edited by another session 25 min earlier. `git status` showed only this step's changes, so that was the finished M6.2 run (already committed). Nothing was overwritten.
 
 M6.3 ticked; current step is **M6.4**. M6.4 was not started. Nothing committed.
+
+## M6.4 Customer detail (2026-10-14, overnight): TICKED
+
+**Changed**
+- New `web/src/management/inApp/pages/CustomerDetail.tsx` at `/office/customers/:id`. It has a back link, a header (large avatar: initials for a person, a building for a company; the name as the h1; the contact person; a type badge), and an "Edit customer" button. Then these cards: **Contact** (contact person and TIN for companies; phone as a `tel:` link shown as `+255 712 345 678`; email as a `mailto:` link; "Not set" when empty), **Addresses** (default first with a "Default" badge; an address with no label is titled by its area; "No addresses yet. Add one" links to the edit form), **Orders** (only the line "Orders linked to this customer will be listed here." M7.5 fills it), **Notes** (line breaks kept, or "No notes."), and **Record** (date added, date last changed). It also has a loading skeleton, a "Customer not found" page for a 404, and an error message with Try again.
+- New `CustomerDetail.test.tsx` (5 tests): company details, links and addresses, an individual with nothing filled in, the "Changes saved." notice and its dismiss button, 404, and the error with retry.
+- `web/src/App.tsx`: route `customers/:id`. `layout/Header.tsx`: the title "Customer".
+- `CustomersList.tsx`: names now link to the detail page instead of the edit form. Its test was updated.
+- `CustomerForm.tsx`: saving an edit now goes to the detail page with "Changes saved.". Cancel on the edit form goes back to the detail page. Links in the duplicate warning open the detail page (still in a new tab). The notice plumbing that only the edit form used was removed. `CustomerForm.test.tsx` was updated to match.
+- `web/src/index.css`: a "Customer detail (M6.4)" block that uses only existing variables. On phones it gives 44px touch targets for the buttons, the back link and the phone/email links. It also narrows the label column in the side cards.
+- `web/scripts/responsive-check.mjs`: new routes `office-customer-detail` (the long-named company, two addresses, notes) and `office-customer-detail-empty` (c3, now answered with no addresses or notes).
+- No backend change. `GET /api/office/customers/:id` from M6.3 already returns contacts, notes and addresses (default first) and is covered by tests.
+
+**Decisions**
+- M6.4 has no "Done when" line, so I used the M5.x/M6.x bar: the page is tested and the responsive check passes in both themes.
+- Detail page layout: the Products edit grid. The main column holds Contact, Addresses and Orders. The side column holds Notes and Record. Below 960px it becomes one column.
+- The Orders section is kept and shows one honest line. It has no counts or fake data. Linking orders to customers is M7.5.
+- Saving an edit now returns to the detail page instead of reloading the form, because the detail page is now the customer's home. Adding a customer still goes back to the list with "<name> was added." (the M6.3 Done-when behaviour).
+- No delete, as with products and staff. Nothing in the plan asks for it.
+
+**Verified**
+- `node` `npm test`: 8 suites, 255 tests passed.
+- `web` `npm test`: 14 files, 116 tests passed. `npm run build` passed. `npm run lint` is clean.
+- `npm run check:responsive` passed for every route, including the two new ones, at 360, 768 and 1280px in light and dark. I checked `office-customer-detail` at 360 light, 768 light and 1280 dark, and `office-customer-detail-empty` at 360 dark. Long company names and emails wrap, the Default badge and the type badge are readable in both themes, and nothing scrolls sideways. Per the overnight policy, the tests, the responsive check and the screenshots stand in for a manual browser run.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. It is only the stop point of the overnight order.
+- Collision Guard: it reported that several files (index.css, App.tsx, Header.tsx, CustomersList.tsx, CustomerForm.tsx, their tests, responsive-check.mjs, progress.md) were edited by another session 16–30 min earlier. `git status` was clean at the start of this run, so those edits were the finished and committed M6.3 run. Nothing was overwritten.
+- Scope Guard: it warned about the order of "tick M6.4" and "set M7.1 as current" in `progress.md`. Both changes are intended: every check passed, M6.4 is ticked, and M7.1 is next in the overnight order.
+
+M6.4 ticked; current step is **M7.1**. M7.1 was not started. Nothing committed.

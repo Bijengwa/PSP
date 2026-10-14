@@ -237,9 +237,9 @@ function useDuplicates(phone: string, email: string, excludeId?: string) {
 
 // ---------- the editor (Add and Edit share it) ----------
 
-type EditorProps = { customer?: CustomerRecord; notice?: string | null }
+type EditorProps = { customer?: CustomerRecord }
 
-function CustomerEditor({ customer, notice: initialNotice = null }: EditorProps) {
+function CustomerEditor({ customer }: EditorProps) {
   const navigate = useNavigate()
   const editing = Boolean(customer)
   const formRef = useRef<HTMLFormElement>(null)
@@ -256,18 +256,10 @@ function CustomerEditor({ customer, notice: initialNotice = null }: EditorProps)
   )
   const [errors, setErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(initialNotice)
   const [busy, setBusy] = useState(false)
 
   const duplicates = useDuplicates(values.phone, values.email, customer?.id)
   const company = values.type === 'company'
-
-  // "Changes saved." goes away on its own.
-  useEffect(() => {
-    if (!notice) return
-    const timer = window.setTimeout(() => setNotice(null), 5000)
-    return () => window.clearTimeout(timer)
-  }, [notice])
 
   const set = (patch: Partial<Values>) => setValues((current) => ({ ...current, ...patch }))
 
@@ -309,7 +301,6 @@ function CustomerEditor({ customer, notice: initialNotice = null }: EditorProps)
     const found = validate(values, rows)
     setErrors(found)
     setFormError(null)
-    setNotice(null)
     if (Object.keys(found).length > 0) {
       setFormError('Check the highlighted fields.')
       focusFirstError()
@@ -344,8 +335,8 @@ function CustomerEditor({ customer, notice: initialNotice = null }: EditorProps)
 
     const name = displayName(saved.data.customer)
     if (editing) {
-      // The edit page loads the customer again, so the form shows what is stored.
-      navigate(`${CUSTOMERS_PATH}/${saved.data.customer.id}/edit`, { replace: true, state: { notice: 'Changes saved.' } })
+      // Back to the detail page, which loads the customer again and shows what is stored.
+      navigate(`${CUSTOMERS_PATH}/${saved.data.customer.id}`, { replace: true, state: { notice: 'Changes saved.' } })
     } else {
       navigate(CUSTOMERS_PATH, { state: { notice: `${name} was added.` } })
     }
@@ -426,7 +417,7 @@ function CustomerEditor({ customer, notice: initialNotice = null }: EditorProps)
           </p>
         </div>
         <div className="office-product-actions">
-          <Link className="button button-secondary" to={CUSTOMERS_PATH}>
+          <Link className="button button-secondary" to={customer ? `${CUSTOMERS_PATH}/${customer.id}` : CUSTOMERS_PATH}>
             Cancel
           </Link>
           <button type="submit" className="button button-primary" disabled={busy}>
@@ -436,9 +427,6 @@ function CustomerEditor({ customer, notice: initialNotice = null }: EditorProps)
         </div>
       </div>
 
-      <div className="office-status-line" role="status">
-        {notice}
-      </div>
       <div className="office-error" role="alert" hidden={!formError}>
         {formError}
       </div>
@@ -533,7 +521,7 @@ function CustomerEditor({ customer, notice: initialNotice = null }: EditorProps)
                       <li key={match.id}>
                         <Link
                           className="office-staff-link office-duplicate-link"
-                          to={`${CUSTOMERS_PATH}/${match.id}/edit`}
+                          to={`${CUSTOMERS_PATH}/${match.id}`}
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -704,17 +692,16 @@ export default function AddCustomer() {
 
 type LoadState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; customer: CustomerRecord }
 
-// /office/customers/:id/edit. Every visit (including after a save, which navigates here
-// with a notice) loads the customer again, so the form always shows what is stored.
+// /office/customers/:id/edit. Every visit loads the customer again, so the form always
+// shows what is stored. Saving goes back to the detail page.
 export function EditCustomer() {
   const { id } = useParams()
   const location = useLocation()
-  const notice = (location.state as { notice?: string } | null)?.notice ?? null
   // A new key on every visit remounts the loader, so it fetches again from "loading".
-  return <EditLoader key={`${id}-${location.key}`} id={id ?? ''} notice={notice} />
+  return <EditLoader key={`${id}-${location.key}`} id={id ?? ''} />
 }
 
-function EditLoader({ id, notice }: { id: string; notice: string | null }) {
+function EditLoader({ id }: { id: string }) {
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
 
@@ -772,5 +759,5 @@ function EditLoader({ id, notice }: { id: string; notice: string | null }) {
     )
   }
 
-  return <CustomerEditor customer={load.customer} notice={notice} />
+  return <CustomerEditor customer={load.customer} />
 }

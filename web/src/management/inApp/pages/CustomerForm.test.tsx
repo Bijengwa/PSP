@@ -62,6 +62,7 @@ function renderAt(path: string) {
       <Routes>
         <Route path="/office/customers" element={<Landing />} />
         <Route path="/office/customers/new" element={<AddCustomer />} />
+        <Route path="/office/customers/:id" element={<Landing />} />
         <Route path="/office/customers/:id/edit" element={<EditCustomer />} />
       </Routes>
     </MemoryRouter>,
@@ -163,7 +164,7 @@ describe('AddCustomer', () => {
 
     fireEvent.change(screen.getByLabelText(/Phone/), { target: { value: '0712 345 678' } })
     const link = await screen.findByRole('link', { name: /Asha Mushi/ })
-    expect(link.getAttribute('href')).toBe('/office/customers/c9/edit')
+    expect(link.getAttribute('href')).toBe('/office/customers/c9')
     expect(link.getAttribute('target')).toBe('_blank')
     expect(screen.getByText('A customer with these details exists')).not.toBeNull()
     expect(screen.getByText('same phone')).not.toBeNull()
@@ -236,7 +237,7 @@ describe('AddCustomer', () => {
 })
 
 describe('EditCustomer', () => {
-  it('loads the stored customer, saves with PATCH and shows "Changes saved."', async () => {
+  it('loads the stored customer, saves with PATCH and goes back to the detail page', async () => {
     let current = stored
     const calls = stubApi((call) => {
       if (call.url.pathname.endsWith('/duplicates')) return noDuplicates()
@@ -253,6 +254,7 @@ describe('EditCustomer', () => {
     expect(screen.getByRole('radio', { name: /Company/ })).toHaveProperty('checked', true)
     expect((screen.getByLabelText(/Phone/) as HTMLInputElement).value).toBe('+255 712 345 678')
     expect((screen.getByLabelText('Customer notes') as HTMLInputElement).value).toBe('Pays by bank transfer.')
+    expect(screen.getByRole('link', { name: 'Cancel' }).getAttribute('href')).toBe('/office/customers/c1')
     expect((screen.getByLabelText(/Label/) as HTMLInputElement).value).toBe('Head office')
 
     // The duplicate check leaves out the customer being edited.
@@ -262,11 +264,10 @@ describe('EditCustomer', () => {
     fireEvent.change(screen.getByLabelText(/Contact person/), { target: { value: 'Dr. Juma' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    expect(await screen.findByText('Changes saved.')).not.toBeNull()
+    expect((await screen.findByTestId('landing')).textContent).toBe('/office/customers/c1 Changes saved.')
     const patch = saves(calls)[0]
     expect(patch.url.pathname).toBe('/api/office/customers/c1')
     expect(patch.body).toMatchObject({ type: 'company', contactPerson: 'Dr. Juma', companyName: 'Bugando Medical Centre' })
-    expect((screen.getByLabelText(/Contact person/) as HTMLInputElement).value).toBe('Dr. Juma')
   })
 
   it('shows a missing customer with Try again and a way back', async () => {

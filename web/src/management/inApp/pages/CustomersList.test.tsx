@@ -104,8 +104,8 @@ describe('CustomersList', () => {
 
     expect(screen.getByRole('status').textContent).toContain('Asha Mushi was added.')
     expect(screen.getByRole('link', { name: 'Add customer' }).getAttribute('href')).toBe('/office/customers/new')
-    expect((await screen.findByRole('link', { name: 'Asha Mushi' })).getAttribute('href')).toBe('/office/customers/c1/edit')
-    expect(screen.getByRole('link', { name: 'Bugando Medical Centre' }).getAttribute('href')).toBe('/office/customers/c2/edit')
+    expect((await screen.findByRole('link', { name: 'Asha Mushi' })).getAttribute('href')).toBe('/office/customers/c1')
+    expect(screen.getByRole('link', { name: 'Bugando Medical Centre' }).getAttribute('href')).toBe('/office/customers/c2')
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss message' }))
     expect(screen.queryByText('Asha Mushi was added.')).toBeNull()
