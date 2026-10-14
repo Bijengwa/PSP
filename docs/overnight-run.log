@@ -708,3 +708,54 @@ C6 (Checkout page) passed every check, so I ticked it and set the current step t
 - **Scope Guard:** it asked me to confirm the "Done when" checks before ticking. They had all passed before the edit.
 
 **For C7:** at 360px in the light theme, the "Show order summary" toggle wraps onto two lines. It's readable but could be tightened.
+C7 Shop polish is built and every check passes, but I did **not** tick it. Its "Done when" also needs you to sign off the screenshots in `docs/screenshots/`, and nobody was awake to do that. So `docs/progress.md` is unchanged, the current step is still **C7**, and nothing was committed. Once you sign off the screenshots, the next run can tick C7 and set the current step to M4.1.
+
+**What changed (all inside C7's scope, no new features)**
+- **Page titles and descriptions on every shop route:** a new `web/src/shop/PageMeta.tsx` replaces the hook that only the product page had. Home, catalogue, product, cart, checkout, order confirmed and 404 now each have their own tab title and description. `index.html` has a default description.
+- **Shop 404:** new `web/src/shop/NotFoundPage.tsx`, shown inside the shop layout. In `App.tsx` it replaces the old bare not-found page; unknown `/office/*` addresses still go to the office's own page.
+- **Focus and screen readers:**
+  - After moving to another page, focus goes to the main content.
+  - The mobile menu moves focus into itself when opened and back to the menu button when closed.
+  - Changing a quantity in the cart is now announced.
+  - After removing a cart line, focus moves to the list heading instead of being lost.
+  - The top bar is now a labelled landmark.
+  - The page-loading placeholder now has a spinner and keeps the footer from jumping up.
+- **Images:** the home page photos got fixed sizes, and the hero image loads first.
+- **Print:** the order confirmation prints on white paper with a PSP heading, even when the screen is in dark mode. Header, footer, steps and buttons are hidden.
+- **Responsive check:** it now also covers the 404, and fails any shop page that lacks its own title, a description, exactly one `h1`, the skip link or the main landmarks. It also saves print screenshots of the confirmation.
+- **Tests:** more checks in `CartPage.test.tsx`, plus a new `NotFoundPage.test.tsx`.
+
+**Already in place, checked rather than changed:** the skip link, reduced motion, and no theme flash. AA contrast passes in both themes: I computed every text/background colour pair, and the lowest is 4.96:1.
+
+**Verified**
+- node `npm test`: 176 tests passed.
+- web `npm test`: 70 tests passed; `npm run lint` and `npm run build` are clean.
+- `npm run check:responsive` passed on every route at 360, 768 and 1280px, in light and dark. I looked at these screenshots:
+  - the 404 at 360 light and 1280 dark;
+  - both print screenshots (the dark one prints light);
+  - checkout at 360 light;
+  - home at 360 dark.
+
+**Notes**
+- On the home page screenshots the category photos show as empty tiles. They load only when scrolled to, so the full-page screenshot misses them; the tiles keep their size.
+- At 360px the checkout's "Show order summary" button still wraps onto two lines when the total is huge (the test data uses TZS 123,848,000,000). It's readable, so I left it for you to decide.
+- The Collision Guard warned that another session had edited `docs/overnight-log.md`. I re-read it: the earlier entries are intact and my C7 entry is the only addition.
+C7 is still not ticked. Its "Done when" needs you to sign off the screenshots in `docs/screenshots/`, and that couldn't happen overnight. So `docs/progress.md` is unchanged, the current step stays **C7**, and nothing was committed.
+
+**What this run did:** An earlier run had already built C7: page titles and meta descriptions on every shop route, a shop 404 page, focus handling, cart change announcements, image sizes and a print style for the order confirmation. That work is still uncommitted in the tree. I reviewed it against C7's scope and found nothing outside the step and nothing to fix, so no code changed this run. I also confirmed that unknown `/office/...` addresses still go to the office's own not-found page, not the shop 404.
+
+**Checks run this pass (all passed):**
+- `node` `npm test`: 176 tests passed.
+- `web`: `npm test` (70 tests), `npm run lint` and `npm run build` all passed.
+- `npm run check:responsive` passed for every shop route at 360, 768 and 1280px in light and dark, 102 checks in all. That includes the title, meta description, single `h1` and landmark checks. Screenshots were saved again.
+- I looked at the 404 page (360px dark), the printed confirmation in dark mode (it prints light, as intended), the cart (360px dark) and checkout (360px dark).
+
+**Worth a look when you sign off:**
+- In the cart screenshots the product thumbnails are plain dark-red squares. They come from the test images the responsive check uses, not from C7 code.
+- At 360px, "Show order summary" on checkout wraps onto two lines when the total is very large. It's readable.
+
+**Guard warnings:**
+- The Progress Guard flagged "M5.6/M5.1" in the prompt. That text is only the rule for ticking M5.6, which was ticked long ago. I worked only on C7.
+- The Collision Guard said `docs/overnight-log.md` had been edited 23 minutes earlier by another Claude session. I re-read the file after my edit: the earlier entries are intact, and my new entry at the top is the only addition.
+
+Everything is written up in `docs/overnight-log.md`. Once you sign off the screenshots, or list what to change, the next run can tick C7 and set the current step to M4.1.

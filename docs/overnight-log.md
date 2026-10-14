@@ -1,4 +1,79 @@
+## C7 Shop polish (2026-10-14): signed off by the user, TICKED
+
+The user signed off the screenshots in `docs/screenshots/`. C7 is ticked and the shop-first track is finished. Current step is **M4.1** (implemented earlier, not yet ticked). Open notes: the checkout "Show order summary" button wraps at 360px with very large totals (left as is).
+
 # Overnight Log
+
+## 2026-10-14 — C7 Shop polish (second pass): re-verified, still NOT ticked (waiting for your screenshot sign-off)
+
+**Status:** `docs/progress.md` still says **C7**. The C7 work from the first pass (entry below) is still uncommitted in the tree. This pass reviewed that diff against the C7 scope and found nothing outside it and nothing to fix, so **no code changed**. C7's "Done when" needs you to sign off the screenshots in `docs/screenshots/`, and nobody was awake to do that. So C7 is **not ticked**, `docs/progress.md` is **unchanged**, and M4.1 was not started. Nothing was committed.
+
+**Verified (this pass)**
+- `node` `npm test`: 6 suites, 176 tests passed.
+- `web` `npm test`: 9 files, 70 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed. All 102 route/width/theme combinations were ok, with no failures, and the screenshots were saved again.
+- Screenshots I looked at: `shop-not-found-360-dark`, `shop-order-confirmed-print-dark` (prints light, as intended), `shop-cart-360-dark`, `shop-checkout-360-dark`.
+- I also checked that unknown `/office/...` addresses still go to the office's own not-found route (`App.tsx`), not the shop 404.
+
+**Worth a look when you sign off**
+- In the cart screenshots the product thumbnails are plain dark-red squares. They come from the responsive check's fixture images, not from C7 code. Real product photos will replace them.
+- The checkout summary toggle wraps at 360px with the huge fixture total. This was already noted in the first pass.
+
+**To unblock:** sign off the shop screenshots (or list what to change). The next run can then tick C7 and set the current step to **M4.1**.
+
+**Guard warnings:** the Progress Guard flagged that the prompt mentions M5.6 and M5.1. That text is only the M5.6 tick rule (M5.6 was ticked long ago). Only C7 was worked on.
+
+## 2026-10-14 — C7 Shop polish: built and verified, NOT ticked (waiting for your screenshot sign-off)
+
+**Which step:** `docs/progress.md` said **C7**, so only C7 was worked on. C7's "Done when" includes "the user signs off the screenshots in `docs/screenshots/`", and nobody was awake to do that. So C7 is **not ticked**, `docs/progress.md` is **unchanged**, and the current step stays **C7**. Nothing was committed. M4.1 was not started.
+
+**Question for you:** please look at the shop screenshots in `docs/screenshots/` (listed below) and say whether you sign them off. If you do, the next run can tick C7 and set the current step to **M4.1**.
+
+**Changed**
+- New `web/src/shop/PageMeta.tsx`: a component that sets the tab title (`<page> | PSP Engineering Group`, or the site name alone on the home page) and `<meta name="description">`, and puts the old ones back afterwards. It replaces the C3 `usePageMeta` hook from `ProductPage.tsx`. Cleanup restores only what it set itself: React mounts the new page's meta before the old one's cleanup runs, and the first version lost the product title because of that (a test caught it).
+- Every shop route now has a title and description: home, catalogue (category, search term and page in the title), product (unchanged wording), cart, checkout, order confirmed ("Order PSP-000123 placed" / "No order to show"), and the 404. `index.html` now has a default description.
+- Shop 404: new `web/src/shop/NotFoundPage.tsx`. It's inside the shop layout (header, footer, skip link) with "Browse products" and "Go to the home page". `App.tsx`: the old bare `NotFound` outside the layout was replaced by a `*` route under the shop layout. `/office/*` paths still go to the office's own not-found page.
+- Accessibility (`ShopLayout.tsx`):
+  - The top bar is now an `aside` landmark ("Contact and display"), so all content sits inside landmarks.
+  - After a client-side page change, focus moves to `<main>` without scrolling. A page that focuses its own heading (the order confirmation) keeps that focus.
+  - The mobile menu moves focus to its close button when it opens, and back to the menu button when it closes with the button, Escape or the backdrop.
+  - The route-loading fallback is now a `role="status"` with the shop spinner and a minimum height, so the footer doesn't jump up.
+- Cart (`CartPage.tsx`):
+  - Quantity changes are announced in the existing live region ("Bedside monitor: quantity 2."). Add-to-cart and remove were already announced.
+  - After removing a line, focus moves to the "Items (n)" heading, or to "Your cart is empty". Before, it was lost on the deleted button.
+- Images (`ShopHome.tsx`): category photos got `width`/`height`. The hero image got `width`/`height` and `fetchPriority="high"`. The other shop images already had fixed sizes, aspect ratios and `loading="lazy"`.
+- `shop.css`:
+  - Styles for the 404 and the loading state.
+  - No focus ring on headings that take focus from script.
+  - A print style: header, top bar, footer, steps, copy button and actions are hidden. Paper is always light, even when the screen is dark; the print block repeats the light token values. The order confirmation prints with a "PSP Engineering Group · Dar es Salaam, Tanzania" line on top.
+- `scripts/responsive-check.mjs`:
+  - New route `shop-not-found` (`/no-such-page`).
+  - Every `shop-*` route now fails if:
+    - its title does not end in ` | PSP Engineering Group` (except the home page);
+    - the meta description is empty;
+    - it doesn't have exactly one `h1`;
+    - `main#main`, `header`, `nav`, `footer` or the skip link is missing.
+  - The confirmation is also saved as printed, at 768px in both themes (`shop-order-confirmed-print-light.png` / `-dark.png`).
+- Tests: `CartPage.test.tsx` now checks the title, the quantity announcement and the focus after a remove. New `web/src/shop/NotFoundPage.test.tsx` (2 tests): an unknown address shows the shop 404 inside the layout with its title and landmarks; going to another page moves focus to `<main>`.
+
+**Already in place, checked rather than changed**
+- Skip link, `prefers-reduced-motion` (every shop transition and animation is covered), no theme flash (`index.html` sets `data-theme` before first paint; `index.css` is render-blocking).
+- AA contrast: I computed every text/background token pair in both themes. The lowest is `--ink-subtle` on `--surface-muted` in light at 4.96:1. Input borders (`--border-strong`) are 3.34:1 (light) and 3.83:1 (dark), above 3:1.
+- Loading, empty and error states with a retry on the catalogue, product, cart and checkout pages.
+
+**Verified**
+- `node` `npm test`: 6 suites, 176 tests passed.
+- `web` `npm test`: 9 files, 70 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: every route passed at 360, 768 and 1280px in light and dark, with no horizontal scroll, including the new title, description, `h1` and landmark checks on every shop route. This covers `/`, `/products` (plus filtered and empty), a product page (plus out of stock and missing), `/cart` (three states), `/checkout` (plus errors), `/order-confirmed` and the 404.
+- Screenshots I looked at: `shop-not-found` at 360 light and 1280 dark; `shop-order-confirmed-print` in light and dark (the dark one prints light); `shop-checkout` at 360 light; `shop-home` at 360 dark.
+- In full-page screenshots the home category photos show as empty tiles. They are lazy Wikimedia images below the fold. The tiles keep their fixed size, so nothing jumps.
+
+**Left as is (your call)**
+- At 360px the checkout summary toggle still wraps "Show order summary" onto two lines when the total is huge (the fixture uses TZS 123,848,000,000). It is readable. I did not change the wording.
+
+**Guard warnings**
+- The Progress Guard said the prompt mentions M5.6 and M5.1. That text is only the M5.6 tick rule, and M5.6 was ticked long ago. Only C7 was worked on.
+- When I added this entry, the Collision Guard said `docs/overnight-log.md` had been "edited 20 min ago by another Claude session (42c1d38c)". I re-read the file afterwards. The earlier entries (C6 and before, committed in a76c743) are intact, and this entry is the only addition.
 
 ## 2026-10-14 — C6 Checkout page: verified, TICKED
 

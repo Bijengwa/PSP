@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState, type FormEvent } from 'react'
+import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { useCartCount } from './cart'
 import { IconCart, IconClose, IconMenu, IconPhone, IconPin, IconSearch } from './Icons'
@@ -21,6 +21,9 @@ export default function ShopLayout() {
   const cartCount = useCartCount()
   const [menuOpen, setMenuOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const menuButton = useRef<HTMLButtonElement>(null)
+  const closeButton = useRef<HTMLButtonElement>(null)
+  const shownPath = useRef(location.pathname)
 
   // Scroll to in-page anchors (the drawer closes from its own link clicks).
   useEffect(() => {
@@ -30,6 +33,36 @@ export default function ShopLayout() {
       window.scrollTo(0, 0)
     }
   }, [location.pathname, location.hash])
+
+  // After moving to another page, keyboard and screen-reader users start at the
+  // new content instead of on a link that no longer exists. A page that focuses
+  // its own heading (the order confirmation) keeps that focus.
+  useEffect(() => {
+    if (shownPath.current === location.pathname) return
+    shownPath.current = location.pathname
+    const main = document.getElementById('main')
+    const active = document.activeElement
+    if (!main || (active instanceof HTMLElement && active !== main && active.matches('main [tabindex="-1"]'))) return
+    main.focus({ preventScroll: true })
+  }, [location.pathname])
+
+  // The drawer: focus goes to its close button on open and back to the menu
+  // button on close.
+  const wasOpen = useRef(false)
+  useEffect(() => {
+    const active = document.activeElement
+    if (menuOpen) {
+      closeButton.current?.focus()
+    } else if (
+      wasOpen.current &&
+      (!active || active === document.body || document.getElementById('shop-nav')?.contains(active))
+    ) {
+      // Closed with the button, Escape or the backdrop. After a link to another
+      // page, focus is already on the new page's content.
+      menuButton.current?.focus()
+    }
+    wasOpen.current = menuOpen
+  }, [menuOpen])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -52,7 +85,7 @@ export default function ShopLayout() {
         Skip to content
       </a>
 
-      <div className="shop-topbar">
+      <aside className="shop-topbar" aria-label="Contact and display">
         <div className="shop-container shop-topbar-inner">
           <div className="shop-topbar-group">
             <span className="shop-topbar-item">
@@ -70,11 +103,12 @@ export default function ShopLayout() {
             <ThemeToggle />
           </div>
         </div>
-      </div>
+      </aside>
 
       <header className="shop-header">
         <div className="shop-container shop-header-inner">
           <button
+            ref={menuButton}
             type="button"
             className="shop-menu-button"
             aria-label="Open menu"
@@ -94,6 +128,7 @@ export default function ShopLayout() {
             <div className="shop-nav-head">
               <span className="shop-brand-name">Menu</span>
               <button
+                ref={closeButton}
                 type="button"
                 className="shop-menu-button"
                 aria-label="Close menu"
@@ -145,7 +180,14 @@ export default function ShopLayout() {
       </header>
 
       <main id="main" tabIndex={-1}>
-        <Suspense fallback={<p className="shop-placeholder">Loading…</p>}>
+        <Suspense
+          fallback={
+            <p className="shop-placeholder shop-page-loading" role="status">
+              <span className="shop-spinner" aria-hidden="true" />
+              Loading…
+            </p>
+          }
+        >
           <Outlet />
         </Suspense>
       </main>

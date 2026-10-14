@@ -103,9 +103,11 @@ describe('CartPage', () => {
     renderPage()
 
     const monitor = (await screen.findByRole('link', { name: 'Bedside monitor' })).closest('li') as HTMLElement
+    expect(document.title).toBe('Your cart | PSP Engineering Group')
     fireEvent.click(within(monitor).getByRole('button', { name: 'Increase quantity' }))
     expect(readCart()[0]).toEqual({ productId: 'a', quantity: 2 })
     expect(within(monitor).getByText('TZS 2,000')).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toBe('Bedside monitor: quantity 2.')
 
     const input = within(monitor).getByRole('textbox', { name: 'Quantity' })
     fireEvent.change(input, { target: { value: '150' } })
@@ -116,11 +118,12 @@ describe('CartPage', () => {
     expect(readCart()).toEqual([{ productId: 'a', quantity: 15 }])
     expect(screen.queryByRole('link', { name: 'Pulse oximeter' })).toBeNull()
     expect(screen.getByText('Pulse oximeter was removed from your cart.')).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Items (15)' }))
     expect(screen.getAllByText('TZS 15,000')).toHaveLength(3) // line, subtotal, total
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Bedside monitor from cart' }))
-    expect(screen.getByRole('heading', { name: 'Your cart is empty' })).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Your cart is empty' }))
   })
 
   it('labels quotation lines "Price on request" and leaves them out of the total', async () => {

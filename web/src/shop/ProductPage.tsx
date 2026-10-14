@@ -17,9 +17,9 @@ import {
   IconTruck,
   IconWrench,
 } from './Icons'
+import PageMeta, { SITE } from './PageMeta'
 import ProductCard from './ProductCard'
 
-const SITE = 'PSP Engineering Group'
 const SWIPE_PX = 40
 const META_LENGTH = 155
 
@@ -37,28 +37,6 @@ function metaDescription(product: ShopProductDetail) {
   if (text) return text.length > META_LENGTH ? `${text.slice(0, META_LENGTH - 1).trimEnd()}…` : text
   const price = isQuote(product) ? 'Price on request' : formatTzs(product.priceTzs as number)
   return `${product.name}${product.brand ? ` by ${product.brand}` : ''}: ${product.category.name}. ${price}. ${SITE}, Tanzania.`
-}
-
-// Sets the tab title and <meta name="description"> while the page is shown.
-function usePageMeta(title: string, description: string) {
-  useEffect(() => {
-    const previousTitle = document.title
-    let meta = document.head.querySelector<HTMLMetaElement>('meta[name="description"]')
-    const created = !meta
-    if (!meta) {
-      meta = document.createElement('meta')
-      meta.name = 'description'
-      document.head.append(meta)
-    }
-    const previousContent = meta.content
-    document.title = title
-    meta.content = description
-    return () => {
-      document.title = previousTitle
-      if (created) meta.remove()
-      else meta.content = previousContent
-    }
-  }, [title, description])
 }
 
 // /products/:slug
@@ -92,11 +70,18 @@ export default function ProductPage() {
   const current = answer?.key === key ? answer : null
   const product = current?.status === 'ok' ? current.data.product : null
 
-  usePageMeta(
-    product ? `${product.name} | ${SITE}` : current?.status === 'missing' ? `Product not found | ${SITE}` : SITE,
-    product ? metaDescription(product) : `Medical equipment from ${SITE}, Tanzania.`,
+  return (
+    <>
+      <PageMeta
+        title={product?.name ?? (current?.status === 'missing' ? 'Product not found' : '')}
+        description={product ? metaDescription(product) : `Medical equipment from ${SITE}, Tanzania.`}
+      />
+      <ProductView current={current} onRetry={() => setAttempt((n) => n + 1)} />
+    </>
   )
+}
 
+function ProductView({ current, onRetry }: { current: Answer | null; onRetry: () => void }) {
   if (!current) return <ProductSkeleton />
 
   if (current.status === 'missing') {
@@ -125,7 +110,7 @@ export default function ProductPage() {
           </span>
           <h1>Something went wrong</h1>
           <p>{current.message}</p>
-          <button type="button" className="shop-button shop-button-primary" onClick={() => setAttempt((n) => n + 1)}>
+          <button type="button" className="shop-button shop-button-primary" onClick={onRetry}>
             Try again
           </button>
         </div>

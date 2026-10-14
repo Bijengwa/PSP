@@ -78,6 +78,7 @@ const ROUTES = [
     name: 'shop-order-confirmed',
     path: '/checkout',
     ready: '.shop-confirm-number-value',
+    print: true, // also saved as printed (at 768px), in both themes
     cart: [
       { productId: 's8', quantity: 3 },
       { productId: 's2', quantity: 1 },
@@ -91,6 +92,7 @@ const ROUTES = [
       await page.getByRole('button', { name: /Place order/ }).click()
     },
   },
+  { name: 'shop-not-found', path: '/no-such-page', ready: '.shop-not-found h1' },
 ]
 const WIDTHS = [
   { name: '360', width: 360, height: 800 },
@@ -364,6 +366,12 @@ try {
           scrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
           clientWidth: document.documentElement.clientWidth,
           signedIn: !location.pathname.includes('/auth/'),
+          title: document.title,
+          description: document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '',
+          h1s: document.querySelectorAll('h1').length,
+          missing: ['main#main', 'header', 'nav', 'footer', 'a.shop-skip[href="#main"]'].filter(
+            (selector) => !document.querySelector(selector),
+          ),
         }))
         const label = `${route.name} @ ${size.name}px ${theme}`
         const problems = []
@@ -372,10 +380,24 @@ try {
         if (metrics.scrollWidth > metrics.clientWidth) {
           problems.push(`scrolls sideways (${metrics.scrollWidth}px content in ${metrics.clientWidth}px)`)
         }
+        // Shop pages: their own title and description, one h1, the skip link and landmarks.
+        if (route.name.startsWith('shop-')) {
+          if (route.path !== '/' && !metrics.title.endsWith(' | PSP Engineering Group')) {
+            problems.push(`title is "${metrics.title}"`)
+          }
+          if (!metrics.description) problems.push('no meta description')
+          if (metrics.h1s !== 1) problems.push(`${metrics.h1s} h1 headings`)
+          if (metrics.missing.length) problems.push(`missing ${metrics.missing.join(', ')}`)
+        }
         await page.screenshot({
           path: path.join(shotsDir, `${route.name}-${size.name}-${theme}.png`),
           fullPage: true,
         })
+        if (route.print && size.name === '768') {
+          await page.emulateMedia({ media: 'print' })
+          await page.screenshot({ path: path.join(shotsDir, `${route.name}-print-${theme}.png`), fullPage: true })
+          await page.emulateMedia({ media: 'screen' })
+        }
         console.log(`${problems.length ? 'FAIL' : 'ok  '} ${label}${problems.length ? ': ' + problems.join('; ') : ''}`)
         if (problems.length) failures.push(`${label}: ${problems.join('; ')}`)
         await page.close()

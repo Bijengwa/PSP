@@ -785,6 +785,60 @@ button.shop-button {
   color: var(--danger);
 }
 
+/* Headings that take focus from script (after a remove, on the confirmation)
+   show where the reader is without a ring around the text. */
+.shop h1[tabindex='-1']:focus,
+.shop h2[tabindex='-1']:focus {
+  outline: none;
+}
+
+/* Route loading, inside the layout: keeps the footer down while a page loads. */
+.shop-page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 50vh;
+  color: var(--primary);
+}
+
+/* ---------- 404 ---------- */
+.shop-not-found {
+  padding-block: 24px 8px;
+}
+
+.shop-not-found .shop-state {
+  padding-block: 48px;
+}
+
+.shop-not-found-code {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+}
+
+.shop-not-found h1 {
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+}
+
+.shop-not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.shop-not-found-actions .shop-button {
+  flex: 1 1 200px;
+  max-width: 260px;
+}
+
 /* ---------- Catalogue (/products) ---------- */
 .shop-catalog {
   display: flex;
@@ -3383,5 +3437,81 @@ a.shop-cart-line-name:hover {
   /* Still shows it is busy, just slower. */
   .shop-spinner {
     animation-duration: 2s;
+  }
+}
+
+/* ---------- Print ----------
+   Any shop page prints as its content only; the order confirmation is the page
+   people print. Paper is always light, whatever theme is on screen: the tokens
+   below repeat the light values from index.css and the top of this file. */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  :root,
+  :root[data-theme='dark'] {
+    color-scheme: light;
+    --ink: #0f2326;
+    --ink-muted: #4a5f63;
+    --ink-subtle: #56696d;
+    --border: #cfdcdd;
+    --border-strong: #7d9093;
+    --surface: #ffffff;
+    --surface-muted: #e8eff0;
+    --page: #ffffff;
+    --primary: #0a6b6b;
+    --primary-soft: #d6eeec;
+    --on-primary: #ffffff;
+  }
+
+  :root[data-theme='dark'] .shop {
+    --shop-quote: #9a4a06;
+    --shop-quote-soft: #fdefd9;
+    --shop-ok: #166534;
+    --shop-ok-soft: #dcf5e4;
+  }
+
+  .shop-skip,
+  .shop-topbar,
+  .shop-header,
+  .shop-footer,
+  .shop-backdrop,
+  .shop-cart-steps,
+  .shop-confirm-copy,
+  .shop-confirm-copy-failed,
+  .shop-confirm-actions {
+    display: none !important;
+  }
+
+  .shop-container {
+    max-width: none;
+    padding-inline: 0;
+  }
+
+  .shop-confirm-page {
+    padding-top: 0;
+  }
+
+  /* The header is hidden, so the paper says who it is from. */
+  .shop-confirm-page::before {
+    content: 'PSP Engineering Group · Dar es Salaam, Tanzania';
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .shop-confirm {
+    max-width: none;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .shop-confirm-number,
+  .shop-confirm-facts,
+  .shop-confirm-next {
+    break-inside: avoid;
   }
 }

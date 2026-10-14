@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useShopCategories } from './api'
 import { IconArrow, IconCheck, IconDocument, IconImage, IconShield, IconTruck, IconWrench } from './Icons'
+import PageMeta from './PageMeta'
 
 // Sample photos from Wikimedia Commons, as in the design preview, until PSP's
 // own photos replace them. Credits are shown at the end of the page.
@@ -99,7 +100,7 @@ function HomeCategories() {
             <Link to={`/products?category=${category.slug}`} className="shop-category">
               <span className="shop-category-photo">
                 {photo ? (
-                  <img src={photo} alt="" loading="lazy" decoding="async" />
+                  <img src={photo} alt="" width="320" height="208" loading="lazy" decoding="async" />
                 ) : (
                   <span className="shop-card-noimage">
                     <IconImage size={32} />
@@ -123,6 +124,10 @@ function HomeCategories() {
 export default function ShopHome() {
   return (
     <>
+      <PageMeta
+        title=""
+        description="Medical equipment importer in Dar es Salaam: patient monitors, imaging, laboratory, respiratory care and hospital furniture. Live stock, prices in TZS, order online or request a quotation."
+      />
       <section className="shop-container shop-hero-section" aria-labelledby="hero-title">
         <div className="shop-hero">
           <div className="shop-hero-copy">
@@ -145,7 +150,15 @@ export default function ShopHome() {
           </div>
 
           <div className="shop-hero-visual">
-            <img src={PHOTO.ct} alt="CT scanner in a hospital imaging room" loading="eager" decoding="async" />
+            <img
+              src={PHOTO.ct}
+              alt="CT scanner in a hospital imaging room"
+              width="960"
+              height="640"
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+            />
             <div className="shop-hero-card">
               <div className="shop-hero-card-top">
                 <span className="shop-hero-card-meta">Imaging · Large equipment</span>
