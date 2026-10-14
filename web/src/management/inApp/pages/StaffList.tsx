@@ -215,7 +215,9 @@ export default function StaffList() {
                   {list.data.staff.map((member) => (
                     <tr key={member.id}>
                       <td>
-                        <span className="office-staff-name">{member.fullName}</span>
+                        <Link className="office-staff-name office-staff-link" to={`/office/staff/${member.id}`}>
+                          {member.fullName}
+                        </Link>
                         <span className="office-staff-meta">{member.email}</span>
                         {member.phone && <span className="office-staff-meta">{member.phone}</span>}
                         {resetForm(member)}
@@ -235,7 +237,9 @@ export default function StaffList() {
             <ul className="office-staff-cards">
               {list.data.staff.map((member) => (
                 <li key={member.id} className="office-staff-card">
-                  <span className="office-staff-name">{member.fullName}</span>
+                  <Link className="office-staff-name office-staff-link" to={`/office/staff/${member.id}`}>
+                    {member.fullName}
+                  </Link>
                   <span className="office-staff-meta">{member.email}</span>
                   {member.phone && <span className="office-staff-meta">{member.phone}</span>}
                   <dl className="office-staff-facts">

@@ -18,6 +18,39 @@ const ROUTES = [
   { name: 'office-products', path: '/office/products', ready: '.office-product-head' },
   { name: 'office-products-new', path: '/office/products/new', ready: '.office-product-head' },
   { name: 'office-products-edit', path: '/office/products/p1', ready: '.office-product-head' },
+  { name: 'office-staff-profile', path: '/office/staff/st1', ready: '.office-profile-head' },
+  {
+    name: 'office-staff-profile-edit',
+    path: '/office/staff/st1',
+    ready: '.office-profile-form .field-error',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Edit' }).click()
+      await page.getByLabel('Full name').fill('')
+      await page.getByRole('button', { name: 'Save changes' }).click()
+    },
+  },
+  {
+    name: 'office-staff-profile-deactivate',
+    path: '/office/staff/st1',
+    ready: '.office-confirm',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Deactivate', exact: true }).click()
+      await page.locator('.office-confirm').scrollIntoViewIfNeeded()
+    },
+  },
+  {
+    name: 'office-staff-profile-role',
+    path: '/office/staff/st1',
+    ready: '.office-role-option',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Change role' }).click()
+      await page.getByRole('radio', { name: /Admin/ }).check()
+      await page.locator('.office-role-form').scrollIntoViewIfNeeded()
+    },
+  },
+  // st2 is answered as an inactive account.
+  { name: 'office-staff-profile-inactive', path: '/office/staff/st2', ready: '.office-profile-head' },
+  { name: 'office-my-profile', path: '/office/profile', ready: '.office-profile-head' },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -78,6 +111,7 @@ const ROUTES = [
     name: 'shop-order-confirmed',
     path: '/checkout',
     ready: '.shop-confirm-number-value',
+    print: true, // also saved as printed (at 768px), in both themes
     cart: [
       { productId: 's8', quantity: 3 },
       { productId: 's2', quantity: 1 },
@@ -91,6 +125,7 @@ const ROUTES = [
       await page.getByRole('button', { name: /Place order/ }).click()
     },
   },
+  { name: 'shop-not-found', path: '/no-such-page', ready: '.shop-not-found h1' },
 ]
 const WIDTHS = [
   { name: '360', width: 360, height: 800 },
@@ -164,6 +199,19 @@ const products = [
   product(3, { quantityInStock: 0, status: 'draft', isPublished: false, requestQuotation: true, priceTzs: null }),
   product(4, { status: 'archived', isArchived: true, isPublished: false, images: [] }),
 ]
+
+// A staff profile with a long name and email, waiting for a password change.
+const staffMember = {
+  id: 'st1',
+  fullName: 'Rehema Mwanaisha Kisanga-Lyimo',
+  email: 'rehema.mwanaisha.kisanga-lyimo@pspengineering.example',
+  phone: '+255 712 345 678',
+  role: 'staff',
+  isActive: true,
+  mustChangePassword: true,
+  lastLoginAt: '2026-10-13T07:45:00.000Z',
+  createdAt: '2026-10-01T08:00:00.000Z',
+}
 
 const shopCategories = [
   { name: 'Imaging', slug: 'imaging', productCount: 14 },
@@ -267,6 +315,19 @@ function answer(url, request) {
   const one = pathname.match(/^\/api\/office\/products\/(p\d+)$/)
   if (one) return ok({ product: products.find((item) => item.id === one[1]) ?? products[0] })
   if (pathname === '/api/office/reset-requests') return ok({ requests: [], total: 0 })
+  if (pathname === '/api/office/roles') {
+    return ok({
+      roles: [
+        { name: 'admin', description: 'Full access to the office' },
+        { name: 'staff', description: 'Normal office employee' },
+      ],
+    })
+  }
+  const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
+  if (staffProfile) {
+    const inactive = staffProfile[1] === 'st2' ? { isActive: false, mustChangePassword: false } : {}
+    return ok({ staff: { ...staffMember, id: staffProfile[1], ...inactive } })
+  }
   return ok({})
 }
 
@@ -364,6 +425,12 @@ try {
           scrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
           clientWidth: document.documentElement.clientWidth,
           signedIn: !location.pathname.includes('/auth/'),
+          title: document.title,
+          description: document.querySelector('meta[name="description"]')?.getAttribute('content') ?? '',
+          h1s: document.querySelectorAll('h1').length,
+          missing: ['main#main', 'header', 'nav', 'footer', 'a.shop-skip[href="#main"]'].filter(
+            (selector) => !document.querySelector(selector),
+          ),
         }))
         const label = `${route.name} @ ${size.name}px ${theme}`
         const problems = []
@@ -372,10 +439,24 @@ try {
         if (metrics.scrollWidth > metrics.clientWidth) {
           problems.push(`scrolls sideways (${metrics.scrollWidth}px content in ${metrics.clientWidth}px)`)
         }
+        // Shop pages: their own title and description, one h1, the skip link and landmarks.
+        if (route.name.startsWith('shop-')) {
+          if (route.path !== '/' && !metrics.title.endsWith(' | PSP Engineering Group')) {
+            problems.push(`title is "${metrics.title}"`)
+          }
+          if (!metrics.description) problems.push('no meta description')
+          if (metrics.h1s !== 1) problems.push(`${metrics.h1s} h1 headings`)
+          if (metrics.missing.length) problems.push(`missing ${metrics.missing.join(', ')}`)
+        }
         await page.screenshot({
           path: path.join(shotsDir, `${route.name}-${size.name}-${theme}.png`),
           fullPage: true,
         })
+        if (route.print && size.name === '768') {
+          await page.emulateMedia({ media: 'print' })
+          await page.screenshot({ path: path.join(shotsDir, `${route.name}-print-${theme}.png`), fullPage: true })
+          await page.emulateMedia({ media: 'screen' })
+        }
         console.log(`${problems.length ? 'FAIL' : 'ok  '} ${label}${problems.length ? ': ' + problems.join('; ') : ''}`)
         if (problems.length) failures.push(`${label}: ${problems.join('; ')}`)
         await page.close()

@@ -13,6 +13,9 @@ import {
 import { CheckoutSteps, type CartNotice } from './CartPage'
 import { clearCart, readCart, useCart, type CartLine } from './cart'
 import { IconAlert, IconArrow, IconCheck, IconChevronRight, IconDocument, IconImage, IconPhone, IconShield, IconTruck } from './Icons'
+import PageMeta from './PageMeta'
+
+const CONFIRMED_META = 'Your order with PSP Engineering Group. PSP will contact you to confirm and arrange payment.'
 
 type Field = Exclude<keyof CheckoutDetails, 'website'>
 type Errors = Partial<Record<Field, string>>
@@ -187,6 +190,10 @@ export default function CheckoutPage() {
 function CheckoutHead() {
   return (
     <div className="shop-cart-head">
+      <PageMeta
+        title="Checkout"
+        description="Place your order with PSP Engineering Group. Pay later: on delivery, against an invoice, or by bank transfer."
+      />
       <h1>Checkout</h1>
       <CheckoutSteps current={2} />
     </div>
@@ -654,6 +661,7 @@ export function OrderConfirmed() {
   if (!order) {
     return (
       <div className="shop-container shop-cart-page">
+        <PageMeta title="No order to show" description={CONFIRMED_META} />
         <div className="shop-state">
           <span className="shop-state-icon">
             <IconDocument size={24} />
@@ -685,6 +693,7 @@ export function OrderConfirmed() {
 
   return (
     <div className="shop-container shop-cart-page shop-confirm-page">
+      <PageMeta title={`Order ${order.orderNumber} placed`} description={CONFIRMED_META} />
       <CheckoutSteps current={3} />
       <div className="shop-cart-panel shop-confirm">
         <span className="shop-confirm-icon">

@@ -161,6 +161,7 @@ Each step lists **Scope** (what to do), **Done when** (checks that must pass) an
 - `node/migrations/<timestamp>_create_orders.js`
 - `web/src/shop/` (pages, components, `api.ts`, tests, `shop.css`)
 - `web/scripts/responsive-check.mjs`, `docs/screenshots/`
+- **M4 track (2026-10-14):** `web/src/management/inApp/pages/StaffProfile.tsx`, `web/src/management/inApp/layout/Sidebar.test.tsx`, other web tests beside the files they test, and a new `node/src/auth/staff.test.js` for the staff endpoints. Staff routes stay in `node/src/auth/auth.routes.js` (`officeRouter`) and `auth.service.js`. A "Department" column is NOT approved.
 - Dev dependency `playwright-core` in `web/` (drives the Edge or Chrome already installed; downloads no browser) — needed so UI steps can pass the 360/768/desktop check without a person.
 
 ### M1 — Management Shell
@@ -269,6 +270,11 @@ A new **IT** sidebar group, shown only to admins. All endpoints under `/api/offi
 #### M4.7 Reset password from the profile
 - **Scope:** "Reset password" on the staff profile, reusing the M2.4 service: IT enters a strength-checked temporary password and hands it over in person. Stored only as an argon2 hash, never shown or logged again. Resolves that person's pending reset requests.
 - **Done when:** the M4 end-to-end circle above passes as one test (backend) plus a manual run in the browser.
+
+#### M4.8 M4 checks and end-to-end circle (added 2026-10-14)
+- **Scope:** Close the checks left open when M4.1–M4.3 were ticked (see `docs/overnight-log.md`): backend tests for `GET /api/office/staff` (paging, search, status filter, no password fields in responses) and for `POST /api/office/staff` (duplicate email, forced password change on first login); a frontend test that a non-admin does not see the IT group; the responsive check for `/office/staff`, `/office/staff/new` and a staff profile page, in both themes. Then the M4 circle as one backend test: register → login with the temporary password → forced change → forgot password → IT reset → deactivate → refused on the next request.
+- **Done when:** all of the above pass, plus `npm test` (node and web), build and lint.
+- **Not in this step:** new features.
 
 ### Orders vs Customers (decided 2026-10-07)
 

@@ -708,3 +708,158 @@ C6 (Checkout page) passed every check, so I ticked it and set the current step t
 - **Scope Guard:** it asked me to confirm the "Done when" checks before ticking. They had all passed before the edit.
 
 **For C7:** at 360px in the light theme, the "Show order summary" toggle wraps onto two lines. It's readable but could be tightened.
+C7 Shop polish is built and every check passes, but I did **not** tick it. Its "Done when" also needs you to sign off the screenshots in `docs/screenshots/`, and nobody was awake to do that. So `docs/progress.md` is unchanged, the current step is still **C7**, and nothing was committed. Once you sign off the screenshots, the next run can tick C7 and set the current step to M4.1.
+
+**What changed (all inside C7's scope, no new features)**
+- **Page titles and descriptions on every shop route:** a new `web/src/shop/PageMeta.tsx` replaces the hook that only the product page had. Home, catalogue, product, cart, checkout, order confirmed and 404 now each have their own tab title and description. `index.html` has a default description.
+- **Shop 404:** new `web/src/shop/NotFoundPage.tsx`, shown inside the shop layout. In `App.tsx` it replaces the old bare not-found page; unknown `/office/*` addresses still go to the office's own page.
+- **Focus and screen readers:**
+  - After moving to another page, focus goes to the main content.
+  - The mobile menu moves focus into itself when opened and back to the menu button when closed.
+  - Changing a quantity in the cart is now announced.
+  - After removing a cart line, focus moves to the list heading instead of being lost.
+  - The top bar is now a labelled landmark.
+  - The page-loading placeholder now has a spinner and keeps the footer from jumping up.
+- **Images:** the home page photos got fixed sizes, and the hero image loads first.
+- **Print:** the order confirmation prints on white paper with a PSP heading, even when the screen is in dark mode. Header, footer, steps and buttons are hidden.
+- **Responsive check:** it now also covers the 404, and fails any shop page that lacks its own title, a description, exactly one `h1`, the skip link or the main landmarks. It also saves print screenshots of the confirmation.
+- **Tests:** more checks in `CartPage.test.tsx`, plus a new `NotFoundPage.test.tsx`.
+
+**Already in place, checked rather than changed:** the skip link, reduced motion, and no theme flash. AA contrast passes in both themes: I computed every text/background colour pair, and the lowest is 4.96:1.
+
+**Verified**
+- node `npm test`: 176 tests passed.
+- web `npm test`: 70 tests passed; `npm run lint` and `npm run build` are clean.
+- `npm run check:responsive` passed on every route at 360, 768 and 1280px, in light and dark. I looked at these screenshots:
+  - the 404 at 360 light and 1280 dark;
+  - both print screenshots (the dark one prints light);
+  - checkout at 360 light;
+  - home at 360 dark.
+
+**Notes**
+- On the home page screenshots the category photos show as empty tiles. They load only when scrolled to, so the full-page screenshot misses them; the tiles keep their size.
+- At 360px the checkout's "Show order summary" button still wraps onto two lines when the total is huge (the test data uses TZS 123,848,000,000). It's readable, so I left it for you to decide.
+- The Collision Guard warned that another session had edited `docs/overnight-log.md`. I re-read it: the earlier entries are intact and my C7 entry is the only addition.
+C7 is still not ticked. Its "Done when" needs you to sign off the screenshots in `docs/screenshots/`, and that couldn't happen overnight. So `docs/progress.md` is unchanged, the current step stays **C7**, and nothing was committed.
+
+**What this run did:** An earlier run had already built C7: page titles and meta descriptions on every shop route, a shop 404 page, focus handling, cart change announcements, image sizes and a print style for the order confirmation. That work is still uncommitted in the tree. I reviewed it against C7's scope and found nothing outside the step and nothing to fix, so no code changed this run. I also confirmed that unknown `/office/...` addresses still go to the office's own not-found page, not the shop 404.
+
+**Checks run this pass (all passed):**
+- `node` `npm test`: 176 tests passed.
+- `web`: `npm test` (70 tests), `npm run lint` and `npm run build` all passed.
+- `npm run check:responsive` passed for every shop route at 360, 768 and 1280px in light and dark, 102 checks in all. That includes the title, meta description, single `h1` and landmark checks. Screenshots were saved again.
+- I looked at the 404 page (360px dark), the printed confirmation in dark mode (it prints light, as intended), the cart (360px dark) and checkout (360px dark).
+
+**Worth a look when you sign off:**
+- In the cart screenshots the product thumbnails are plain dark-red squares. They come from the test images the responsive check uses, not from C7 code.
+- At 360px, "Show order summary" on checkout wraps onto two lines when the total is very large. It's readable.
+
+**Guard warnings:**
+- The Progress Guard flagged "M5.6/M5.1" in the prompt. That text is only the rule for ticking M5.6, which was ticked long ago. I worked only on C7.
+- The Collision Guard said `docs/overnight-log.md` had been edited 23 minutes earlier by another Claude session. I re-read the file after my edit: the earlier entries are intact, and my new entry at the top is the only addition.
+
+Everything is written up in `docs/overnight-log.md`. Once you sign off the screenshots, or list what to change, the next run can tick C7 and set the current step to M4.1.
+M4.4 (Staff profile) is done and ticked, and the current step is now **M4.5**. I didn't start M4.5 and didn't commit anything.
+
+**What changed**
+- **API:** `GET /api/office/staff/:id` and `PATCH /api/office/staff/:id` are in `auth.routes.js` and `auth.service.js`. Both are admin only.
+  - The PATCH accepts only the full name and phone.
+  - Anything else (email, role, active status, an empty body) is refused with a clear message for each field.
+  - Name and phone use the same rules as registration.
+  - Changing them doesn't sign the person out.
+- **Staff profile page** (`/office/staff/:id`, in the new `StaffProfile.tsx`):
+  - The top shows initials, the name, the email and badges for role and status.
+  - The "Contact details" card has an Edit button that opens a name and phone form. Errors appear next to the fields, the save button shows progress, and typed values are kept if a save fails. A successful save shows "Changes saved."
+  - The "Account" card shows role, status, last sign-in and date registered.
+  - There are loading, not-found, and error-with-retry states.
+- **My Profile** (`/office/profile`): the Profile menu entry now opens the signed-in person's own read-only profile, with a link to Change password.
+- **Smaller edits:**
+  - Names in the staff list link to the profile.
+  - The header shows a title for both new pages.
+  - `AuthProvider` has a new `refresh()`, so an admin who edits their own name sees it in the header straight away.
+  - The responsive check now covers the three new pages: the profile, the edit form showing an error, and My Profile.
+
+**Checks**
+- **Node `npm test`:** 187 passed, including 11 new ones in `node/src/auth/staff.test.js`.
+- **Web `npm test`:** 78 passed, including 8 new ones in `StaffProfile.test.tsx`.
+  - One full run had a single failure in the shop checkout test, which I didn't touch.
+  - That test passed in the full run before and in two full reruns after, so it looks flaky.
+- **Lint and build:** both clean.
+- **Responsive check:** 120 of 120 page, width and theme combinations passed.
+  - The first two runs stopped on a Windows "unknown error" while saving an unrelated products screenshot. A different file failed each time, so it looks like a passing file lock; the next two runs passed in full.
+  - The screenshots showed one bug, now fixed: the "Password change pending" badge was grey instead of amber.
+
+**Decisions for you** (also in `docs/overnight-log.md`)
+- My Profile doesn't show a phone number, because `/api/auth/me` doesn't return one. Adding it would change the `/me` response and its existing tests, so I left it.
+- Phone stays required when editing, as it is on registration. The seeded admin has no phone, so they'll have to add one the first time they save a name change.
+
+**Guard warnings:** The Progress Guard flagged that the prompt mentions M5.6. That's only the rule for running the responsive check; M5.6 was finished long ago. The Scope Guard flagged the order of my two edits to `docs/progress.md`: I set the current step to M4.5 before ticking M4.4. Both edits were made after every M4.4 check had passed.
+M4.5 (Activate/deactivate) is done and ticked; the current step is now **M4.6**, which I didn't start. Nothing was committed.
+
+The step's "Done when" passes: a test shows a deactivated person gets 401 on their very next request, all their sessions are gone, and they can't log in again.
+
+**Backend**
+- `PATCH /api/office/staff/:id` now also takes `{ isActive }`. It has to be a true/false value sent without other fields, or the request is refused with 400.
+- Deactivating someone signs them out of every device in the same request. If Redis is down, nothing changes and the call returns 503.
+- Rows are never deleted, and there is no DELETE route.
+- An admin can't deactivate themselves (409), and the last active admin can't be deactivated (409).
+- If two admins deactivate each other at the same moment, one of them stays active.
+
+**UI** ΓÇö the staff profile has a new "Access" card:
+- **Active person:** a red Deactivate button opens an inline confirmation before anything is sent.
+- **Inactive person:** a Reactivate button.
+- **Your own profile:** a note only, no button.
+- Server refusals show inside the card.
+- I checked the new screenshots (360, 768 and 1280px, light and dark): no sideways scroll, and buttons are full width and at least 44px tall on phones.
+
+**Checks**
+- node `npm test`: 198 passed.
+- web `npm test`: 83 passed on the final two runs. Runs made while the screenshot check was running had flaky failures:
+  - A focus check in `StaffProfile.test.tsx` (an M4.4 test). I fixed it by making the test wait for focus to move.
+  - Two tests in `ProductPage.test.tsx`, a file I didn't touch, failed once and then passed on the next runs. It looks like the same flakiness as the checkout test noted in M4.4 and is worth a look.
+- `npm run lint` and `npm run build`: clean.
+- `npm run check:responsive`: passed, including the two new screens (the open confirmation and an inactive person).
+
+**Not verified**
+- The rule that the last active admin can't be deactivated can't be reached through the API (whoever calls it is an active admin), so it is tested at the service level.
+- I didn't do the extra proof that the "deactivate each other at once" test fails without the database lock, because that shell command needed approval.
+
+**Guard warnings**
+- **Collision Guard:** it fired on several files. The other session was the earlier M4.4 run, whose work was already committed, so nothing was overwritten.
+- **Progress Guard:** the M5.6 mention is only the rule for when to run the screenshot check.
+- **Scope Guard:** it asked me to confirm the "Done when" check before ticking; it passed.
+
+All of this is written up in `docs/overnight-log.md`.
+M4.6 (role assignment) is done and ticked. `docs/progress.md` now says the current step is **M4.7**, which I did not start. Nothing was committed.
+
+One thing to know first: the plan gives M4.6 a Scope but no "Done when" line. I treated each part of the Scope as the bar and wrote a test for each: the role must be one of the existing `roles` rows, the person's sessions end, an admin can't remove their own admin role, and the last active admin can't be demoted. The normal checks also had to pass. I flagged this in the log in case you meant more.
+
+**What changed**
+- **API:**
+  - New `GET /api/office/roles` lists the roles from the database.
+  - `PATCH /api/office/staff/:id` now accepts `{ role }` on its own. A real change signs the person out everywhere at once. If Redis is down, nothing changes and the request returns 503.
+  - Refusals:
+    - an unknown role or a mixed body: 400;
+    - removing your own admin role: 409;
+    - demoting the last active admin: 409. An inactive admin can still be demoted.
+  - Two admins demoting each other at the same time can't leave the office with no admin.
+- **Staff profile page:** a new Role card between Account and Access.
+  - "Change role" shows one option per role, with its description, and marks the current one.
+  - A note says the person will be signed out. "Save role" stays disabled until a different role is picked.
+  - Loading, error-with-retry and server-refusal states are all handled.
+  - On your own admin profile the card shows only a note, no button.
+- **Tests:** 11 new backend tests and 5 new web tests, plus a new role screen in the responsive check.
+
+**Verified**
+- `node` `npm test`: 209 passed.
+- `web`: `npm test` 88 passed; lint and build are clean.
+- `npm run check:responsive` passed for every route at 360, 768 and 1280px in light and dark. The first three runs stopped on the Windows "unknown error" when saving a screenshot (a different existing file each time, as in M4.4). The fourth run passed in full. Something seems to hold those files open now and then, perhaps antivirus or indexing, so it's worth a look.
+- I looked at the new role screenshots (360 light and dark, 1280 light, and the 768 dark profile with the card closed). Both themes are readable and nothing scrolls sideways.
+- **Not done:** a mutation check (removing the sign-out to prove the tests catch it). The shell command needed approval nobody could give tonight.
+
+**Guard warnings** (all in the log)
+- **Progress Guard:** it flagged the mention of M5.6. That's only the rule for when to run the responsive check; M5.6 was finished long ago.
+- **Collision Guard:** it fired on every file I edited. The other session was the M4.5 run, and its work is already in commit d6f6f0c, so nothing was overwritten.
+- **Scope Guard:** it asked me to confirm the "Done when" checks before ticking. Since M4.6 has none, I used the Scope bar described at the top.
+
+Every file I touched is on the approved M4 list. The only new files are screenshots.

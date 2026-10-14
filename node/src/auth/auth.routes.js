@@ -12,6 +12,11 @@ const {
   registerStaff,
   REGISTRABLE_ROLES,
   listStaff,
+  getStaff,
+  updateStaff,
+  setStaffActive,
+  listRoles,
+  setStaffRole,
   STAFF_STATUSES,
   STAFF_PAGE_SIZE,
   toPublicStaff,
@@ -176,20 +181,34 @@ officeRouter.post('/reset-requests/:id/dismiss', async (req, res) => {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^\+?[0-9][0-9 ()-]{5,19}$/;
 
+// Name and phone rules, shared by registration and profile edits.
+// Each returns { value } or { error } (a message for the field).
+function checkFullName(fullName) {
+  const name = typeof fullName === 'string' ? fullName.trim().replace(/\s+/g, ' ') : '';
+  if (!name) return { error: 'Enter the full name.' };
+  if (name.length > 120) return { error: 'Use at most 120 characters.' };
+  return { value: name };
+}
+
+function checkPhone(phone) {
+  const tel = typeof phone === 'string' ? phone.trim() : '';
+  if (!tel) return { error: 'Enter a phone number.' };
+  if (!PHONE_PATTERN.test(tel)) return { error: 'Enter a valid phone number, for example +255 700 000 000.' };
+  return { value: tel };
+}
+
 // Validates the registration body. Returns { values } or { fields } (field -> message).
 function parseRegistration(body) {
   const { fullName, email, phone, role, temporaryPassword } = body ?? {};
   const fields = {};
-  const name = typeof fullName === 'string' ? fullName.trim().replace(/\s+/g, ' ') : '';
+  const name = checkFullName(fullName);
   const mail = typeof email === 'string' ? email.trim().toLowerCase() : '';
-  const tel = typeof phone === 'string' ? phone.trim() : '';
+  const tel = checkPhone(phone);
 
-  if (!name) fields.fullName = 'Enter the full name.';
-  else if (name.length > 120) fields.fullName = 'Use at most 120 characters.';
+  if (name.error) fields.fullName = name.error;
   if (!mail) fields.email = 'Enter an email address.';
   else if (mail.length > 254 || !EMAIL_PATTERN.test(mail)) fields.email = 'Enter a valid email address.';
-  if (!tel) fields.phone = 'Enter a phone number.';
-  else if (!PHONE_PATTERN.test(tel)) fields.phone = 'Enter a valid phone number, for example +255 700 000 000.';
+  if (tel.error) fields.phone = tel.error;
   if (!REGISTRABLE_ROLES.includes(role)) fields.role = 'Choose Admin or Staff.';
   if (typeof temporaryPassword !== 'string' || !temporaryPassword) {
     fields.temporaryPassword = 'Enter a temporary password.';
@@ -198,7 +217,33 @@ function parseRegistration(body) {
   }
 
   if (Object.keys(fields).length) return { fields };
-  return { values: { fullName: name, email: mail, phone: tel, role, temporaryPassword } };
+  return { values: { fullName: name.value, email: mail, phone: tel.value, role, temporaryPassword } };
+}
+
+const EDITABLE_PROFILE_FIELDS = ['fullName', 'phone'];
+
+// Validates a profile edit: only name and phone, at least one of them.
+// Returns { values } or { fields } (field -> message).
+function parseProfileEdit(body) {
+  const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const keys = Object.keys(input);
+  const other = keys.find((key) => !EDITABLE_PROFILE_FIELDS.includes(key));
+  if (other) return { fields: { [other]: 'Only the full name and phone can be changed here.' } };
+  if (!keys.length) return { fields: { fullName: 'Send the full name or phone to change.' } };
+
+  const fields = {};
+  const values = {};
+  if ('fullName' in input) {
+    const name = checkFullName(input.fullName);
+    if (name.error) fields.fullName = name.error;
+    else values.fullName = name.value;
+  }
+  if ('phone' in input) {
+    const tel = checkPhone(input.phone);
+    if (tel.error) fields.phone = tel.error;
+    else values.phone = tel.value;
+  }
+  return Object.keys(fields).length ? { fields } : { values };
 }
 
 officeRouter.get('/staff', async (req, res) => {
@@ -235,6 +280,101 @@ officeRouter.post('/staff', async (req, res) => {
     'Staff registered',
   );
   res.status(201).json({ success: true, data: { staff: result.staff } });
+});
+
+officeRouter.get('/staff/:id', async (req, res) => {
+  const staff = await getStaff(uuidParam(req, 'id'));
+  if (!staff) throw httpError(404, 'Not found');
+  res.json({ success: true, data: { staff } });
+});
+
+// Deactivate or reactivate: { isActive } alone. Deactivation ends the person's
+// sessions at once; the row is kept.
+async function changeStatus(req, res, staffId, isActive) {
+  const result = await setStaffActive(staffId, isActive, { actorId: req.staff.id });
+  if (!result) throw httpError(404, 'Not found');
+  if (result.error === 'self') {
+    throw httpError(409, 'You cannot deactivate your own account.', 'CANNOT_DEACTIVATE_SELF');
+  }
+  if (result.error === 'last_admin') {
+    throw httpError(409, 'The last active admin cannot be deactivated.', 'LAST_ADMIN');
+  }
+
+  if (result.changed) {
+    const event = isActive ? 'staff.reactivated' : 'staff.deactivated';
+    req.log.info({ event, staffId, by: req.staff.id }, isActive ? 'Staff reactivated' : 'Staff deactivated');
+  }
+  res.json({ success: true, data: { staff: result.staff } });
+}
+
+// Change the role: { role } alone, one of the existing roles. The person's sessions
+// end, so they sign in again under the new role.
+async function changeRole(req, res, staffId, role) {
+  const result = await setStaffRole(staffId, role, { actorId: req.staff.id });
+  if (!result) throw httpError(404, 'Not found');
+  if (result.error === 'role') {
+    throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), {
+      details: { role: 'Choose one of the existing roles.' },
+    });
+  }
+  if (result.error === 'self') {
+    throw httpError(409, 'You cannot remove your own admin role.', 'CANNOT_DEMOTE_SELF');
+  }
+  if (result.error === 'last_admin') {
+    throw httpError(409, 'The last active admin cannot be given another role.', 'LAST_ADMIN');
+  }
+
+  if (result.changed) {
+    req.log.info(
+      { event: 'staff.role_changed', staffId, from: result.from, to: role, by: req.staff.id },
+      'Staff role changed',
+    );
+  }
+  res.json({ success: true, data: { staff: result.staff } });
+}
+
+// The roles IT can assign on the staff profile.
+officeRouter.get('/roles', async (req, res) => {
+  res.json({ success: true, data: { roles: await listRoles() } });
+});
+
+// Name and phone, the status on its own, or the role on its own.
+officeRouter.patch('/staff/:id', async (req, res) => {
+  const staffId = uuidParam(req, 'id');
+  if (req.body && typeof req.body === 'object' && 'role' in req.body) {
+    const keys = Object.keys(req.body);
+    const fields = {};
+    if (keys.length > 1) fields.role = 'Change the role on its own, without other fields.';
+    else if (typeof req.body.role !== 'string' || !req.body.role) fields.role = 'Choose one of the existing roles.';
+    if (fields.role) {
+      throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: fields });
+    }
+    return changeRole(req, res, staffId, req.body.role);
+  }
+  if (req.body && typeof req.body === 'object' && 'isActive' in req.body) {
+    const keys = Object.keys(req.body);
+    const fields = {};
+    if (keys.length > 1) fields.isActive = 'Change the status on its own, without other fields.';
+    else if (typeof req.body.isActive !== 'boolean') fields.isActive = 'Send true to activate or false to deactivate.';
+    if (fields.isActive) {
+      throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: fields });
+    }
+    return changeStatus(req, res, staffId, req.body.isActive);
+  }
+
+  const parsed = parseProfileEdit(req.body);
+  if (parsed.fields) {
+    throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: parsed.fields });
+  }
+
+  const staff = await updateStaff(staffId, parsed.values);
+  if (!staff) throw httpError(404, 'Not found');
+
+  req.log.info(
+    { event: 'staff.profile_updated', staffId, fields: Object.keys(parsed.values), by: req.staff.id },
+    'Staff profile updated',
+  );
+  res.json({ success: true, data: { staff } });
 });
 
 officeRouter.post('/staff/:id/reset-password', async (req, res) => {

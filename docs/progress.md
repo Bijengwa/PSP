@@ -3,8 +3,8 @@
 Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" checks pass.
 UI steps also need the responsive check (360px, 768px, desktop) before ticking.
 Replanned: 2026-10-07. Re-ordered 2026-10-14 (shop first): M5.6 → C2 → C3 → C4 → C5 → C6 → C7, then back to M4.1.
-M4.1 is implemented but not ticked (see `docs/overnight-log.md`); it resumes after C7.
-Current step: **C7**
+M4.1–M4.3 ticked on 2026-10-14 at the user's instruction after a code check (see `docs/overnight-log.md` for the checks still open).
+Current step: **M4.7**
 
 ## M1 — Management Shell
 
@@ -47,17 +47,18 @@ Current step: **C7**
 - [x] C4 Cart
 - [x] C5 Orders tables and checkout API
 - [x] C6 Checkout page
-- [ ] C7 Shop polish
+- [x] C7 Shop polish
 
 ## M4 — IT Console (full circle of auth)
 
-- [ ] M4.1 IT sidebar group
-- [ ] M4.2 Staff list
-- [ ] M4.3 Register staff
-- [ ] M4.4 Staff profile
-- [ ] M4.5 Activate/deactivate
-- [ ] M4.6 Role assignment
+- [x] M4.1 IT sidebar group
+- [x] M4.2 Staff list
+- [x] M4.3 Register staff
+- [x] M4.4 Staff profile
+- [x] M4.5 Activate/deactivate
+- [x] M4.6 Role assignment
 - [ ] M4.7 Reset password from the profile (end-to-end circle)
+- [ ] M4.8 M4 checks and end-to-end circle
 
 ## M6 — Customers
 

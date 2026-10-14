@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { formatTzs, getCartPrices, imageSrc, type ShopProduct } from './api'
 import {
@@ -12,6 +12,7 @@ import {
   type CartLine,
 } from './cart'
 import { IconAlert, IconArrow, IconCart, IconCheck, IconClose, IconDocument, IconImage, IconMinus, IconPlus, IconTrash } from './Icons'
+import PageMeta from './PageMeta'
 
 type Answer = { attempt: number; requested: Set<string> } & (
   | { status: 'ok'; products: Map<string, ShopProduct>; was: Map<string, number | null> }
@@ -72,6 +73,15 @@ export default function CartPage() {
     return () => controller.abort()
   }, [covered, lines, attempt])
 
+  // After a remove, focus moves to the list heading (or the empty-cart heading)
+  // instead of being lost with the removed line.
+  const focusAfterRemove = useRef(false)
+  useEffect(() => {
+    if (!focusAfterRemove.current) return
+    focusAfterRemove.current = false
+    document.getElementById(lines.length > 0 ? 'cart-items' : 'cart-empty')?.focus()
+  }, [lines])
+
   if (lines.length === 0) return <EmptyCart message={message} />
   if (!covered || !answer) return <CartSkeleton count={Math.min(lines.length, 3)} />
 
@@ -107,6 +117,7 @@ export default function CartPage() {
   const allUnits = lines.reduce((sum, line) => sum + line.quantity, 0)
 
   function remove(row: Row) {
+    focusAfterRemove.current = true
     removeFromCart(row.line.productId)
     setMessage(`${row.product?.name ?? 'The unavailable product'} was removed from your cart.`)
   }
@@ -127,7 +138,7 @@ export default function CartPage() {
 
       <div className="shop-cart-layout">
         <section className="shop-cart-panel" aria-labelledby="cart-items">
-          <h2 id="cart-items" className="shop-cart-panel-title">
+          <h2 id="cart-items" className="shop-cart-panel-title" tabIndex={-1}>
             Items ({allUnits})
           </h2>
           {blocked.length > 0 && (
@@ -221,6 +232,10 @@ export default function CartPage() {
 function CartHead({ count }: { count?: number }) {
   return (
     <div className="shop-cart-head">
+      <PageMeta
+        title="Your cart"
+        description="Review the equipment in your cart, then check out. Pay later: on delivery, against an invoice, or by bank transfer."
+      />
       <h1>
         Your cart
         {count !== undefined && <span className="shop-cart-count"> · {units(count)}</span>}
@@ -266,6 +281,7 @@ function CartLineItem({
     const next = clampQuantity(quantity)
     setQuantity(line.productId, next)
     if (quantity > MAX_QUANTITY) onMessage(`You can order up to ${MAX_QUANTITY} of one product.`)
+    else if (next !== line.quantity) onMessage(`${name}: quantity ${next}.`)
   }
 
   function commit() {
@@ -387,7 +403,9 @@ function EmptyCart({ message }: { message: string }) {
         <span className="shop-state-icon">
           <IconCart size={24} />
         </span>
-        <h2>Your cart is empty</h2>
+        <h2 id="cart-empty" tabIndex={-1}>
+          Your cart is empty
+        </h2>
         <p>Browse the catalogue and add the equipment you need. Your cart stays on this device.</p>
         <Link to="/products" className="shop-button shop-button-primary">
           Browse products

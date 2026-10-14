@@ -28,6 +28,7 @@ type AuthContextValue = {
   logoutAll: () => Promise<ApiResult<null>>
   changePassword: (currentPassword: string, newPassword: string) => Promise<ApiResult<{ staff: Staff }>>
   retry: () => void
+  refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -55,6 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const retry = useCallback(() => {
     setState({ status: 'loading' })
     setAttempt((n) => n + 1)
+  }, [])
+
+  // Reloads /me in place (no loading screen), e.g. after IT edits their own name.
+  const refresh = useCallback(async () => {
+    const result = await apiRequest<{ staff: Staff }>('/api/auth/me')
+    if (result.ok) setState({ status: 'authenticated', staff: result.data.staff })
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
@@ -105,8 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo(
-    () => ({ state, login, logout, logoutAll, changePassword, retry }),
-    [state, login, logout, logoutAll, changePassword, retry],
+    () => ({ state, login, logout, logoutAll, changePassword, retry, refresh }),
+    [state, login, logout, logoutAll, changePassword, retry, refresh],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

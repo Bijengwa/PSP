@@ -3,7 +3,10 @@ import { Link } from 'react-router'
 import { CHANGE_PASSWORD_PATH, type Staff } from '../../auth/AuthProvider'
 import { focusLeft, useDismiss } from './useDismiss'
 
-function initials(fullName: string) {
+const MY_PROFILE_PATH = '/office/profile'
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function initials(fullName: string) {
   return fullName
     .split(/\s+/)
     .filter(Boolean)
@@ -95,10 +98,9 @@ export default function ProfileMenu({ staff }: { staff: Staff }) {
           </div>
           <ul ref={menuRef} id={menuId} className="office-menu" role="menu" aria-labelledby={buttonId} onKeyDown={onMenuKeyDown}>
             <li role="none">
-              {/* The own-profile page is built in M4.3. */}
-              <span role="menuitem" tabIndex={-1} aria-disabled="true" className="office-menu-item" title="Available later">
+              <Link role="menuitem" tabIndex={-1} className="office-menu-item" to={MY_PROFILE_PATH} onClick={() => close(false)}>
                 Profile
-              </span>
+              </Link>
             </li>
             <li role="none">
               <Link role="menuitem" tabIndex={-1} className="office-menu-item" to={CHANGE_PASSWORD_PATH} onClick={() => close(false)}>

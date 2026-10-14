@@ -235,6 +235,131 @@ async function registerStaff({ fullName, email, phone, role, temporaryPassword, 
 const STAFF_STATUSES = ['active', 'inactive'];
 const STAFF_PAGE_SIZE = 25;
 
+// What IT sees about a person, in the list and on the profile. Never the password hash.
+const STAFF_DETAIL_COLUMNS = [
+  's.id',
+  's.full_name',
+  's.email',
+  's.phone_number',
+  's.is_active',
+  's.must_change_password',
+  's.last_login_at',
+  's.created_at',
+  'r.name as role',
+];
+
+function toStaffDetail(row) {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    phone: row.phone_number,
+    role: row.role,
+    isActive: row.is_active,
+    mustChangePassword: row.must_change_password,
+    lastLoginAt: row.last_login_at,
+    createdAt: row.created_at,
+  };
+}
+
+// One person's profile for IT, or null.
+async function getStaff(id) {
+  const row = await staffQuery().where('s.id', id).first(STAFF_DETAIL_COLUMNS);
+  return row ? toStaffDetail(row) : null;
+}
+
+// IT corrects a person's name and/or phone. Returns the updated profile, or null
+// when the person does not exist. Neither field affects sign-in, so sessions stay.
+async function updateStaff(id, { fullName, phone }) {
+  const changes = { updated_at: db.fn.now() };
+  if (fullName !== undefined) changes.full_name = fullName;
+  if (phone !== undefined) changes.phone_number = phone;
+  const updated = await db('staff_profiles').where({ id }).update(changes);
+  return updated ? getStaff(id) : null;
+}
+
+// IT deactivates or reactivates a person. Rows are never deleted. Returns { staff },
+// null when the person does not exist, { error: 'self' } when an admin tries to
+// deactivate themselves, or { error: 'last_admin' } for the last active admin.
+// The active admins are locked in one order first, so two admins deactivating each
+// other at once cannot leave none. A deactivated person's sessions end inside the
+// transaction (Redis down means nothing changes) and again after it, so a login
+// that raced the write cannot survive either.
+async function setStaffActive(id, isActive, { actorId }) {
+  if (!isActive && id === actorId) return { error: 'self' };
+
+  const result = await db.transaction(async (trx) => {
+    const activeAdmins = await trx('staff_profiles as s')
+      .join('roles as r', 'r.id', 's.role_id')
+      .where({ 'r.name': 'admin', 's.is_active': true })
+      .orderBy('s.id')
+      .forUpdate('s')
+      .select('s.id');
+    const target = await trx('staff_profiles as s')
+      .join('roles as r', 'r.id', 's.role_id')
+      .where('s.id', id)
+      .forUpdate('s')
+      .first('s.id', 's.is_active', 'r.name as role');
+    if (!target) return null;
+
+    if (!isActive) {
+      if (target.role === 'admin' && target.is_active && activeAdmins.length <= 1) return { error: 'last_admin' };
+      await sessions.destroyAllForStaff(id);
+    }
+    await trx('staff_profiles').where({ id }).update({ is_active: isActive, updated_at: trx.fn.now() });
+    return { changed: target.is_active !== isActive };
+  });
+  if (!result || result.error) return result;
+
+  if (!isActive) await sessions.destroyAllForStaff(id);
+  return { staff: await getStaff(id), changed: result.changed };
+}
+
+// The roles IT can assign: the existing `roles` rows. New roles come with H3.
+function listRoles() {
+  return db('roles').orderBy('name').select('name', 'description');
+}
+
+// IT changes a person's role to one of the existing roles. Returns { staff, changed,
+// from }, null when the person does not exist, { error: 'role' } for an unknown role,
+// { error: 'self' } when an admin tries to remove their own admin role, or
+// { error: 'last_admin' } when the last active admin would be demoted. Locks the
+// active admins and then the target, as setStaffActive does, so two admins demoting
+// each other at once cannot leave none. A changed role ends the person's sessions
+// inside the transaction (Redis down means nothing changes) and again after it.
+async function setStaffRole(id, role, { actorId }) {
+  const roleRow = await db('roles').where({ name: role }).first('id');
+  if (!roleRow) return { error: 'role' };
+
+  const result = await db.transaction(async (trx) => {
+    const activeAdmins = await trx('staff_profiles as s')
+      .join('roles as r', 'r.id', 's.role_id')
+      .where({ 'r.name': 'admin', 's.is_active': true })
+      .orderBy('s.id')
+      .forUpdate('s')
+      .select('s.id');
+    const target = await trx('staff_profiles as s')
+      .join('roles as r', 'r.id', 's.role_id')
+      .where('s.id', id)
+      .forUpdate('s')
+      .first('s.id', 's.is_active', 'r.name as role');
+    if (!target) return null;
+    if (target.role === role) return { changed: false, from: target.role };
+
+    if (target.role === 'admin') {
+      if (id === actorId) return { error: 'self' };
+      if (target.is_active && activeAdmins.length <= 1) return { error: 'last_admin' };
+    }
+    await sessions.destroyAllForStaff(id);
+    await trx('staff_profiles').where({ id }).update({ role_id: roleRow.id, updated_at: trx.fn.now() });
+    return { changed: true, from: target.role };
+  });
+  if (!result || result.error) return result;
+
+  if (result.changed) await sessions.destroyAllForStaff(id);
+  return { staff: await getStaff(id), changed: result.changed, from: result.from };
+}
+
 // IT's staff list: search by name or email, optional status filter, paged.
 // Never selects the password hash. `total` counts every match, not just the page.
 async function listStaff({ q, status, page = 1, limit = STAFF_PAGE_SIZE }) {
@@ -253,36 +378,11 @@ async function listStaff({ q, status, page = 1, limit = STAFF_PAGE_SIZE }) {
       .orderBy([{ column: 's.full_name', order: 'asc' }, { column: 's.id' }])
       .limit(limit)
       .offset((page - 1) * limit)
-      .select(
-        's.id',
-        's.full_name',
-        's.email',
-        's.phone_number',
-        's.is_active',
-        's.must_change_password',
-        's.last_login_at',
-        's.created_at',
-        'r.name as role',
-      ),
+      .select(STAFF_DETAIL_COLUMNS),
     filters(staffQuery()).count('* as count'),
   ]);
 
-  return {
-    total: Number(count),
-    page,
-    pageSize: limit,
-    staff: rows.map((row) => ({
-      id: row.id,
-      fullName: row.full_name,
-      email: row.email,
-      phone: row.phone_number,
-      role: row.role,
-      isActive: row.is_active,
-      mustChangePassword: row.must_change_password,
-      lastLoginAt: row.last_login_at,
-      createdAt: row.created_at,
-    })),
-  };
+  return { total: Number(count), page, pageSize: limit, staff: rows.map(toStaffDetail) };
 }
 
 module.exports = {
@@ -297,6 +397,11 @@ module.exports = {
   registerStaff,
   REGISTRABLE_ROLES,
   listStaff,
+  getStaff,
+  updateStaff,
+  setStaffActive,
+  listRoles,
+  setStaffRole,
   STAFF_STATUSES,
   STAFF_PAGE_SIZE,
   findStaffById,

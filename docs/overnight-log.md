@@ -1,4 +1,294 @@
+## M4.6 Role assignment (2026-10-14): done, TICKED
+
+Only M4.6 was worked on. Current step is now **M4.7**; it was not started. Nothing was committed.
+
+**What "done" meant here:** the plan gives M4.6 a Scope but no "Done when" line. I used the Scope itself as the bar, and each part has a test: the role comes from the existing `roles` rows, the person's sessions end, an admin cannot remove their own admin role, and the last active admin cannot be demoted. The standard checks and the responsive check also had to pass. Say if you meant something more.
+
+**Changed**
+- `node/src/auth/auth.service.js`:
+  - new `listRoles()`, which returns the `roles` rows (name, description);
+  - new `setStaffRole(id, role, { actorId })`. An unknown role is refused (`role`). It uses the same locking as `setStaffActive`: first the active admins (in id order), then the target, all in one transaction. Removing your own admin role is refused (`self`), and so is demoting the last *active* admin (`last_admin`). An inactive admin can be demoted. Setting the same role again changes nothing and keeps the sessions. A real change calls `destroyAllForStaff` inside the transaction (if Redis is down the write rolls back, 503) and again after the commit.
+- `node/src/auth/auth.routes.js` (`officeRouter`, admin only, same origin):
+  - `GET /api/office/roles` lists the assignable roles;
+  - `PATCH /api/office/staff/:id` with `{ role }` alone. A mixed body or a non-string value gives 400 `VALIDATION_ERROR` with `details.role`. So does an unknown role (the check is case-sensitive). Your own admin role gives 409 `CANNOT_DEMOTE_SELF`, the last active admin gives 409 `LAST_ADMIN`, and an unknown id gives 404. A real change logs `staff.role_changed` with the ids and the old and new role names.
+  - Name/phone and `{ isActive }` work as before.
+- `node/src/auth/staff.test.js`:
+  - the `person`/`me`/`login` helpers moved to file level so the status and role tests share them;
+  - one M4.4 case changed: `{ role: 'admin' }` alone is valid now, so the "other fields" case sends `{ role: 'admin', fullName }` instead;
+  - 11 new tests:
+    - the roles list (admin only);
+    - a promotion ends every session (two devices); the person signs in again as admin and can reach IT endpoints, and the acting admin stays signed in;
+    - a demotion ends the sessions, and after signing in again IT endpoints give 403;
+    - the same role keeps the sessions;
+    - your own admin role gives 409;
+    - the last active admin is refused (service level, as in M4.5);
+    - an inactive admin can be demoted;
+    - two admins demoting each other in parallel leave exactly one admin;
+    - unknown or invalid roles and mixed bodies are refused and change nothing;
+    - with Redis down the request gives 503 and the role is unchanged;
+    - 404, non-admin 403 and foreign-origin 403.
+- `web/src/management/inApp/pages/StaffProfile.tsx`: a new **Role** card between Account and Access.
+  - **Change role** loads `GET /api/office/roles` (a skeleton while loading; an error with Try again and Cancel).
+  - It shows one radio tile per role with the role's description. The current role is marked "Current", and focus goes to it.
+  - A note says the person will be signed out and sign in again as the chosen role. **Save role** stays disabled until a different role is picked, and shows a spinner while sending. A server refusal appears in an alert and the choice is kept.
+  - On success, the badge and Account facts update, the page status line says "<name> is now <Role> and has been signed out.", and focus returns to Change role.
+  - On your own admin profile there is no button, only a note.
+- `web/src/index.css`: `.office-role-*` styles (tokens only):
+  - the chosen tile uses `--primary-soft` with a primary border, and a keyboard focus ring goes around the whole tile;
+  - transitions are 150ms and turn off under reduced motion;
+  - tiles are at least 44px tall, and on phones the buttons are full width.
+- `web/src/management/inApp/pages/StaffProfile.test.tsx`: 5 new tests:
+  - change role (PATCH body, focus, announcement, disabled Save until a new choice);
+  - a server refusal is shown and the choice is kept;
+  - a failed roles load can be retried;
+  - Cancel sends nothing;
+  - there is no role change on your own admin profile.
+- `web/scripts/responsive-check.mjs`: a `/api/office/roles` fixture and the route `office-staff-profile-role` (form open, Admin chosen).
+
+**Verified**
+- `node` `npm test`: 7 suites, 209 tests passed (198 before).
+- `web` `npm test`: 10 files, 88 tests passed (83 before). `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed, 25 routes × 3 widths × 2 themes, with no sideways scroll.
+  - The first three runs stopped on the Windows `UNKNOWN: unknown error, open …png` error seen in M4.4, each time on a different, already existing screenshot (`office-staff-profile-768-light`, `office-my-profile-360-dark`, `office-staff-profile-1280-dark`). The fourth run passed in full.
+  - Something seems to hold the screenshot files open now and then (antivirus or indexing?), so this is worth a look.
+- Screenshots I looked at: `office-staff-profile-role-360-light`, `-360-dark`, `-1280-light`, and `office-staff-profile-768-dark` (closed card with Change role). All are readable in both themes, wrap the long name cleanly, and show full-width 44px buttons on phones.
+- Not done: a mutation check (removing the session revocation to show the tests fail). The shell command needed approval.
+
+**Notes**
+- The role list comes from the database, so roles added later (H3) will appear without UI changes. Their label is the raw name unless it is added to `ROLE_LABELS`.
+- Registration (`REGISTRABLE_ROLES`) still offers only admin and staff; it was not touched.
+- The check re-saved some existing screenshots (pixel differences only).
+
+**Guard warnings**
+- **Progress Guard:** said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago.
+- **Collision Guard:** fired on `auth.service.js`, `auth.routes.js`, `staff.test.js`, `StaffProfile.tsx`, `StaffProfile.test.tsx`, `index.css` and `responsive-check.mjs`. The other session (adcf4232) was the M4.5 run, and its work is in commit d6f6f0c. After my first edit, `git status` showed only my own change, so nothing was overwritten.
+- Every file touched is on the approved M4 list. No new files except screenshots.
+
+## M4.5 Activate/deactivate (2026-10-14): done, TICKED
+
+Only M4.5 was worked on. Current step is now **M4.6**; it was not started. Nothing was committed.
+
+**Changed**
+- `node/src/auth/auth.service.js`: new `setStaffActive(id, isActive, { actorId })`.
+  - Refuses an admin's own account (`self`) before touching anything.
+  - In one transaction it locks the active admins (in id order) and then the target row, so two admins deactivating each other at once cannot leave zero. The last active admin is refused (`last_admin`).
+  - Deactivation calls `destroyAllForStaff` inside the transaction, so if Redis is down the write rolls back and nothing changes (503). It calls it again after the commit, so a login that raced the write cannot survive. `requireAuth` already reads `is_active` from Postgres on every request.
+  - Rows are only updated, never deleted. Reactivation sets `is_active = true` and leaves sessions alone (there are none).
+- `node/src/auth/auth.routes.js`: `PATCH /api/office/staff/:id` with `{ isActive }`.
+  - The status must be sent on its own and must be a boolean; otherwise 400 `VALIDATION_ERROR` with `details.isActive`.
+  - Your own account gives 409 `CANNOT_DEACTIVATE_SELF`. The last active admin gives 409 `LAST_ADMIN`. An unknown id gives 404.
+  - Logs `staff.deactivated` / `staff.reactivated` (ids only) when the status actually changes.
+  - Name/phone edits (M4.4) are unchanged. No DELETE route exists.
+- `node/src/auth/staff.test.js`:
+  - the fake Redis gained `incr`/`ttl`, so login can be tested in this file;
+  - one M4.4 case changed: `{ isActive: false }` alone is now valid, so the "other fields" case sends `{ isActive: false, fullName }` instead;
+  - 11 new tests:
+    - **a deactivated person gets 401 on their very next request**, their Redis session set is empty, and login is refused;
+    - every session ends (two devices) and the admin stays signed in;
+    - the row is kept, DELETE is 404, and reactivation lets the person log in again;
+    - the list's `status=inactive` filter follows the change;
+    - self-deactivation gives 409;
+    - another admin can be deactivated;
+    - the last active admin is refused and keeps their sessions (service level: over HTTP the caller is always an active admin);
+    - two admins deactivating each other in parallel leave exactly one active;
+    - bad values and mixed bodies are refused and change nothing;
+    - Redis down gives 503 and the status is unchanged;
+    - 404 / non-admin 403 / foreign-origin 403.
+- `web/src/management/inApp/pages/StaffProfile.tsx`: a new "Access" card on the staff profile.
+  - **Active person:** "Deactivate" (red outline) opens an inline confirmation ("Deactivate <name>?", what happens, then "Deactivate account" and Cancel). Focus goes to Cancel.
+  - **Inactive person:** a "Reactivate" button, with no confirmation.
+  - **Your own profile:** no button, only a note.
+  - Buttons show a spinner and are disabled while sending. Server refusals (for example the last-admin 409) show in an alert inside the card.
+  - On success the badge and the Account facts update, the top status line announces the result, and focus returns to the card's action button.
+- `web/src/index.css`:
+  - new tokens `--danger-hover` and `--on-danger` (light and dark);
+  - new `.button-danger` and `.button-danger-outline` classes;
+  - styles for the `.office-confirm` panel;
+  - on phones the confirm buttons are full width and at least 44px tall.
+- `web/src/management/inApp/pages/StaffProfile.test.tsx`:
+  - 5 new tests: confirm-then-deactivate (PATCH body, focus, notice, Inactive badge), Cancel sends nothing, reactivate, a server refusal is shown, and no buttons on your own profile;
+  - the focus checks now use `waitFor`. The existing M4.4 test "shows server field errors…" failed once under load: focus moves in an effect that can run just after the error text appears.
+- `web/scripts/responsive-check.mjs`: new routes `office-staff-profile-deactivate` (with the confirmation open) and `office-staff-profile-inactive` (fixture id `st2` is answered as inactive).
+
+**Verified**
+- `node` `npm test`: 7 suites, 198 tests passed.
+- `web` `npm test`: 10 files, 83 tests. The final two runs passed in full. Earlier runs, made while the responsive check was running, had flaky failures:
+  - the StaffProfile focus test, fixed as described above;
+  - once, two `src/shop/ProductPage.test.tsx` tests. That file was not touched, and the tests passed on the next runs. This looks like the same load-related flakiness as the CheckoutPage test logged in M4.4; worth a look.
+- `npm run lint`: clean. A first lint run flagged a setState call inside an effect in the new card; it was replaced by a ref.
+- `npm run build`: clean.
+- `npm run check:responsive`: passed, including tsc and build (now 24 routes × 3 widths × 2 themes). Screenshots I looked at:
+  - `office-staff-profile-deactivate-360-light` and `-360-dark`;
+  - `office-staff-profile-deactivate-768-dark`;
+  - `office-staff-profile-inactive-360-light` and `-1280-dark`;
+  - `office-staff-profile-768-light`.
+  - In all of them the confirmation and Reactivate states are readable, with no sideways scroll and full-width 44px buttons on phones.
+- Not done: a mutation check (removing the row locks to show that the race test fails). It needed a shell command that required approval.
+
+**Notes**
+- The check re-saved some existing screenshots (pixel differences only).
+- In the 1280 full-page screenshots the sidebar background stops at the viewport height on long pages. That was already the case before this step and was not touched.
+
+**Guard warnings**
+- **Progress Guard:** said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago.
+- **Collision Guard:** fired on `staff.test.js`, `StaffProfile.tsx`, `StaffProfile.test.tsx`, `index.css`, `responsive-check.mjs` and `progress.md`. The other session (8ba649c6) was the M4.4 run. Its work is in commit 5a32081, and before editing, `git status` showed no uncommitted changes, so nothing was overwritten.
+- **Scope Guard:** asked to confirm the Done-when check before ticking. It passed: the "refused on their very next request" test is above.
+- Every file touched is on the approved M4 list.
+
+## M4.4 Staff profile (2026-10-14): done, TICKED
+
+Only M4.4 was worked on. Current step is now **M4.5**; it was not started. Nothing was committed.
+
+**Changed**
+- `node/src/auth/auth.service.js`: new `getStaff(id)` and `updateStaff(id, { fullName, phone })`. The list and the profile share one column list and one mapper (`toStaffDetail`), so neither ever selects the password hash. A name or phone edit leaves the person's sessions alone: neither field affects sign-in.
+- `node/src/auth/auth.routes.js` (`officeRouter`, admin only, same-origin):
+  - `GET /api/office/staff/:id` returns 404 for unknown or malformed ids.
+  - `PATCH /api/office/staff/:id` takes `fullName` and/or `phone` only. Any other key (email, role, isActive, …) or an empty body gets 400 `VALIDATION_ERROR` with a message per field. Status and role are left for M4.5 and M4.6.
+  - The name and phone rules moved into `checkFullName`/`checkPhone`, shared with registration. The messages are unchanged.
+  - Logs `staff.profile_updated` with the field names, not the values.
+- New `node/src/auth/staff.test.js` (11 tests):
+  - the GET returns no password data, gives 404 for unknown and bad ids, and 403 for non-admins;
+  - the PATCH saves (tidied) and the next GET shows the change; one field can be changed alone;
+  - per-field validation errors change nothing;
+  - other fields are refused; an empty body is refused;
+  - the edited person stays signed in;
+  - unknown id gives 404, a non-admin gets 403, and another origin is refused.
+- New `web/src/management/inApp/pages/StaffProfile.tsx`:
+  - `StaffProfile` (`/office/staff/:id`):
+    - back link to Staff;
+    - avatar, name as the h1, email, and role and status badges (Active / Password change pending / Inactive);
+    - a "Contact details" card with Edit, which opens an inline Full name and Phone form. The form has visible labels, inline errors tied with `aria-describedby`, focus on the first bad field, a form alert, and a Save button with a spinner that is disabled while saving. Typed values are kept when a save fails. After saving, "Changes saved." is announced and focus goes back to Edit;
+    - an "Account" card (role, status, last sign-in, registered);
+    - a loading skeleton, a not-found state, and an error state with Try again.
+  - `MyProfile` (`/office/profile`): the signed-in person's own profile, read only, from `/api/auth/me` (name, email, role). Admins get a link to their editable staff profile; staff are told to ask IT. A Security card links to Change password.
+- `web/src/App.tsx`: routes `staff/:id` and `profile`. `Header.tsx`: titles "Staff Profile" and "My Profile".
+- `ProfileMenu.tsx`: the "Profile" entry is now a link to `/office/profile`; it was a disabled placeholder. `initials()` is exported for the profile avatar.
+- `StaffList.tsx`: names link to the profile, in both the table and the cards.
+- `AuthProvider.tsx`: new `refresh()` that reloads `/me` in place, so an admin who edits their own name sees it in the header at once. Nothing is stored.
+- `index.css`:
+  - new styles for the staff profile and My Profile;
+  - status badge tones, using the existing tokens only;
+  - on phones (≤640px), labels sit above values, the heading is smaller, and buttons and inputs are at least 44px tall.
+- New `web/src/management/inApp/pages/StaffProfile.test.tsx` (8 tests):
+  - an edit saves and shows, the PATCH body is right, and focus returns to Edit;
+  - server field errors appear beside the fields and are linked to them, and the typed value is kept;
+  - an empty name is caught before sending;
+  - Cancel;
+  - the not-found state;
+  - the error state and its retry;
+  - My Profile is read only;
+  - the profile menu links to it.
+- `web/scripts/responsive-check.mjs`: a staff fixture with a long name and email, and three routes: `office-staff-profile`, `office-staff-profile-edit` (opens the form and submits an empty name, so the errors are visible), and `office-my-profile`.
+
+**Verified**
+- `node` `npm test`: 7 suites, 187 tests passed.
+- `web` `npm test`: 10 files, 78 passed. One full run had a single failure in `src/shop/CheckoutPage.test.tsx` ("places the order…", a focus assertion). That file was not touched, and the test passed in the earlier full run and in two later full reruns. It looks flaky; worth a look.
+- `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed, 120 of 120 route/width/theme combinations ok.
+  - The first two runs stopped on a Windows `UNKNOWN: unknown error, open …` while writing an unrelated `office-products-new` screenshot. Both times a different file failed, so it looks like a passing file lock. The third and fourth runs passed in full.
+  - Screenshots I looked at: `office-staff-profile-360-light`, `office-staff-profile-edit-360-dark`, `office-my-profile-360-light`, `office-staff-profile-768-light`, `office-staff-profile-1280-dark`.
+  - Those screenshots showed one bug, now fixed: the status badge tint was overridden by the later generic `.office-status` rule, so the badge showed grey.
+
+**Notes**
+- My Profile has no phone number: `/api/auth/me` does not return one, and adding it would change the `/me` contract and its tests. Left as is. Say if you want the phone on My Profile.
+- The phone stays required on edit, as on registration. A seeded admin with no phone must enter one before saving a name change.
+- The responsive check re-saved some existing screenshots (small pixel differences only).
+
+**Guard warnings:** The Progress Guard said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago. The Scope Guard warned that M4.4 was ticked after "Current step" had already been set to M4.5. That came only from the order of the two edits to `docs/progress.md`; both were made after every M4.4 "Done when" check had passed. No Collision Guard warnings. Every new file is on the approved M4 list (`StaffProfile.tsx`, `node/src/auth/staff.test.js`, a web test beside its file).
+
+## M4 code check (2026-10-14): M4.1, M4.2, M4.3 ticked at the user's instruction
+
+**Found in the code**
+- M4.1: admin-only IT group in `Sidebar.tsx`; non-admin 403 on IT endpoints is tested in `auth.test.js`.
+- M4.2: `GET /api/office/staff` (search, status filter, paging) and `StaffList.tsx` exist.
+- M4.3: `POST /api/office/staff` (validation, unique email, temporary password, `must_change_password`) and `RegisterStaff.tsx` exist.
+- M4.7 partly: `POST /api/office/staff/:id/reset-password` is tested, and `StaffList.tsx` has a Reset password action. There is no profile page.
+- Not built: M4.4 (no profile page, no `PATCH /api/office/staff/:id`), M4.5 (no activate/deactivate route or button), M4.6 (no role change).
+
+**Ticked without these "Done when" checks being proven (open items)**
+- No backend tests for `GET /staff` paging/search/filter or "no password fields in responses" (M4.2).
+- No backend test for a duplicate email on `POST /staff`, and none for the forced change on first login of a newly registered person (M4.3).
+- Responsive check (360/768/desktop, light/dark) not run on `/office/staff` and `/office/staff/new` (M4.1–M4.3).
+- No frontend test that a non-admin does not see the IT group (M4.1).
+
+Current step is **M4.4**.
+
+## C7 Shop polish (2026-10-14): signed off by the user, TICKED
+
+The user signed off the screenshots in `docs/screenshots/`. C7 is ticked and the shop-first track is finished. Current step is **M4.1** (implemented earlier, not yet ticked). Open notes: the checkout "Show order summary" button wraps at 360px with very large totals (left as is).
+
 # Overnight Log
+
+## 2026-10-14 — C7 Shop polish (second pass): re-verified, still NOT ticked (waiting for your screenshot sign-off)
+
+**Status:** `docs/progress.md` still says **C7**. The C7 work from the first pass (entry below) is still uncommitted in the tree. This pass reviewed that diff against the C7 scope and found nothing outside it and nothing to fix, so **no code changed**. C7's "Done when" needs you to sign off the screenshots in `docs/screenshots/`, and nobody was awake to do that. So C7 is **not ticked**, `docs/progress.md` is **unchanged**, and M4.1 was not started. Nothing was committed.
+
+**Verified (this pass)**
+- `node` `npm test`: 6 suites, 176 tests passed.
+- `web` `npm test`: 9 files, 70 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed. All 102 route/width/theme combinations were ok, with no failures, and the screenshots were saved again.
+- Screenshots I looked at: `shop-not-found-360-dark`, `shop-order-confirmed-print-dark` (prints light, as intended), `shop-cart-360-dark`, `shop-checkout-360-dark`.
+- I also checked that unknown `/office/...` addresses still go to the office's own not-found route (`App.tsx`), not the shop 404.
+
+**Worth a look when you sign off**
+- In the cart screenshots the product thumbnails are plain dark-red squares. They come from the responsive check's fixture images, not from C7 code. Real product photos will replace them.
+- The checkout summary toggle wraps at 360px with the huge fixture total. This was already noted in the first pass.
+
+**To unblock:** sign off the shop screenshots (or list what to change). The next run can then tick C7 and set the current step to **M4.1**.
+
+**Guard warnings:** the Progress Guard flagged that the prompt mentions M5.6 and M5.1. That text is only the M5.6 tick rule (M5.6 was ticked long ago). Only C7 was worked on.
+
+## 2026-10-14 — C7 Shop polish: built and verified, NOT ticked (waiting for your screenshot sign-off)
+
+**Which step:** `docs/progress.md` said **C7**, so only C7 was worked on. C7's "Done when" includes "the user signs off the screenshots in `docs/screenshots/`", and nobody was awake to do that. So C7 is **not ticked**, `docs/progress.md` is **unchanged**, and the current step stays **C7**. Nothing was committed. M4.1 was not started.
+
+**Question for you:** please look at the shop screenshots in `docs/screenshots/` (listed below) and say whether you sign them off. If you do, the next run can tick C7 and set the current step to **M4.1**.
+
+**Changed**
+- New `web/src/shop/PageMeta.tsx`: a component that sets the tab title (`<page> | PSP Engineering Group`, or the site name alone on the home page) and `<meta name="description">`, and puts the old ones back afterwards. It replaces the C3 `usePageMeta` hook from `ProductPage.tsx`. Cleanup restores only what it set itself: React mounts the new page's meta before the old one's cleanup runs, and the first version lost the product title because of that (a test caught it).
+- Every shop route now has a title and description: home, catalogue (category, search term and page in the title), product (unchanged wording), cart, checkout, order confirmed ("Order PSP-000123 placed" / "No order to show"), and the 404. `index.html` now has a default description.
+- Shop 404: new `web/src/shop/NotFoundPage.tsx`. It's inside the shop layout (header, footer, skip link) with "Browse products" and "Go to the home page". `App.tsx`: the old bare `NotFound` outside the layout was replaced by a `*` route under the shop layout. `/office/*` paths still go to the office's own not-found page.
+- Accessibility (`ShopLayout.tsx`):
+  - The top bar is now an `aside` landmark ("Contact and display"), so all content sits inside landmarks.
+  - After a client-side page change, focus moves to `<main>` without scrolling. A page that focuses its own heading (the order confirmation) keeps that focus.
+  - The mobile menu moves focus to its close button when it opens, and back to the menu button when it closes with the button, Escape or the backdrop.
+  - The route-loading fallback is now a `role="status"` with the shop spinner and a minimum height, so the footer doesn't jump up.
+- Cart (`CartPage.tsx`):
+  - Quantity changes are announced in the existing live region ("Bedside monitor: quantity 2."). Add-to-cart and remove were already announced.
+  - After removing a line, focus moves to the "Items (n)" heading, or to "Your cart is empty". Before, it was lost on the deleted button.
+- Images (`ShopHome.tsx`): category photos got `width`/`height`. The hero image got `width`/`height` and `fetchPriority="high"`. The other shop images already had fixed sizes, aspect ratios and `loading="lazy"`.
+- `shop.css`:
+  - Styles for the 404 and the loading state.
+  - No focus ring on headings that take focus from script.
+  - A print style: header, top bar, footer, steps, copy button and actions are hidden. Paper is always light, even when the screen is dark; the print block repeats the light token values. The order confirmation prints with a "PSP Engineering Group · Dar es Salaam, Tanzania" line on top.
+- `scripts/responsive-check.mjs`:
+  - New route `shop-not-found` (`/no-such-page`).
+  - Every `shop-*` route now fails if:
+    - its title does not end in ` | PSP Engineering Group` (except the home page);
+    - the meta description is empty;
+    - it doesn't have exactly one `h1`;
+    - `main#main`, `header`, `nav`, `footer` or the skip link is missing.
+  - The confirmation is also saved as printed, at 768px in both themes (`shop-order-confirmed-print-light.png` / `-dark.png`).
+- Tests: `CartPage.test.tsx` now checks the title, the quantity announcement and the focus after a remove. New `web/src/shop/NotFoundPage.test.tsx` (2 tests): an unknown address shows the shop 404 inside the layout with its title and landmarks; going to another page moves focus to `<main>`.
+
+**Already in place, checked rather than changed**
+- Skip link, `prefers-reduced-motion` (every shop transition and animation is covered), no theme flash (`index.html` sets `data-theme` before first paint; `index.css` is render-blocking).
+- AA contrast: I computed every text/background token pair in both themes. The lowest is `--ink-subtle` on `--surface-muted` in light at 4.96:1. Input borders (`--border-strong`) are 3.34:1 (light) and 3.83:1 (dark), above 3:1.
+- Loading, empty and error states with a retry on the catalogue, product, cart and checkout pages.
+
+**Verified**
+- `node` `npm test`: 6 suites, 176 tests passed.
+- `web` `npm test`: 9 files, 70 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: every route passed at 360, 768 and 1280px in light and dark, with no horizontal scroll, including the new title, description, `h1` and landmark checks on every shop route. This covers `/`, `/products` (plus filtered and empty), a product page (plus out of stock and missing), `/cart` (three states), `/checkout` (plus errors), `/order-confirmed` and the 404.
+- Screenshots I looked at: `shop-not-found` at 360 light and 1280 dark; `shop-order-confirmed-print` in light and dark (the dark one prints light); `shop-checkout` at 360 light; `shop-home` at 360 dark.
+- In full-page screenshots the home category photos show as empty tiles. They are lazy Wikimedia images below the fold. The tiles keep their fixed size, so nothing jumps.
+
+**Left as is (your call)**
+- At 360px the checkout summary toggle still wraps "Show order summary" onto two lines when the total is huge (the fixture uses TZS 123,848,000,000). It is readable. I did not change the wording.
+
+**Guard warnings**
+- The Progress Guard said the prompt mentions M5.6 and M5.1. That text is only the M5.6 tick rule, and M5.6 was ticked long ago. Only C7 was worked on.
+- When I added this entry, the Collision Guard said `docs/overnight-log.md` had been "edited 20 min ago by another Claude session (42c1d38c)". I re-read the file afterwards. The earlier entries (C6 and before, committed in a76c743) are intact, and this entry is the only addition.
 
 ## 2026-10-14 — C6 Checkout page: verified, TICKED
 

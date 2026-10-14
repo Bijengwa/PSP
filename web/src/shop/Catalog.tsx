@@ -11,6 +11,7 @@ import {
   type ShopProductsPage,
 } from './api'
 import { IconAlert, IconChevronLeft, IconChevronRight, IconSearch } from './Icons'
+import PageMeta from './PageMeta'
 import ProductCard, { ProductCardSkeleton } from './ProductCard'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -81,10 +82,16 @@ export default function Catalog() {
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1
   const to = (changes: Partial<CatalogQuery>) => ({ search: catalogSearch({ ...query, page: 1, ...changes }) })
 
+  const heading = activeCategory?.name ?? 'All products'
+
   return (
     <div className="shop-container shop-catalog">
+      <PageMeta
+        title={`${heading}${q ? `: “${q}”` : ''}${page > 1 ? ` (page ${page})` : ''}`}
+        description={`${activeCategory ? activeCategory.name : 'Medical equipment'} from PSP Engineering Group: prices in TZS, live stock and delivery across Tanzania.`}
+      />
       <div className="shop-catalog-head">
-        <h1>{activeCategory?.name ?? 'All products'}</h1>
+        <h1>{heading}</h1>
         <p className="shop-catalog-count" role="status">
           {data && data.total > 0 && data.products.length > 0
             ? `Showing ${(data.page - 1) * data.pageSize + 1}–${(data.page - 1) * data.pageSize + data.products.length} of ${data.total} ${data.total === 1 ? 'product' : 'products'}`

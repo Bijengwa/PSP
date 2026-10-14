@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Link, Outlet, Route, Routes } from 'react-router'
+import { Outlet, Route, Routes } from 'react-router'
 import { AuthProvider } from './management/auth/AuthProvider'
 import RequireAuth from './management/auth/RequireAuth'
 
@@ -15,6 +15,8 @@ const ResetRequestsPage = lazy(() =>
 )
 const RegisterStaff = lazy(() => import('./management/inApp/pages/RegisterStaff'))
 const StaffList = lazy(() => import('./management/inApp/pages/StaffList'))
+const StaffProfile = lazy(() => import('./management/inApp/pages/StaffProfile'))
+const MyProfile = lazy(() => import('./management/inApp/pages/StaffProfile').then((m) => ({ default: m.MyProfile })))
 const AddProduct = lazy(() => import('./management/inApp/pages/ProductForm'))
 const EditProduct = lazy(() => import('./management/inApp/pages/ProductForm').then((m) => ({ default: m.EditProduct })))
 const ProductsList = lazy(() => import('./management/inApp/pages/ProductsList'))
@@ -41,16 +43,7 @@ const ProductPage = lazy(() => import('./shop/ProductPage'))
 const CartPage = lazy(() => import('./shop/CartPage'))
 const CheckoutPage = lazy(() => import('./shop/CheckoutPage'))
 const OrderConfirmed = lazy(() => import('./shop/CheckoutPage').then((m) => ({ default: m.OrderConfirmed })))
-
-function NotFound() {
-  return (
-    <main className="page-message">
-      <h1>Page not found</h1>
-      <p>The page you are looking for does not exist.</p>
-      <Link to="/">Go to the home page</Link>
-    </main>
-  )
-}
+const ShopNotFound = lazy(() => import('./shop/NotFoundPage'))
 
 export default function App() {
   return (
@@ -68,6 +61,8 @@ export default function App() {
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/order-confirmed" element={<OrderConfirmed />} />
+        {/* Every other public address: the shop 404, inside the shop layout. */}
+        <Route path="*" element={<ShopNotFound />} />
       </Route>
 
       <Route path="/office" element={<OfficeRoot />}>
@@ -87,6 +82,8 @@ export default function App() {
             <Route path="customers" element={<PlaceholderPage title="Customers" />} />
             <Route path="staff" element={<StaffList />} />
             <Route path="staff/new" element={<RegisterStaff />} />
+            <Route path="staff/:id" element={<StaffProfile />} />
+            <Route path="profile" element={<MyProfile />} />
             <Route path="reset-requests" element={<ResetRequestsPage />} />
             <Route path="reports" element={<PlaceholderPage title="Reports" />} />
             <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
@@ -95,8 +92,6 @@ export default function App() {
           </Route>
         </Route>
       </Route>
-
-      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }
