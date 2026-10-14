@@ -404,6 +404,97 @@ describe('PATCH /api/office/staff/:id { isActive }', () => {
   });
 });
 
+describe('M4 end-to-end circle', () => {
+  const post = (url, body, cookie) => {
+    const req = request(app).post(url).set('Origin', ORIGIN);
+    return (cookie ? req.set('Cookie', cookie) : req).send(body);
+  };
+  const cookieOf = (res) => res.headers['set-cookie'].find((c) => c.startsWith('psp_sid=')).split(';')[0];
+  const signIn = (email, password) => post('/api/auth/login', { email, password });
+  const office = (cookie) => request(app).get('/api/office/products').set('Cookie', cookie);
+
+  beforeAll(() => {
+    // Earlier tests in this file share the login rate-limit counters (they never expire here).
+    for (const key of redis.client.data.keys()) if (key.startsWith('psp:rl:')) redis.client.data.delete(key);
+  });
+
+  test('register → temporary login → forced change → forgot → IT reset → deactivate → refused', async () => {
+    // IT registers a person with a temporary password.
+    const registered = await post(
+      '/api/office/staff',
+      {
+        fullName: 'Neema Circle',
+        email: 'Neema.Circle@psp.test',
+        phone: '+255 700 000 300',
+        role: 'staff',
+        temporaryPassword: 'Tidal-Harbour-51!',
+      },
+      adminCookie,
+    );
+    expect(registered.status).toBe(201);
+    const id = registered.body.data.staff.id;
+    const email = 'neema.circle@psp.test';
+
+    // The person signs in with it and is held at the password change.
+    const first = await signIn(email, 'Tidal-Harbour-51!');
+    expect(first.status).toBe(200);
+    expect(first.body.data.staff.mustChangePassword).toBe(true);
+    let cookie = cookieOf(first);
+    const held = await office(cookie);
+    expect(held.status).toBe(403);
+    expect(held.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    // They choose their own password and work in the office.
+    const changed = await post(
+      '/api/auth/change-password',
+      { currentPassword: 'Tidal-Harbour-51!', newPassword: 'Quiet-Meadow-84?' },
+      cookie,
+    );
+    expect(changed.status).toBe(200);
+    cookie = cookieOf(changed);
+    expect((await office(cookie)).status).toBe(200);
+    expect((await as(cookie).get('/api/office/staff')).status).toBe(403);
+
+    // They forget it; IT sees the request in the queue.
+    expect((await post('/api/auth/forgot-password', { email })).status).toBe(200);
+    const queue = await as(adminCookie).get('/api/office/reset-requests?status=pending');
+    expect(queue.body.data.requests.filter((r) => r.staff?.id === id)).toHaveLength(1);
+
+    // IT resets it from the profile: the person is signed out and the request is resolved.
+    const reset = await post(`/api/office/staff/${id}/reset-password`, { temporaryPassword: 'Copper-Kettle-26#' }, adminCookie);
+    expect(reset.status).toBe(200);
+    expect(reset.body.data.resolvedRequests).toBe(1);
+    expect(JSON.stringify(reset.body)).not.toMatch(/Copper-Kettle|password_?hash|argon2/i);
+    expect((await me(cookie)).status).toBe(401);
+    const after = await as(adminCookie).get('/api/office/reset-requests?status=pending');
+    expect(after.body.data.requests.filter((r) => r.staff?.id === id)).toHaveLength(0);
+    const row = await db('staff_profiles').where({ id }).first('password_hash', 'must_change_password');
+    expect(row.must_change_password).toBe(true);
+    expect(row.password_hash).toMatch(/^\$argon2/);
+    expect(row.password_hash).not.toContain('Copper-Kettle');
+
+    // The old password no longer works; the new temporary one forces a change again.
+    expect((await signIn(email, 'Quiet-Meadow-84?')).status).toBe(401);
+    const again = await signIn(email, 'Copper-Kettle-26#');
+    expect(again.status).toBe(200);
+    expect(again.body.data.staff.mustChangePassword).toBe(true);
+    cookie = cookieOf(again);
+    const changedAgain = await post(
+      '/api/auth/change-password',
+      { currentPassword: 'Copper-Kettle-26#', newPassword: 'Silver-Orchard-19%' },
+      cookie,
+    );
+    cookie = cookieOf(changedAgain);
+    expect((await office(cookie)).status).toBe(200);
+
+    // IT deactivates the person, who is refused on the very next request and cannot sign in.
+    const deactivated = await as(adminCookie).patch(`/api/office/staff/${id}`, { isActive: false });
+    expect(deactivated.status).toBe(200);
+    expect((await office(cookie)).status).toBe(401);
+    expect((await signIn(email, 'Silver-Orchard-19%')).status).toBe(401);
+  });
+});
+
 describe('GET /api/office/roles', () => {
   test('lists the existing roles, for admins only', async () => {
     const res = await as(adminCookie).get('/api/office/roles');

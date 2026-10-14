@@ -48,6 +48,16 @@ const ROUTES = [
       await page.locator('.office-role-form').scrollIntoViewIfNeeded()
     },
   },
+  {
+    name: 'office-staff-profile-password',
+    path: '/office/staff/st1',
+    ready: '.password-rule.is-met',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Reset password' }).click()
+      await page.getByLabel('Temporary password').fill('harbour7')
+      await page.getByLabel('Temporary password').scrollIntoViewIfNeeded()
+    },
+  },
   // st2 is answered as an inactive account.
   { name: 'office-staff-profile-inactive', path: '/office/staff/st2', ready: '.office-profile-head' },
   { name: 'office-my-profile', path: '/office/profile', ready: '.office-profile-head' },

@@ -1,3 +1,73 @@
+## M4.7 Reset password from the profile (2026-10-14): TICKED at the user's instruction
+
+The user chose to accept the automated tests (including the M4 end-to-end circle test) instead of the manual browser run. M4.7 is ticked; current step is **M4.8**.
+
+## M4.7 Reset password from the profile (2026-10-14): implemented, NOT ticked (manual browser run still open)
+
+Only M4.7 was worked on. `docs/progress.md` is unchanged: current step stays **M4.7**. M4.8 was not started. Nothing was committed.
+
+**Why not ticked:** "Done when" asks for the M4 circle as one backend test (done, passes) **plus a manual run in the browser**. Nobody was awake to do that run, and I did not drive the real stack myself: it would write test staff into your dev database. **To unblock:** do the run below (or tell me the automated tests are enough, or let me use a throwaway database), then the next run can tick M4.7.
+
+Manual run to do (about 5 minutes, with `node` and `web` dev servers running):
+1. As an admin, Register Staff with a temporary password.
+2. In a private window, sign in as that person: you land on Change password; choose a new one; the office opens.
+3. Sign out, use "Forgot password" for that email; the Reset requests badge goes up.
+4. As admin, open the person's profile → Password → Reset password, type a temporary password, Set. The notice says they were signed out and 1 request was resolved; the badge goes down; the status badge shows "Password change pending".
+5. In the private window, the next click goes to login. Sign in with the new temporary password; you are forced to change it again.
+6. As admin, Access → Deactivate. In the private window, the next click goes to login, and sign-in is refused.
+
+**Changed**
+- `web/src/management/inApp/pages/StaffProfile.tsx`: a new **Password** card between Role and Access.
+  - It reuses the M2.4 endpoint `POST /api/office/staff/:id/reset-password`. No backend code changed.
+  - The card text says whether the person has a temporary password or their own.
+  - **Reset password** opens an inline form:
+    - a visible "Temporary password" label and a password input; focus goes to it;
+    - a hint ("Give it to <name> in person. It is not shown again.") and the shared live rule list (`passwordRules`). The hint, the rules and any error are tied to the input with `aria-describedby`;
+    - a note that the person is signed out everywhere, must choose a new password, and that their pending reset requests are resolved.
+  - A password that breaks the rules is caught before sending. Server refusals (`WEAK_PASSWORD` reasons, 403/404/503) show in an alert, keep what was typed, and move focus back to the input.
+  - **Set temporary password** shows a spinner and is disabled while sending. Cancel sends nothing.
+  - On success:
+    - the typed password is cleared from state and the form closes;
+    - the status badge becomes "Password change pending";
+    - the status line says "Temporary password set for <name>. They have been signed out." plus "N pending reset request(s) were resolved." when N > 0;
+    - the sidebar reset-request badge is refreshed (`RESET_REQUESTS_CHANGED`);
+    - focus returns to Reset password.
+  - On your own profile there is no button, only a link to Change password.
+  - No CSS changes: the card reuses the existing profile form, rule list and note styles (full-width 44px buttons on phones come from the existing `.office-profile-form` rule).
+- `web/src/management/inApp/pages/StaffProfile.test.tsx`: 5 new tests:
+  - reset (POST body, focus, announcement with the resolved count, badge, password gone from the page, sidebar event);
+  - a weak password is caught before sending;
+  - server reasons are shown and the typed value is kept;
+  - Cancel sends nothing;
+  - your own profile shows only the Change password link.
+- `node/src/auth/staff.test.js`: new **"M4 end-to-end circle"** test, one test through the real routes:
+  - IT registers a person; they log in with the temporary password; the office answers 403 `PASSWORD_CHANGE_REQUIRED`;
+  - they change it and the office answers 200 (IT endpoints stay 403);
+  - forgot password puts a request in IT's queue;
+  - IT reset gives `resolvedRequests: 1`; the person's session gets 401 at once; the queue no longer has the request; the row holds an argon2 hash with `must_change_password = true`; the response contains no password or hash;
+  - the old password is refused; the new temporary one signs in and forces a change again;
+  - IT deactivates; the next request gets 401 and sign-in is refused.
+  - The test clears the fake Redis login-rate counters first, because earlier tests in the file share them.
+- `web/scripts/responsive-check.mjs`: new route `office-staff-profile-password` (form open, a partly valid password typed so the rules show both states).
+
+**Verified**
+- `node` `npm test`: 7 suites, 210 tests passed (209 before).
+- `web` `npm test`: 10 files, 93 tests passed (88 before). `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed on the first run, 26 routes × 3 widths × 2 themes, no sideways scroll.
+- Screenshots I looked at: `office-staff-profile-password-360-light`, `-360-dark`, `-1280-dark`. All are readable in both themes; the long name wraps, the rules show met and unmet by shape, and the phone buttons are 44px.
+- Not done: a mutation check (removing the session revocation in `resetStaffPassword` to show the circle test fails). The shell command needed approval.
+
+**Notes**
+- The Staff list keeps its own inline Reset password action (M2.4/M4.2); it was not touched.
+- The circle test overlaps with M4.8's "M4 circle as one backend test". M4.7's Done-when asks for it, so it lives here; M4.8 can reuse it.
+- The check re-saved some existing screenshots (pixel differences only).
+
+**Guard warnings**
+- **Progress Guard:** said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago.
+- **Scope Guard:** on `staff.test.js`, "adds an API route for Products". It does not. The circle test only *calls* the existing `GET /api/office/products` (M5, done) to prove the person "works in the office". No route was added.
+- **Collision Guard:** fired on `StaffProfile.tsx`, `StaffProfile.test.tsx`, `staff.test.js` and `responsive-check.mjs`. The other session (331401a4) was the M4.6 run, already committed in a281792. `git diff --stat` after my first edit showed only my own change, so nothing was overwritten.
+- Every file touched is on the approved M4 list. No new files except screenshots.
+
 ## M4.6 Role assignment (2026-10-14): done, TICKED
 
 Only M4.6 was worked on. Current step is now **M4.7**; it was not started. Nothing was committed.

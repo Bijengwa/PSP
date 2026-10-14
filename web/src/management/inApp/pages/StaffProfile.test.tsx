@@ -348,6 +348,123 @@ describe('StaffProfile role', () => {
   })
 })
 
+describe('StaffProfile password reset', () => {
+  const STRONG = 'Blue-Lantern-73!'
+
+  function stubReset(reset: (body: { temporaryPassword: string }) => Response) {
+    return stubApi((url, init) => {
+      if (url.endsWith('/reset-password')) return reset(JSON.parse(String(init?.body)))
+      return ok({ staff: person })
+    })
+  }
+
+  it('sets a temporary password, says the person was signed out, and forgets the password', async () => {
+    const fetchMock = stubReset(() =>
+      ok({ staff: { ...person, mustChangePassword: true }, resolvedRequests: 2 }),
+    )
+    const badgeRefresh = vi.fn()
+    window.addEventListener('psp:reset-requests-changed', badgeRefresh)
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Password' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Reset password' }))
+
+    const input = within(card).getByLabelText('Temporary password') as HTMLInputElement
+    await waitFor(() => expect(document.activeElement).toBe(input))
+    expect(input.type).toBe('password')
+    expect(input.getAttribute('aria-describedby')).toContain('profile-password-rules')
+    expect(within(card).getByRole('list', { name: 'Password rules' })).not.toBeNull()
+
+    fireEvent.change(input, { target: { value: STRONG } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Set temporary password' }))
+
+    const again = await within(card).findByRole('button', { name: 'Reset password' })
+    await waitFor(() => expect(document.activeElement).toBe(again))
+    expect(screen.getByRole('status').textContent).toBe(
+      'Temporary password set for Sam Staff. They have been signed out. 2 pending reset requests were resolved.',
+    )
+    expect(screen.getAllByText('Password change pending').length).toBeGreaterThan(0)
+    expect(within(card).queryByLabelText('Temporary password')).toBeNull()
+    expect(document.body.textContent).not.toContain(STRONG)
+    expect(badgeRefresh).toHaveBeenCalledTimes(1)
+    window.removeEventListener('psp:reset-requests-changed', badgeRefresh)
+
+    const post = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/reset-password'))
+    expect(post?.[0]).toMatch(/\/api\/office\/staff\/p1\/reset-password$/)
+    expect(post?.[1]?.method).toBe('POST')
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ temporaryPassword: STRONG })
+  })
+
+  it('catches a weak password before sending anything', async () => {
+    const fetchMock = stubReset(() => ok({ staff: person, resolvedRequests: 0 }))
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Password' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Reset password' }))
+    const input = within(card).getByLabelText('Temporary password')
+    fireEvent.change(input, { target: { value: 'short' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Set temporary password' }))
+
+    expect((await within(card).findByRole('alert')).textContent).toBe(
+      'The temporary password does not meet the rules below.',
+    )
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/reset-password'))).toBe(false)
+  })
+
+  it('shows the server reasons and keeps what was typed', async () => {
+    stubReset(() =>
+      json(400, {
+        success: false,
+        error: {
+          message: 'The temporary password does not meet the rules',
+          code: 'WEAK_PASSWORD',
+          details: ['Choose a less common password.'],
+        },
+      }),
+    )
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Password' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Reset password' }))
+    const input = within(card).getByLabelText('Temporary password') as HTMLInputElement
+    fireEvent.change(input, { target: { value: STRONG } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Set temporary password' }))
+
+    const alert = await within(card).findByRole('alert')
+    expect(alert.textContent).toContain('The temporary password does not meet the rules')
+    expect(within(alert).getByText('Choose a less common password.')).not.toBeNull()
+    expect(input.value).toBe(STRONG)
+    await waitFor(() => expect(document.activeElement).toBe(input))
+    expect(screen.getByRole('status').textContent).toBe('')
+  })
+
+  it('Cancel closes the form without sending anything', async () => {
+    const fetchMock = stubReset(() => ok({ staff: person, resolvedRequests: 0 }))
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Password' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Reset password' }))
+    fireEvent.change(within(card).getByLabelText('Temporary password'), { target: { value: STRONG } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Cancel' }))
+
+    expect(within(card).queryByLabelText('Temporary password')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(within(card).getByRole('button', { name: 'Reset password' })))
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/reset-password'))).toBe(false)
+  })
+
+  it('on your own profile it points to Change password instead', async () => {
+    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'admin' } }))
+    renderAt(`/office/staff/${admin.id}`)
+
+    const card = await screen.findByRole('region', { name: 'Password' })
+    expect(within(card).queryByRole('button')).toBeNull()
+    expect(within(card).getByRole('link', { name: 'Change password' }).getAttribute('href')).toBe(
+      '/office/auth/change-password',
+    )
+  })
+})
+
 describe('MyProfile', () => {
   it('shows the signed-in person read only', async () => {
     stubApi(() => json(404, {}), { ...admin, id: 's9', fullName: 'Neema Staff', email: 'neema@psp.test', role: 'staff' })
