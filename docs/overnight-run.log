@@ -917,3 +917,27 @@ M4.8 is finished and ticked, and the current step in `docs/progress.md` is now *
 - One tool warning said `staff.test.js` adds a Products route. It doesn't: the tests only call the existing products endpoint to show the person can work in the office. This is the same false alarm as in M4.7.
 
 All of this, with the decisions, is recorded in `docs/overnight-log.md`.
+I finished M6.1 (the customer database tables). I ticked it in `docs/progress.md`, set the current step to **M6.2** and didn't start it. Nothing is committed.
+
+**What changed**
+- **New migration** `node/migrations/20261014200000_create_customers.js`, which can be applied and rolled back:
+  - `customers` has the fields the plan lists: type (`individual`/`company`), full name, company name, TIN, contact person, phone, email, notes, timestamps and `created_by`. Phone and email are indexed so shop orders placed without an account can be matched to customers later.
+  - The database enforces these rules: an individual needs a full name and a company needs a company name; company name, TIN and contact person are only allowed on companies; emails must be lowercase.
+  - `customer_addresses` holds a customer's addresses (an area plus the address, an optional label, and at most one default per customer). They are deleted with the customer.
+- **New test file** `node/src/customers/customers.test.js` covers each of those rules, the indexes, and rolling the migration back and applying it again. The folder is on the plan's approved list, so I went ahead despite the scope guard's warning.
+- **Outside this step:** `web/src/shop/ProductPage.test.tsx` failed once in a full run. The page sets its title slightly after it renders, and under load the test checked too early. I changed the two title checks to wait, the same way `NotFoundPage.test.tsx` already does. No app code changed.
+
+**Choices I made where the plan is silent** (recorded as Decisions in `docs/overnight-log.md`)
+- The plan already records these fields as approved, so I counted that as the sign-off "Done when" asks for.
+- Phone and email are stored the same way checkout stores them on orders (`+255ΓÇª`, lowercase email), so matching orders to customers is a simple lookup. Neither field is required.
+- Phone and email can repeat, because the next form step (M6.3) is meant to warn about duplicates rather than refuse them.
+- I didn't link orders to customers in the database yet: that changes the `orders` table, which belongs to M7.
+- No screen check was needed because this step has no UI.
+
+**Checks**
+- node `npm test`: 8 suites, 233 tests passed.
+- web `npm test`: 11 files, 95 passed. `npm run build` passed and `npm run lint` is clean.
+
+**Needs your attention:** one existing test, `StaffProfile.test.tsx` ΓÇ║ "deactivates only after confirming, then offers Reactivate", failed once in about 7 full web runs. It passed alone and in every other run, including the final one. In the failed run, focus ended up on the page body instead of the Cancel button, so it isn't just slow. I didn't find the cause and didn't change it. It's logged as an open issue.
+
+The collision guard said another session had edited `docs/progress.md` recently. I re-checked the file, and the only changes in it are my two lines.

@@ -1387,3 +1387,35 @@ M3.1 ticked; current step is **M3.2**. M3.2 was not started.
 **Not done, so the step stays M4.1 in progress.md**
 - The 360px / 768px / desktop check was not run: no browser is available in this session. Please check the sidebar as admin and as non-admin at those widths.
 - No frontend test for "non-admin does not see the IT group". It needs a new file (e.g. `web/src/management/inApp/layout/Sidebar.test.tsx`). Please approve that path (or tell me to add it to an existing test file), then the next run can add it.
+
+## M6.1 Customer data model (2026-10-14, overnight): TICKED
+
+**Changed**
+- New `node/migrations/20261014200000_create_customers.js` (up and down):
+  - `customers`: `id` (uuid), `type` (`individual`/`company`), `full_name`, `company_name`, `tin`, `contact_person`, `phone`, `email`, `notes` (default `''`), `created_by` (FK `staff_profiles`), timestamps. Indexes on `phone`, `email` and `(type, created_at)`.
+  - Check constraints: type values; an individual needs `full_name`, a company needs `company_name`; `company_name`/`tin`/`contact_person` only on companies; `email = lower(email)`.
+  - `customer_addresses`: `id`, `customer_id` (FK, cascade delete), `label` (default `''`), `area`, `address`, `is_default`, timestamps. Index on `customer_id`; partial unique index allows one default address per customer.
+- New `node/src/customers/customers.test.js`: column defaults, every check constraint, the FK to staff, the phone/email indexes, address default/cascade rules, and migrate down then up again.
+- `web/src/shop/ProductPage.test.tsx` (test only, not part of M6.1): the two `document.title` assertions now use `waitFor`. `PageMeta` sets the title in an effect, and under a loaded full-suite run the assertion sometimes ran first (seen failing once). This is the same pattern `NotFoundPage.test.tsx` already uses. No app code changed.
+
+**Decisions**
+- Field approval: §4 records "the M6.1 fields exactly as written in this plan are **approved**", which stands in for "the user approved the fields before code".
+- Phone and email are stored in the same form as `orders.guest_phone`/`guest_email` (`+255…` and lowercase, from the checkout's `normalizePhone`). That makes guest-order matching (M7.5) a plain indexed equality. The DB enforces lowercase email. Phone normalisation will be enforced by the API in M6.3.
+- Phone and email are **not unique**: M6.3 asks for a duplicate *warning*, so duplicates must be storable. Neither is required (a walk-in may give neither).
+- `full_name` is nullable for companies, and `contact_person` names the person to talk to there. Column lengths follow `orders` (name 100, phone 20, email 254, area 100, address 200); `company_name` is 150 and `tin` is 20 (TZ TINs are 9 digits, often written with dashes).
+- Addresses use `area` + `address`, the same split as the checkout's delivery fields, so a shop order's address can be copied into a customer later. An optional `label` names an address (e.g. "Head office"), and `is_default` marks one per customer.
+- No foreign key from `orders.customer_id` yet. Adding it changes `orders`, which belongs to M7 (`<timestamp>_extend_orders.js`). The C5 migration comment already points there.
+- No responsive check: M6.1 has no UI and adds no page.
+
+**Verified**
+- `node` `npm test`: 8 suites, 233 tests passed (includes the new customers suite and migrate down/up).
+- `web` `npm test`: 11 files, 95 tests passed. `npm run build`: passed. `npm run lint`: clean.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. M7.4 was not touched. It is only named as the stop point of the overnight order.
+- Scope Guard: `node/src/customers/` is a new folder. It is explicitly approved in `docs/management-plan.md` §4 (M6/M7 track), so the run continued.
+
+**Open issue for the user (flaky test, not changed)**
+- `web/src/management/inApp/pages/StaffProfile.test.tsx` › "deactivates only after confirming, then offers Reactivate" failed once in about 7 full `npm test` runs. It was waiting for focus on Cancel, and `document.activeElement` was `<body>`. It passes alone and passed in every other run, including the final one. The cause was not found in reasonable time. It is not a timeout, because focus ends on `<body>` rather than arriving late. It may be a late `/api/auth/me` re-render in the test. Worth a look in an interactive session.
+
+M6.1 ticked; current step is **M6.2**. M6.2 was not started. Nothing committed.
