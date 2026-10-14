@@ -34,9 +34,9 @@ Never continue to the next step automatically.
 
 ### Scope
 
-Current track (changed 2026-10-14, shop first): M5.6 → C2 → C3 → C4 → C5 → C6 → C7.
-After C7 go back to M4.1, then M4 IT console → M6 Customers → M7 Orders → H hardening
-(`docs/management-plan.md` §4 has the details and the files approved for this track).
+Current track (changed 2026-10-14): M4.4 → M4.5 → M4.6 → M4.7 → M4.8 (IT console).
+The shop-first track (M5.6, C2–C7) is finished. After M4.8: M6 Customers → M7 Orders → H hardening
+(`docs/management-plan.md` §4 has the details and the files approved for each track).
 
 Staff Orders and Customers pages stay title-only placeholders until their stage.
 The only order work before M7 is the customer checkout (C5–C6): the orders tables and

@@ -1,3 +1,20 @@
+## M4 code check (2026-10-14): M4.1, M4.2, M4.3 ticked at the user's instruction
+
+**Found in the code**
+- M4.1: admin-only IT group in `Sidebar.tsx`; non-admin 403 on IT endpoints is tested in `auth.test.js`.
+- M4.2: `GET /api/office/staff` (search, status filter, paging) and `StaffList.tsx` exist.
+- M4.3: `POST /api/office/staff` (validation, unique email, temporary password, `must_change_password`) and `RegisterStaff.tsx` exist.
+- M4.7 partly: `POST /api/office/staff/:id/reset-password` is tested, and `StaffList.tsx` has a Reset password action. There is no profile page.
+- Not built: M4.4 (no profile page, no `PATCH /api/office/staff/:id`), M4.5 (no activate/deactivate route or button), M4.6 (no role change).
+
+**Ticked without these "Done when" checks being proven (open items)**
+- No backend tests for `GET /staff` paging/search/filter or "no password fields in responses" (M4.2).
+- No backend test for a duplicate email on `POST /staff`, and none for the forced change on first login of a newly registered person (M4.3).
+- Responsive check (360/768/desktop, light/dark) not run on `/office/staff` and `/office/staff/new` (M4.1–M4.3).
+- No frontend test that a non-admin does not see the IT group (M4.1).
+
+Current step is **M4.4**.
+
 ## C7 Shop polish (2026-10-14): signed off by the user, TICKED
 
 The user signed off the screenshots in `docs/screenshots/`. C7 is ticked and the shop-first track is finished. Current step is **M4.1** (implemented earlier, not yet ticked). Open notes: the checkout "Show order summary" button wraps at 360px with very large totals (left as is).
