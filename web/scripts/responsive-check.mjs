@@ -18,6 +18,27 @@ const ROUTES = [
   { name: 'office-products', path: '/office/products', ready: '.office-product-head' },
   { name: 'office-products-new', path: '/office/products/new', ready: '.office-product-head' },
   { name: 'office-products-edit', path: '/office/products/p1', ready: '.office-product-head' },
+  { name: 'office-staff', path: '/office/staff', ready: '.office-staff-paging' },
+  {
+    name: 'office-staff-reset',
+    path: '/office/staff',
+    ready: '.password-rule.is-met',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Reset password' }).first().click()
+      await page.getByLabel('Temporary password').fill('harbour7')
+    },
+  },
+  { name: 'office-staff-new', path: '/office/staff/new', ready: '.office-register-form' },
+  {
+    name: 'office-staff-new-errors',
+    path: '/office/staff/new',
+    ready: '.office-register-form .field-error',
+    act: async (page) => {
+      await page.getByLabel('Email').fill('not-an-email')
+      await page.getByLabel('Temporary password').fill('harbour7')
+      await page.getByRole('button', { name: 'Register staff' }).click()
+    },
+  },
   { name: 'office-staff-profile', path: '/office/staff/st1', ready: '.office-profile-head' },
   {
     name: 'office-staff-profile-edit',
@@ -223,6 +244,45 @@ const staffMember = {
   createdAt: '2026-10-01T08:00:00.000Z',
 }
 
+// The staff list: the signed-in admin, the long-named person, an inactive one and one
+// who never signed in. The total spans two pages so the pager shows.
+const staffList = [
+  staffMember,
+  {
+    id: 's1',
+    fullName: 'Amina Mushi',
+    email: 'amina@psp.example',
+    phone: '+255 754 100 200',
+    role: 'admin',
+    isActive: true,
+    mustChangePassword: false,
+    lastLoginAt: '2026-10-14T06:10:00.000Z',
+    createdAt: '2026-09-01T08:00:00.000Z',
+  },
+  {
+    id: 'st2',
+    fullName: 'Juma Said',
+    email: 'juma.said@psp.example',
+    phone: '+255 713 222 333',
+    role: 'staff',
+    isActive: false,
+    mustChangePassword: false,
+    lastLoginAt: '2026-09-20T14:30:00.000Z',
+    createdAt: '2026-09-02T08:00:00.000Z',
+  },
+  {
+    id: 'st3',
+    fullName: 'Grace Mollel',
+    email: 'grace.mollel@psp.example',
+    phone: null,
+    role: 'staff',
+    isActive: true,
+    mustChangePassword: false,
+    lastLoginAt: null,
+    createdAt: '2026-10-10T08:00:00.000Z',
+  },
+]
+
 const shopCategories = [
   { name: 'Imaging', slug: 'imaging', productCount: 14 },
   { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 6 },
@@ -333,6 +393,7 @@ function answer(url, request) {
       ],
     })
   }
+  if (pathname === '/api/office/staff') return ok({ staff: staffList, total: 31, page: 1, pageSize: 25 })
   const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
   if (staffProfile) {
     const inactive = staffProfile[1] === 'st2' ? { isActive: false, mustChangePassword: false } : {}

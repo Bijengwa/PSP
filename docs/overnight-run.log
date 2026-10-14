@@ -892,3 +892,28 @@ I didn't drive that browser run myself, because it would write test staff into y
 
 The circle test is also part of M4.8's scope, so M4.8 can reuse it.
 You've hit your session limit ┬╖ resets 4:30pm (Africa/Kampala)
+The responsive check is still running in the background. When it finishes I'll be notified, then I'll look at the new screenshots, run the web tests, and update the progress file and log.
+
+M4.8 is finished and ticked, and the current step in `docs/progress.md` is now **M6.1**. I haven't started M6.1, and nothing is committed.
+
+**What changed**
+- **`node/src/auth/staff.test.js`**: 11 new backend tests.
+  - **Staff list (`GET /api/office/staff`):** paging, search by name and email, the status filter, and no password fields in any response. Bad page numbers and an unknown status are also covered, and only signed-in admins get the list.
+  - **Registration (`POST /api/office/staff`):** a duplicate email is refused clearly, whatever its upper or lower case, and no second record is added. A newly registered person is held at the password change on first sign-in, can work in the office after changing it, and the temporary password then stops working.
+  - The full M4 circle (register ΓåÆ sign in with the temporary password ΓåÆ forced change ΓåÆ forgot password ΓåÆ IT reset ΓåÆ deactivate ΓåÆ refused on the next request) was already a passing test from M4.7, so I kept it as is.
+- **New `web/src/management/inApp/layout/Sidebar.test.tsx`**: a non-admin sees no IT group and the app never calls the IT endpoints for them. An admin sees all three IT links and the pending-requests badge.
+- **`web/scripts/responsive-check.mjs`**: sample staff data plus four new routes: the staff list, the list with a reset form open, the registration form, and the form showing errors. The staff profile was already covered.
+- **`web/src/index.css`**: the screenshots showed the staff-list Search button always dropping below the search box, and "Reset password" wrapping onto two lines at 768px. Both are fixed by changing existing staff-list rules only.
+
+**Checks**
+- `node` `npm test`: 221 passed (210 before).
+- `web` `npm test`: 95 passed (93 before). `npm run build` and `npm run lint` are clean.
+- `npm run check:responsive`: passed on all 30 pages at 360, 768 and 1280px in light and dark, with no sideways scroll. I looked at the new staff-list and registration screenshots before and after the fix.
+
+**Worth knowing**
+- I didn't do a sabotage check (temporarily breaking the forced password change to prove the new test catches it), because the command needed your approval.
+- At 768px the very long sample email breaks mid-word in the staff table. It's readable and nothing scrolls sideways, so I left it.
+- The staff list shows status as plain text, while the profile uses coloured badges. Changing that would be new UI work, so I left it out of this step.
+- One tool warning said `staff.test.js` adds a Products route. It doesn't: the tests only call the existing products endpoint to show the person can work in the office. This is the same false alarm as in M4.7.
+
+All of this, with the decisions, is recorded in `docs/overnight-log.md`.

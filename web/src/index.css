@@ -1034,8 +1034,21 @@ a {
   min-width: 0;
 }
 
+/* The search box and its button stay on one row, at every width. */
+.office-staff-search {
+  flex: 1 1 280px;
+  flex-wrap: nowrap;
+  max-width: 440px;
+}
+
 .office-staff-search .field-input {
-  width: min(320px, 100%);
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.office-staff-table td .button {
+  white-space: nowrap;
 }
 
 .office-staff-table-wrap {

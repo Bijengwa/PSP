@@ -1,3 +1,53 @@
+## M4.8 M4 checks and end-to-end circle (2026-10-14): done, TICKED
+
+Only M4.8 was worked on. Current step is now **M6.1** (the next step in the overnight order); it was not started. Nothing was committed. This closes the open items listed under "M4 code check" below.
+
+**Changed**
+- `node/src/auth/staff.test.js`: 11 new tests.
+  - **`GET /api/office/staff`** (27 seeded "Pager" people, 2 of them inactive):
+    - paging: 25 + 2 in name order; `total` counts every match; no person appears twice; page 3 is empty;
+    - a missing or bad page number (`0`, `-2`, `abc`) gives page 1;
+    - search by name and by email, ignoring case; no match gives an empty list;
+    - a typed `%` or `_` is matched literally;
+    - the status filter, with and without the search; an unknown status gives 400;
+    - **no password fields:** every person has exactly the 9 listed keys, and the body has no hash, argon2 string or password;
+    - non-admin 403, no session 401.
+  - **`POST /api/office/staff`**:
+    - **duplicate email:** 409 `EMAIL_TAKEN` with "Someone is already registered with this email." and `details.email`, whatever the case or spacing. A seeded person's email counts too. No second row is added;
+    - **forced change on first login:** the email is stored lowercased, `must_change_password = true`, `created_by` = the admin, and the hash is argon2. The response has no password. First sign-in: `/me` says a change is pending and the office answers 403 `PASSWORD_CHANGE_REQUIRED`. After the change the office answers 200, the flag is cleared, and the temporary password is refused;
+    - non-admin 403, no session 401, another origin 403, and nothing is stored.
+  - The login rate-limit reset and the `post`/`signIn`/`office`/`cookieOf` helpers moved from the circle test to file level (`clearLoginLimits()`), so the new tests share them. The circle test itself is unchanged.
+- New `web/src/management/inApp/layout/Sidebar.test.tsx` (2 tests, a path approved for M4):
+  - a signed-in non-admin sees no IT heading and no Staff, Register Staff or Reset requests links, and no `/api/office/` call is made (so the badge is never requested);
+  - an admin sees the IT list with the three links (right hrefs) and "Reset requests, 3 pending".
+- `web/scripts/responsive-check.mjs`:
+  - a `/api/office/staff` fixture with 4 people (the long name, the signed-in admin, an inactive person, someone who never signed in; one with no phone). Its total is 31, so the pager shows;
+  - 4 routes: `office-staff`, `office-staff-reset` (inline reset form open), `office-staff-new`, and `office-staff-new-errors` (empty and invalid fields submitted). The staff profile routes were already there (M4.4–M4.7).
+- `web/src/index.css` (existing staff list rules only): the screenshots showed the Search button always dropping below the search box, at every width. The box was sized as a percentage of its own wrapping flex parent. Now the box and button stay on one row (`flex: 1 1 280px`, max 440px), and table action buttons do not wrap ("Reset password" broke over two lines at 768px).
+
+**Verified**
+- `node` `npm test`: 7 suites, 221 tests passed (210 before).
+- `web` `npm test`: 11 files, 95 tests passed (93 before). `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed, 30 routes × 3 widths × 2 themes, no sideways scroll. It was run twice: once before the CSS fix, and once after it with the "passed" summary line read.
+- The M4 circle (register → temporary login → forced change → forgot → IT reset → deactivate → refused on the next request) is the M4.7 backend test in `staff.test.js`. It passes in this run.
+- Screenshots I looked at: `office-staff-360-light`, `-360-dark` (after the fix), `-768-light` (after the fix), `-1280-dark`, `office-staff-reset-768-light`, `office-staff-new-errors-360-dark`, `office-staff-new-1280-light`. All are readable in both themes; the phone view is a card list.
+- Not done: a mutation check (registering with `must_change_password: false` to show that the forced-change test fails). The shell command needed approval.
+
+**Decisions**
+- The step's "Done when" asks only for automated checks, so no manual run or sign-off was needed.
+- The circle test from M4.7 already does exactly what M4.8 describes. It is reused rather than written a second time.
+- "A staff profile page" in the responsive check is covered by the existing `office-staff-profile*` routes.
+- Small CSS fix to the Staff list toolbar and table buttons (see Changed). It is a layout fix found by the responsive check, not a new feature.
+
+**Notes**
+- At 768px the long fixture email breaks mid-word in the table's Name column (`…pspengineering.exa / mple`). It is readable, and there is no sideways scroll. Left as is.
+- The Staff list shows status as plain text, while the profile uses coloured badges. Left as is: changing it would be new UI work, not a check.
+- The check re-saved the existing screenshots (pixel differences only).
+
+**Guard warnings**
+- **Scope Guard:** on `staff.test.js`, "adds an API route for Products". It does not. The tests only *call* the existing `GET /api/office/products` (M5, done) to show that the person can work in the office. This is the same false positive as in M4.7.
+- Every file touched is on the approved M4 list (`staff.test.js`, `Sidebar.test.tsx`, `responsive-check.mjs`, the existing `index.css`). The only new files are `Sidebar.test.tsx` and the screenshots.
+
 ## M4.7 Reset password from the profile (2026-10-14): TICKED at the user's instruction
 
 The user chose to accept the automated tests (including the M4 end-to-end circle test) instead of the manual browser run. M4.7 is ticked; current step is **M4.8**.
