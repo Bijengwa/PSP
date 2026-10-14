@@ -551,3 +551,36 @@ M5.6 is done and ticked, with M5.1ΓÇôM5.5 ticked alongside it as the plan all
 - **Docs:** `docs/progress.md` is updated and the write-up is at the top of `docs/overnight-log.md`.
 
 **Guard warnings:** the Scope Guard flagged the new `web/scripts/` folder and the six ticks at once. Both are explicitly approved in the plan (┬º4 approved files, and the M5.6 "Done when" line).
+I built step C2 (Catalog), and every check passed, so it's ticked and the current step is now **C3**. C3 was not started, and nothing was committed.
+
+**Why C2, not M5.6:** your prompt described M5.6, but M5.6 was already ticked and committed in 96fc42c. `docs/progress.md` listed C2 as the current step, so I built C2 and left M5.6 alone.
+
+**What changed**
+- **API (`node/src/shop/`, new):**
+  - `GET /api/shop/categories` returns the categories that have at least one live product, with how many each has.
+  - `GET /api/shop/products` supports search (name, brand or SKU), a category filter, four sort orders and pages of 12.
+  - Both return only published, non-archived products, and only safe fields: no SKU, cost, stock numbers or `created_by`. Stock comes back as `inStock: true/false`.
+  - They're mounted at `/api/shop` in `server.js` and need no login or Redis.
+- **`/products` page (`web/src/shop/`):**
+  - A product grid: 2 columns on a phone, 3 on tablet, 4 on desktop, styled after the preview file.
+  - Category chips with counts, search that runs after a 300 ms pause, sort and Previous/Next paging.
+  - All filters live in the URL, so links, reloads and the back button work.
+  - Loading skeleton cards, three kinds of empty state, and an error message with "Try again".
+- **Home page:** the "Shop by category" tiles now come from the real categories endpoint, with live counts.
+- **Small changes elsewhere:** the header search is hidden on `/products`, which has its own search. I added four icons, new styles in `shop.css`, and the shop pages plus test data to the responsive check.
+
+**What I verified**
+- `node` `npm test`: 149 of 149 passed, including 10 new shop tests. They prove drafts, archived products and internal fields never appear, and cover search, filtering, sorting and paging.
+- `web`: `npm test` 34 of 34 passed (6 new), and lint and build are clean.
+- `npm run check:responsive`: 42 of 42 passed (7 pages at 360, 768 and 1280px, in light and dark), with no sideways scroll. I looked at the screenshots in `docs/screenshots/`. The red squares in them are the check's placeholder image, not a bug.
+
+**Decisions for you to review** (also in `docs/overnight-log.md`)
+- **Field names:** the API uses camelCase (`priceTzs`, `inStock`) to match the rest of the code. The plan wrote `price_tzs`; say if you want that instead.
+- **Quotation products** never send a price to the shop, even if staff entered one.
+- **"Published categories"** I took to mean categories with at least one live product, so customers never see an empty one.
+- **Dead link until C3:** product cards link to `/products/<slug>`, which C3 builds. Until then that link shows "Page not found".
+
+**Guard warnings**
+- **Progress Guard:** flagged that the prompt mentioned M5.6; only C2 was done.
+- **Scope Guard:** flagged the new `node/src/shop/` folder, which is on the approved list in plan ┬º4. It also said I set the current step to C3 before ticking C2; the finished file is correct.
+- **Collision Guard:** said another session had edited the responsive check script, `progress.md` and the log. `git diff` showed only this run's changes, so that edit was the already-committed M5.6 work.

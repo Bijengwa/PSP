@@ -119,19 +119,22 @@ export default function ShopLayout() {
           </nav>
           {menuOpen && <div className="shop-backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
 
-          <form className="shop-search" role="search" onSubmit={search}>
-            <label>
-              <IconSearch size={18} />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search equipment, brand or SKU"
-                aria-label="Search products"
-                autoComplete="off"
-              />
-            </label>
-          </form>
+          {/* The catalogue has its own search as you type. */}
+          {location.pathname !== '/products' && (
+            <form className="shop-search" role="search" onSubmit={search}>
+              <label>
+                <IconSearch size={18} />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search equipment, brand or SKU"
+                  aria-label="Search products"
+                  autoComplete="off"
+                />
+              </label>
+            </form>
+          )}
 
           <Link to="/cart" className="shop-cart" aria-label={`Cart, ${cartCount} ${cartCount === 1 ? 'item' : 'items'}`}>
             <IconCart size={18} />

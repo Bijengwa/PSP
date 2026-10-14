@@ -13,10 +13,15 @@ const shotsDir = path.resolve(webDir, '..', 'docs', 'screenshots')
 const PORT = 4173
 const ORIGIN = `http://127.0.0.1:${PORT}`
 
+// `ready` is an element that shows only once the page has its data.
 const ROUTES = [
-  { name: 'office-products', path: '/office/products' },
-  { name: 'office-products-new', path: '/office/products/new' },
-  { name: 'office-products-edit', path: '/office/products/p1' },
+  { name: 'office-products', path: '/office/products', ready: '.office-product-head' },
+  { name: 'office-products-new', path: '/office/products/new', ready: '.office-product-head' },
+  { name: 'office-products-edit', path: '/office/products/p1', ready: '.office-product-head' },
+  { name: 'shop-home', path: '/', ready: '.shop-category-count' },
+  { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
+  { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
+  { name: 'shop-products-empty', path: '/products?q=no-such-thing', ready: '.shop-state' },
 ]
 const WIDTHS = [
   { name: '360', width: 360, height: 800 },
@@ -91,10 +96,52 @@ const products = [
   product(4, { status: 'archived', isArchived: true, isPublished: false, images: [] }),
 ]
 
+const shopCategories = [
+  { name: 'Imaging', slug: 'imaging', productCount: 14 },
+  { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 6 },
+  { name: 'Laboratory', slug: 'laboratory', productCount: 4 },
+  { name: 'Hospital furniture', slug: 'hospital-furniture', productCount: 3 },
+  { name: 'Respiratory', slug: 'respiratory', productCount: 2 },
+  { name: 'Sterilization', slug: 'sterilization', productCount: 1 },
+]
+
+const SHOP_NAMES = [
+  ['Colour Doppler Ultrasound Scanner', 'Imaging', 38500000],
+  ['Patient Monitor 12.1" 6-Parameter with Extended Battery and Wall Mount', 'Patient monitoring', 4850000],
+  ['CT Scanner, 64-Slice', 'Imaging', null],
+  ['Laboratory Optical Microscope', 'Laboratory', 1650000],
+  ['Hematology Analyzer, 3-Part', 'Laboratory', 21000000],
+  ['Electric Hospital Bed, 3-Function', 'Hospital furniture', 5400000],
+  ['Portable Oxygen Concentrator', 'Respiratory', 3950000],
+  ['Steam Autoclave 23 L', 'Sterilization', 7900000],
+  ['Fingertip Pulse Oximeter', 'Patient monitoring', 85000],
+  ['Digital X-Ray System (DR)', 'Imaging', null],
+  ['Volumetric Infusion Pump', 'Patient monitoring', 2750000],
+  ['Dental Chair Unit', 'Hospital furniture', 1250000000],
+]
+
+const shopProducts = SHOP_NAMES.map(([name, categoryName, price], index) => ({
+  id: `s${index}`,
+  name,
+  slug: `shop-product-${index}`,
+  brand: index % 3 === 0 ? '' : 'Mindray',
+  category: { name: categoryName, slug: shopCategories.find((c) => c.name === categoryName)?.slug ?? 'imaging' },
+  priceTzs: price,
+  requestQuotation: price === null,
+  inStock: index % 4 !== 1,
+  imageUrl: index % 5 === 4 ? null : `/uploads/products/s${index}.png`,
+}))
+
 const ok = (data) => ({ success: true, data })
 
 function answer(url) {
-  const { pathname } = new URL(url)
+  const { pathname, searchParams } = new URL(url)
+  if (pathname === '/api/shop/categories') return ok({ categories: shopCategories })
+  if (pathname === '/api/shop/products') {
+    if (searchParams.get('q')) return ok({ products: [], total: 0, page: 1, pageSize: 12 })
+    const page = Number(searchParams.get('page') || 1)
+    return ok({ products: page === 1 ? shopProducts : shopProducts.slice(0, 2), total: 14, page, pageSize: 12 })
+  }
   if (pathname === '/api/auth/me') {
     return ok({
       staff: { id: 's1', fullName: 'Amina Mushi', email: 'amina@psp.example', role: 'admin', mustChangePassword: false },
@@ -193,7 +240,7 @@ try {
         await page.goto(`${ORIGIN}${route.path}`, { waitUntil: 'networkidle' })
         page.on('pageerror', (error) => console.error(`page error on ${route.path}: ${error.message}`))
         try {
-          await page.locator('.office-product-head').first().waitFor({ timeout: 10000 })
+          await page.locator(route.ready).first().waitFor({ timeout: 10000 })
         } catch {
           const text = (await page.locator('body').innerText()).slice(0, 200).replace(/\s+/g, ' ')
           throw new Error(`${route.path} did not show the page. URL ${page.url()}; page says: "${text}"`)

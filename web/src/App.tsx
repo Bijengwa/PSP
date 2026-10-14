@@ -36,8 +36,9 @@ function OfficeRoot() {
 // The shop is its own bundle too; the office never loads it.
 const ShopLayout = lazy(() => import('./shop/ShopLayout'))
 const ShopHome = lazy(() => import('./shop/ShopHome'))
+const Catalog = lazy(() => import('./shop/Catalog'))
 
-// Title-only placeholder until C2 (catalog) and C4 (cart) are built.
+// Title-only placeholder until C4 (cart) is built.
 function ShopPlaceholder({ title }: { title: string }) {
   return (
     <div className="shop-placeholder">
@@ -68,7 +69,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<ShopHome />} />
-        <Route path="/products" element={<ShopPlaceholder title="Products" />} />
+        <Route path="/products" element={<Catalog />} />
         <Route path="/cart" element={<ShopPlaceholder title="Cart" />} />
       </Route>
 

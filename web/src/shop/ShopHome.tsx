@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { IconArrow, IconCheck, IconDocument, IconShield, IconTruck, IconWrench } from './Icons'
+import { useShopCategories } from './api'
+import { IconArrow, IconCheck, IconDocument, IconImage, IconShield, IconTruck, IconWrench } from './Icons'
 
 // Sample photos from Wikimedia Commons, as in the design preview, until PSP's
 // own photos replace them. Credits are shown at the end of the page.
@@ -16,17 +17,18 @@ const PHOTO = {
   dental: `${COMMONS}/2/28/001964_-_Colombia.jpg/960px-001964_-_Colombia.jpg`,
 }
 
-// Static for C1; C2 reads these from the API. Slugs match product_categories.
-const CATEGORIES = [
-  { name: 'Imaging', slug: 'imaging', photo: PHOTO.ct },
-  { name: 'Patient monitoring', slug: 'patient-monitoring', photo: PHOTO.monitor },
-  { name: 'Laboratory', slug: 'laboratory', photo: PHOTO.microscope },
-  { name: 'Hospital furniture', slug: 'hospital-furniture', photo: PHOTO.bed },
-  { name: 'Respiratory', slug: 'respiratory', photo: PHOTO.oxygen },
-  { name: 'Infusion', slug: 'infusion', photo: PHOTO.infusion },
-  { name: 'Sterilization', slug: 'sterilization', photo: PHOTO.autoclave },
-  { name: 'Dental', slug: 'dental', photo: PHOTO.dental },
-]
+// Category tiles come from the API (only categories with live products); the
+// photo is chosen by slug. Slugs match product_categories.
+const CATEGORY_PHOTOS: Record<string, string> = {
+  imaging: PHOTO.ct,
+  'patient-monitoring': PHOTO.monitor,
+  laboratory: PHOTO.microscope,
+  'hospital-furniture': PHOTO.bed,
+  respiratory: PHOTO.oxygen,
+  infusion: PHOTO.infusion,
+  sterilization: PHOTO.autoclave,
+  dental: PHOTO.dental,
+}
 
 const SERVICES: { icon: ReactNode; title: string; text: string }[] = [
   { icon: <IconCheck size={22} />, title: 'Live stock', text: 'Availability updates as we sell and restock' },
@@ -45,6 +47,78 @@ const CREDITS = [
   ['Autoclave', 'Evaporation Expert', 'CC BY-SA 4.0', '2540EAP-B-L.jpg'],
   ['Dental chair', 'M.Peinado', 'CC BY 2.0', '001964_-_Colombia.jpg'],
 ]
+
+function HomeCategories() {
+  const { loading, categories, error, retry } = useShopCategories()
+
+  if (loading) {
+    return (
+      <ul className="shop-categories" aria-busy="true" aria-label="Loading categories">
+        {Array.from({ length: 4 }, (_, index) => (
+          <li key={index}>
+            <span className="shop-category shop-category-skeleton" aria-hidden="true">
+              <span className="shop-category-photo shop-skeleton-block" />
+              <span className="shop-category-name">
+                <span className="shop-skeleton-line" />
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="shop-state shop-state-inline" role="alert">
+        <p>{error}</p>
+        <button type="button" className="shop-button shop-button-secondary" onClick={retry}>
+          Try again
+        </button>
+      </div>
+    )
+  }
+
+  if (categories.length === 0) {
+    return (
+      <div className="shop-state shop-state-inline">
+        <p>Our online catalogue is being updated. Contact us for prices and availability.</p>
+        <Link to="/#contact" className="shop-button shop-button-secondary">
+          Contact us
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <ul className="shop-categories">
+      {categories.map((category) => {
+        const photo = CATEGORY_PHOTOS[category.slug]
+        return (
+          <li key={category.slug}>
+            <Link to={`/products?category=${category.slug}`} className="shop-category">
+              <span className="shop-category-photo">
+                {photo ? (
+                  <img src={photo} alt="" loading="lazy" decoding="async" />
+                ) : (
+                  <span className="shop-card-noimage">
+                    <IconImage size={32} />
+                  </span>
+                )}
+              </span>
+              <span className="shop-category-name">
+                {category.name}
+                <span className="shop-category-count">
+                  {category.productCount} {category.productCount === 1 ? 'product' : 'products'}
+                </span>
+              </span>
+            </Link>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
 
 export default function ShopHome() {
   return (
@@ -107,18 +181,7 @@ export default function ShopHome() {
 
       <section id="categories" className="shop-container shop-section" aria-labelledby="categories-title">
         <h2 id="categories-title">Shop by category</h2>
-        <ul className="shop-categories">
-          {CATEGORIES.map((category) => (
-            <li key={category.slug}>
-              <Link to={`/products?category=${category.slug}`} className="shop-category">
-                <span className="shop-category-photo">
-                  <img src={category.photo} alt="" loading="lazy" decoding="async" />
-                </span>
-                <span className="shop-category-name">{category.name}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <HomeCategories />
       </section>
 
       <p className="shop-container shop-credits">

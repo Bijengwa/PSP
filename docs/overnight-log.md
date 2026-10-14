@@ -1,5 +1,70 @@
 # Overnight Log
 
+## 2026-10-14 — C2 Catalog: done, TICKED
+
+**Which step:** the prompt asked for "the current step" and described M5.6, but M5.6 was already ticked and committed (96fc42c). `docs/progress.md` said **C2**, so C2 was built. M5.6 was not touched again.
+
+**Changed: backend** (new files under the approved `node/src/shop/`)
+- `shop.service.js`:
+  - `listShopCategories()` returns only categories that have at least one live product, each with a live `productCount`, in office order.
+  - `listShopProducts({ q, category, sort, page })` searches name, brand and SKU (the SKU is matched but never returned). It filters by category slug, sorts by `newest` | `price_asc` | `price_desc` | `name`, and returns pages of 12 with `total`.
+  - Every query goes through the existing `onlyLive`, and only these columns are selected: id, name, slug, brand, category {name, slug}, `priceTzs`, `requestQuotation`, `inStock` (`quantity > 0`, a boolean), and `imageUrl` (the main image).
+  - Quotation products return `priceTzs: null` and sort last on price.
+- `shop.routes.js`: `GET /api/shop/categories` and `GET /api/shop/products`. They are public and need no session or Redis. A bad `sort` or a malformed `category` slug gets 400; `page` is clamped to 1–10000.
+- `node/src/server.js`: mounted at `/api/shop`.
+- `shop.test.js` (10 tests):
+  - Drafts and archived products never appear, in products or in category counts.
+  - The exact set of response keys is checked, and the body never contains the SKU, cost, `created_by`/staff id or any quantity field.
+  - Quotation price is hidden; stock is a boolean.
+  - Search (name, brand, SKU; `%` and `_` are literal), the category filter, all four sorts and paging (14 rows give 12 + 2) pass.
+  - No cookie is set, and Redis is never used (the stub throws).
+
+**Changed: frontend** (`web/src/shop/`, approved)
+- New `api.ts`: types, `getProducts`, `getCategories`, the `useShopCategories` hook, `catalogSearch` (the URL query string), and `formatTzs` ("TZS 1,250,000").
+- New `ProductCard.tsx`:
+  - A card following the preview: stock pill, category, name (clamped to 3 lines), brand, price or "Price on request", and a "View details" button.
+  - Cards without a photo show an image icon. A skeleton card has the same size, so nothing jumps.
+- New `Catalog.tsx` for `/products`:
+  - Title (the category name when one is chosen) and a live "Showing 1–12 of N".
+  - Search as you type with a 300 ms pause.
+  - Sort select.
+  - Category chips with counts: one scrolling row on phones, wrapped from 768px.
+  - Previous/Next pager.
+  - All filters are in the URL (`?q&category&sort&page`). Chips and the pager are real links. The first search adds a history entry; refining it replaces that entry. The back button and reloads work.
+  - States:
+    - Skeleton cards while loading.
+    - Empty states for "no match" (with Clear filters), "no products yet" and "page past the end".
+    - An error with Try again.
+- New `Catalog.test.tsx` (6 tests): filters read from the URL, chips change the URL and reset the page, search is debounced, the empty state, error and retry, and the loading skeleton.
+- `ShopHome.tsx`: "Shop by category" now uses `GET /api/shop/categories` (real counts, only categories with live products). The photo is chosen by slug. It has a skeleton, an error with retry, and an empty state. The home page shows no product tiles, so there is no "featured" block.
+- `ShopLayout.tsx`: the header search is hidden on `/products`, which has its own search, and the cart button is pushed right with `margin-left: auto`.
+- `App.tsx`: `/products` renders `Catalog` instead of the placeholder.
+- `Icons.tsx`: chevron left/right, image and alert icons, in the same line style.
+- `shop.css`:
+  - New `--shop-ok`/`--shop-ok-soft` tokens for light and dark.
+  - Card, chip, grid (2/3/4 columns), pager, state and skeleton styles.
+  - All colours come from tokens. Touch targets are 44px. Reduced motion turns off the pulse and transitions.
+- `web/scripts/responsive-check.mjs`: each route now has its own "ready" selector. Shop fixtures were added, plus 4 shop routes: `/`, `/products`, `/products?category=imaging&page=2` and `/products?q=no-such-thing`.
+
+**Verified**
+- `node` `npm test`: 6 suites, 149 tests passed (139 before, plus 10 new).
+- `web` `npm test`: 4 files, 34 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: 42 of 42 passed (7 routes × 360/768/1280 × light/dark), none scroll sideways. I looked at `shop-products` at 360 light and dark and at 1280 light, `shop-home` at 360 dark, and `shop-products-empty` at 768 light: two columns on the phone, four on desktop, chips scroll inside their own row, and the empty state and pager look right. The red squares in the screenshots are the check's 1×1 fixture image, not a bug.
+
+**Decisions to review**
+- **Field names** are camelCase (`priceTzs`, `requestQuotation`, `inStock`, `imageUrl`) to match the rest of the API. The plan wrote them as `price_tzs` and so on. Say so if you want snake_case.
+- **"Published categories"** was read as "categories with at least one live product", so customers never see an empty category.
+- **Quotation products** never send a price, even if staff entered one.
+- **Product cards link to `/products/:slug`**, which C3 builds. Until then, the link shows the site's "Page not found".
+- **Two searches on `/products`:** the header search is hidden there to avoid them.
+
+**Guard warnings**
+- The Progress Guard said the prompt mentioned M5.6/M5.1. Only C2 was done.
+- The Scope Guard flagged the new `node/src/shop/` folder. It is on the approved list in plan §4.
+- The Collision Guard said another session (91d62dba) had edited `responsive-check.mjs`. `git diff` showed only this run's changes; that edit was the committed M5.6 work.
+
+**Not done:** product page, cart, orders (C3 onward). Nothing was committed.
+
 ## 2026-10-14 — M5.6 Products completion: done, M5.1 to M5.6 ticked together
 
 This is the one multi-tick the plan allows for M5.6: M5.1, M5.2, M5.3, M5.4, M5.5 and M5.6 were ticked at once. Current step is now **C2**; C2 was not started.

@@ -103,6 +103,29 @@ export const IconWrench = (p: P) => (
     <path d="M5 5l4 4" />
   </Icon>
 )
+export const IconChevronLeft = (p: P) => (
+  <Icon {...p}>
+    <path d="M15 6l-6 6 6 6" />
+  </Icon>
+)
+export const IconChevronRight = (p: P) => (
+  <Icon {...p}>
+    <path d="M9 6l6 6-6 6" />
+  </Icon>
+)
+export const IconImage = (p: P) => (
+  <Icon {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="2" />
+    <path d="M21 16l-5-5-9 9" />
+  </Icon>
+)
+export const IconAlert = (p: P) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8v5M12 16.5v.5" />
+  </Icon>
+)
 export const IconShield = (p: P) => (
   <Icon {...p}>
     <path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z" />
