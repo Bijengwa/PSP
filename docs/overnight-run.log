@@ -688,3 +688,4 @@ C5 (orders tables and the checkout API) is built and ticked, and the current ste
 - The checkout page must send quantities as numbers; the string `"2"` is refused.
 - Without the proxy setting (`trust proxy`, planned for H2), everyone behind a reverse proxy would share one limit of 10 orders an hour per IP.
 - The order endpoint has no same-origin check. It relies on the body having to be JSON and on CORS allowing only the web app's origin. H2 should review this.
+You've hit your session limit ┬╖ resets 8:40am (Africa/Kampala)
