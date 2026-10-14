@@ -48,6 +48,49 @@ const ROUTES = [
     ],
   },
   { name: 'shop-cart-empty', path: '/cart', ready: '.shop-state', cart: [] },
+  // `act` runs after the page loads, before waiting for `ready`.
+  {
+    name: 'shop-checkout',
+    path: '/checkout',
+    ready: '.shop-checkout-form',
+    cart: [
+      { productId: 's0', quantity: 2 },
+      { productId: 's4', quantity: 1 }, // no photo
+      { productId: 's2', quantity: 1 }, // price on request
+      { productId: 's11', quantity: 99 }, // the biggest line total
+    ],
+  },
+  {
+    name: 'shop-checkout-errors',
+    path: '/checkout',
+    ready: '.shop-field-message:not(:empty)',
+    cart: [{ productId: 's8', quantity: 3 }],
+    act: async (page) => {
+      await page.locator('.shop-checkout-form').waitFor()
+      const toggle = page.locator('.shop-checkout-toggle')
+      if (await toggle.count()) await toggle.click() // the summary, opened on smaller screens
+      await page.getByLabel('Phone number').fill('12345')
+      await page.getByRole('button', { name: /Place order/ }).click()
+      await page.evaluate(() => window.scrollTo(0, 0)) // the full-page shot starts at the top
+    },
+  },
+  {
+    name: 'shop-order-confirmed',
+    path: '/checkout',
+    ready: '.shop-confirm-number-value',
+    cart: [
+      { productId: 's8', quantity: 3 },
+      { productId: 's2', quantity: 1 },
+    ],
+    act: async (page) => {
+      await page.locator('.shop-checkout-form').waitFor()
+      await page.getByLabel('Full name').fill('Test Person')
+      await page.getByLabel('Phone number').fill('0712 345 678')
+      await page.getByLabel('Area or city').fill('Mikocheni, Dar es Salaam')
+      await page.getByLabel('Street, plot or landmark').fill('Plot 12')
+      await page.getByRole('button', { name: /Place order/ }).click()
+    },
+  },
 ]
 const WIDTHS = [
   { name: '360', width: 360, height: 800 },
@@ -197,6 +240,7 @@ function cartPrices(lines) {
 function answer(url, request) {
   const { pathname, searchParams } = new URL(url)
   if (pathname === '/api/shop/cart/prices') return cartPrices(request.postDataJSON())
+  if (pathname === '/api/shop/orders') return ok({ orderNumber: 'PSP-000123', totalTzs: 255000 })
   if (pathname === '/api/shop/categories') return ok({ categories: shopCategories })
   const detail = pathname.match(/^\/api\/shop\/products\/([^/]+)$/)
   if (detail) return shopDetail(decodeURIComponent(detail[1]))
@@ -307,6 +351,7 @@ try {
         await page.goto(`${ORIGIN}${route.path}`, { waitUntil: 'networkidle' })
         page.on('pageerror', (error) => console.error(`page error on ${route.path}: ${error.message}`))
         try {
+          await route.act?.(page)
           await page.locator(route.ready).first().waitFor({ timeout: 10000 })
         } catch {
           const text = (await page.locator('body').innerText()).slice(0, 200).replace(/\s+/g, ' ')
