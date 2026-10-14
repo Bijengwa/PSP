@@ -53,6 +53,20 @@ export function getProducts(query: CatalogQuery, signal?: AbortSignal) {
   return apiRequest<ShopProductsPage>(`/api/shop/products${catalogSearch(query)}`, { signal })
 }
 
+// The product page (C3): the card fields plus SKU, description, specs and every photo.
+export type ShopProductDetail = ShopProduct & {
+  sku: string
+  description: string
+  specs: { label: string; value: string }[]
+  images: string[]
+}
+
+export type ShopProductAnswer = { product: ShopProductDetail; related: ShopProduct[] }
+
+export function getProduct(slug: string, signal?: AbortSignal) {
+  return apiRequest<ShopProductAnswer>(`/api/shop/products/${encodeURIComponent(slug)}`, { signal })
+}
+
 const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 
 // "TZS 1,250,000"

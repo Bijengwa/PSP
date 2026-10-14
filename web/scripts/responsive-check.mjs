@@ -22,6 +22,9 @@ const ROUTES = [
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
   { name: 'shop-products-empty', path: '/products?q=no-such-thing', ready: '.shop-state' },
+  { name: 'shop-product', path: '/products/shop-product-0', ready: '.shop-product-info h1' },
+  { name: 'shop-product-out', path: '/products/shop-product-1', ready: '.shop-product-info h1' },
+  { name: 'shop-product-missing', path: '/products/no-such-product', ready: '.shop-product-state' },
 ]
 const WIDTHS = [
   { name: '360', width: 360, height: 800 },
@@ -133,10 +136,37 @@ const shopProducts = SHOP_NAMES.map(([name, categoryName, price], index) => ({
 }))
 
 const ok = (data) => ({ success: true, data })
+const notFound = { success: false, error: { message: 'Product not found' } }
+
+// The product page: one product with photos, specs and up to 4 related.
+function shopDetail(slug) {
+  const item = shopProducts.find((p) => p.slug === slug)
+  if (!item) return notFound
+  const n = shopProducts.indexOf(item)
+  return ok({
+    product: {
+      ...item,
+      sku: `PSP-${String(n).padStart(4, '0')}-LONG-SKU`,
+      description:
+        'Bedside monitor for wards, ICU and theatre. Monitors ECG, SpO2, blood pressure, respiration and temperature on one clear touchscreen.\n\nA built-in battery keeps it running during patient transport.',
+      specs: [
+        { label: 'Display', value: '12.1" colour TFT touchscreen' },
+        { label: 'Parameters', value: 'ECG, SpO2, NIBP, respiration, 2× temperature' },
+        { label: 'Power', value: '100–240 V AC, 50/60 Hz' },
+        { label: 'Battery', value: 'Built-in Li-ion, up to 4 hours' },
+        { label: 'Weight', value: '' },
+      ],
+      images: item.imageUrl ? [item.imageUrl, `/uploads/products/${n}b.png`, `/uploads/products/${n}c.png`] : [],
+    },
+    related: shopProducts.filter((p) => p !== item).slice(0, 4),
+  })
+}
 
 function answer(url) {
   const { pathname, searchParams } = new URL(url)
   if (pathname === '/api/shop/categories') return ok({ categories: shopCategories })
+  const detail = pathname.match(/^\/api\/shop\/products\/([^/]+)$/)
+  if (detail) return shopDetail(decodeURIComponent(detail[1]))
   if (pathname === '/api/shop/products') {
     if (searchParams.get('q')) return ok({ products: [], total: 0, page: 1, pageSize: 12 })
     const page = Number(searchParams.get('page') || 1)
@@ -226,13 +256,14 @@ try {
         reducedMotion: 'reduce',
       })
       await context.addInitScript((value) => localStorage.setItem('psp-theme', value), theme)
-      await context.route(`${ORIGIN}/api/**`, (route) =>
-        route.fulfill({
-          status: 200,
+      await context.route(`${ORIGIN}/api/**`, (route) => {
+        const body = answer(route.request().url())
+        return route.fulfill({
+          status: body.success === false ? 404 : 200,
           contentType: 'application/json',
-          body: JSON.stringify(answer(route.request().url())),
-        }),
-      )
+          body: JSON.stringify(body),
+        })
+      })
       await context.route(`${ORIGIN}/uploads/**`, (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }))
 
       for (const route of ROUTES) {

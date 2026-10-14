@@ -1,6 +1,6 @@
 const express = require('express');
 const { httpError } = require('../auth/auth.middleware');
-const { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts } = require('./shop.service');
+const { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts, getShopProduct } = require('./shop.service');
 
 // Public shop API, mounted at /api/shop. Read-only and open to everyone: no
 // session, no Redis. Only live (published, not archived) products are returned.
@@ -30,6 +30,14 @@ router.get('/products', async (req, res) => {
     success: true,
     data: await listShopProducts({ q, category, sort, page, limit: SHOP_PAGE_SIZE }),
   });
+});
+
+// A malformed slug can never match, so it gets the same 404 as a draft or archived product.
+router.get('/products/:slug', async (req, res) => {
+  const { slug } = req.params;
+  const found = slug.length <= 200 && SLUG_PATTERN.test(slug) ? await getShopProduct(slug) : null;
+  if (!found) throw httpError(404, 'Product not found');
+  res.json({ success: true, data: found });
 });
 
 module.exports = router;

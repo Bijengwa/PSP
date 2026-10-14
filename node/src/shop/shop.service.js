@@ -93,4 +93,44 @@ async function listShopProducts({ q, category, sort = 'newest', page = 1, limit 
   };
 }
 
-module.exports = { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts };
+const RELATED_LIMIT = 4;
+
+// One live product for its page (C3), or null when it is missing, a draft or
+// archived. The page adds the SKU, description, specs and every photo; still no
+// cost, stock number or created_by. Up to 4 live products from the same category
+// come with it.
+async function getShopProduct(slug) {
+  const row = await liveQuery()
+    .where('p.slug', slug)
+    .first(...SHOP_COLUMNS, 'p.sku', 'p.description', 'p.specs', 'p.category_id');
+  if (!row) return null;
+
+  const [images, related] = await Promise.all([
+    db('product_images')
+      .where('product_id', row.id)
+      .orderBy([{ column: 'is_main', order: 'desc' }, { column: 'sort_order' }, { column: 'created_at' }])
+      .pluck('url'),
+    liveQuery()
+      .where('p.category_id', row.category_id)
+      .whereNot('p.id', row.id)
+      .select(...SHOP_COLUMNS)
+      .orderBy(ORDER_BY.newest)
+      .limit(RELATED_LIMIT),
+  ]);
+
+  return {
+    product: {
+      ...toShopProduct(row),
+      sku: row.sku,
+      description: row.description ?? '',
+      specs: (Array.isArray(row.specs) ? row.specs : []).map((spec) => ({
+        label: String(spec?.label ?? ''),
+        value: String(spec?.value ?? ''),
+      })),
+      images,
+    },
+    related: related.map(toShopProduct),
+  };
+}
+
+module.exports = { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts, getShopProduct };

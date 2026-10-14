@@ -126,6 +126,16 @@ export const IconAlert = (p: P) => (
     <path d="M12 8v5M12 16.5v.5" />
   </Icon>
 )
+export const IconMinus = (p: P) => (
+  <Icon {...p}>
+    <path d="M5 12h14" />
+  </Icon>
+)
+export const IconPlus = (p: P) => (
+  <Icon {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Icon>
+)
 export const IconShield = (p: P) => (
   <Icon {...p}>
     <path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z" />

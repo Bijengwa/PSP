@@ -584,3 +584,34 @@ I built step C2 (Catalog), and every check passed, so it's ticked and the curren
 - **Progress Guard:** flagged that the prompt mentioned M5.6; only C2 was done.
 - **Scope Guard:** flagged the new `node/src/shop/` folder, which is on the approved list in plan ┬º4. It also said I set the current step to C3 before ticking C2; the finished file is correct.
 - **Collision Guard:** said another session had edited the responsive check script, `progress.md` and the log. `git diff` showed only this run's changes, so that edit was the already-committed M5.6 work.
+I built C3 (the product page), and every check passed, so C3 is ticked and C4 (Cart) is now the current step. I did not start C4, and nothing is committed. Your prompt described M5.6, but M5.6 and C2 were already ticked and `docs/progress.md` said C3, so only C3 was done.
+
+**What changed**
+- **API:** new `GET /api/shop/products/:slug` (in `node/src/shop/shop.service.js` and `shop.routes.js`).
+  - It returns only published, not archived products, with the catalogue card fields plus SKU, description, specs and all photos (main photo first). It also returns up to 4 related products from the same category.
+  - Drafts, archived products, unknown slugs and malformed slugs all get 404. Cost, stock count and the creating staff member are never sent.
+- **Page:** new `web/src/shop/ProductPage.tsx` for `/products/:slug`.
+  - Breadcrumb; a photo gallery that changes photo with the thumbnails, arrow and Home/End keys, a sideways swipe, or the previous/next buttons.
+  - Name, brand, SKU, "In stock"/"Out of stock", and the price as `TZS 38,500,000` or "Request quotation".
+  - A quantity stepper (1ΓÇô99) and "Add to cart", which is disabled when the product is out of stock.
+  - Description, a specifications table, and related products.
+  - Each product sets the tab title and the search-result description.
+  - Loading, "Product not found" and error-with-retry states.
+- **Small edits:** `api.ts`, `App.tsx` (the route), `Icons.tsx` (plus/minus), `shop.css`, and the responsive check, which now covers three product pages: in stock, out of stock with a long name, and not found.
+- **Tests:** 5 new API tests in `shop.test.js` and 7 new page tests in `ProductPage.test.tsx`.
+
+**Checks**
+- `node` `npm test`: 154 tests passed.
+- `web` `npm test`: 41 passed. `npm run lint` and `npm run build` are clean.
+- `npm run check:responsive`: 60 of 60 passed (10 pages ├ù 360/768/1280px ├ù light/dark), with no sideways scrolling.
+- I looked at the product page screenshots at 360px light and dark, 1280px dark, and the not-found page at 360px. The breadcrumb `/` separators sat too high; I fixed that and ran every check again. The red squares in the screenshots are the check's placeholder image, not a bug.
+
+**Decisions for you to review** (also in `docs/overnight-log.md`)
+- **Add to cart:** the cart arrives in C4, so for now the button only shows a note: "Online ordering opens soon; until then, contact us to place the order." It doesn't claim the item was added, and nothing is stored. In C4 the button should write to the real cart.
+- **Specs field name:** the plan says the table comes from `specs_list`, but that column was renamed to `specs` in an earlier migration. It is the same data.
+- **Sections instead of tabs:** the design preview puts Specifications, Description and Documents in tabs. Documents isn't part of this step, and stacked sections keep all the text visible and searchable, so I used sections.
+
+**Hook warnings**
+- **Progress Guard:** flagged that your prompt mentioned M5.6. Only C3 was done.
+- **Collision Guard:** flagged earlier edits by another session to the shop files. `git status` showed only this run's changes; those edits were the committed C2 work.
+- **Scope Guard:** said I ticked C3 after moving "Current step" to C4. I made both edits together, and C3's "Done when" checks had all passed first.

@@ -173,6 +173,82 @@ describe('GET /api/shop/products', () => {
   });
 });
 
+describe('GET /api/shop/products/:slug', () => {
+  const one = (slug) => request(app).get(`/api/shop/products/${slug}`);
+  const DETAIL_KEYS = [...SHOP_KEYS, 'description', 'images', 'sku', 'specs'].sort();
+
+  test('returns a live product with its page fields only, and sets no cookie', async () => {
+    const row = await product({
+      slug: 'bedside-monitor',
+      quantity_in_stock: 42,
+      description: 'Bedside monitor for wards.',
+      specs: JSON.stringify([{ label: 'Display', value: '12.1" TFT' }]),
+    });
+    await db('product_images').insert([
+      { product_id: row.id, url: '/uploads/products/second.png', sort_order: 1, is_main: false },
+      { product_id: row.id, url: '/uploads/products/third.png', sort_order: 2, is_main: false },
+      { product_id: row.id, url: '/uploads/products/main.png', sort_order: 5, is_main: true },
+    ]);
+
+    const res = await one('bedside-monitor');
+    expect(res.status).toBe(200);
+    expect(res.headers['set-cookie']).toBeUndefined();
+    const { product: item } = res.body.data;
+    expect(Object.keys(item).sort()).toEqual(DETAIL_KEYS);
+    expect(item).toMatchObject({
+      id: row.id,
+      sku: row.sku,
+      priceTzs: 1000000,
+      inStock: true,
+      imageUrl: '/uploads/products/main.png',
+      description: 'Bedside monitor for wards.',
+      specs: [{ label: 'Display', value: '12.1" TFT' }],
+      images: ['/uploads/products/main.png', '/uploads/products/second.png', '/uploads/products/third.png'],
+    });
+    const body = JSON.stringify(res.body);
+    for (const secret of ['777777', staffId, 'created_by', 'cost', 'quantity', 'is_published', 'is_archived']) {
+      expect(body).not.toContain(secret);
+    }
+  });
+
+  test('drafts, archived, unknown and malformed slugs are 404', async () => {
+    await product({ slug: 'draft-item', is_published: false });
+    await product({ slug: 'archived-item', is_published: false, is_archived: true });
+
+    for (const slug of ['draft-item', 'archived-item', 'no-such-item', 'Bad%20Slug']) {
+      const res = await one(slug);
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(JSON.stringify(res.body)).not.toContain('SECRET-SKU');
+    }
+  });
+
+  test('quotation products hide their price; out of stock is a boolean', async () => {
+    await product({ slug: 'quote', request_quotation: true, price_tzs: 5000000, quantity_in_stock: 0 });
+    const res = await one('quote');
+    expect(res.body.data.product).toMatchObject({ requestQuotation: true, priceTzs: null, inStock: false, images: [] });
+    expect(JSON.stringify(res.body)).not.toContain('5000000');
+  });
+
+  test('related: up to 4 live products from the same category, never itself', async () => {
+    await product({ slug: 'main', category_id: 2 });
+    for (let n = 0; n < 5; n += 1) {
+      await product({ name: `Sibling ${n}`, category_id: 2, created_at: new Date(2026, 0, n + 1) });
+    }
+    await product({ name: 'Draft sibling', category_id: 2, is_published: false, created_at: new Date(2027, 0, 1) });
+    await product({ name: 'Other category', category_id: 1, created_at: new Date(2027, 0, 1) });
+
+    const { related } = (await one('main')).body.data;
+    expect(related.map((p) => p.name)).toEqual(['Sibling 4', 'Sibling 3', 'Sibling 2', 'Sibling 1']);
+    expect(Object.keys(related[0]).sort()).toEqual(SHOP_KEYS);
+  });
+
+  test('related is empty when the product is alone in its category', async () => {
+    await product({ slug: 'alone', category_id: 3 });
+    expect((await one('alone')).body.data.related).toEqual([]);
+  });
+});
+
 describe('GET /api/shop/categories', () => {
   test('lists only categories with live products, with live counts, in office order', async () => {
     await product({ category_id: 2 });

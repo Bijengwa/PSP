@@ -37,6 +37,7 @@ function OfficeRoot() {
 const ShopLayout = lazy(() => import('./shop/ShopLayout'))
 const ShopHome = lazy(() => import('./shop/ShopHome'))
 const Catalog = lazy(() => import('./shop/Catalog'))
+const ProductPage = lazy(() => import('./shop/ProductPage'))
 
 // Title-only placeholder until C4 (cart) is built.
 function ShopPlaceholder({ title }: { title: string }) {
@@ -70,6 +71,7 @@ export default function App() {
       >
         <Route path="/" element={<ShopHome />} />
         <Route path="/products" element={<Catalog />} />
+        <Route path="/products/:slug" element={<ProductPage />} />
         <Route path="/cart" element={<ShopPlaceholder title="Cart" />} />
       </Route>
 

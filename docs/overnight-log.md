@@ -1,5 +1,68 @@
 # Overnight Log
 
+## 2026-10-14 — C3 Product page: done, TICKED
+
+**Which step:** the prompt described M5.6, but M5.6 and C2 were already ticked. `docs/progress.md` said **C3**, so only C3 was built. Current step is now **C4**; C4 was not started.
+
+**Changed: backend** (approved `node/src/shop/`)
+- `shop.service.js`: new `getShopProduct(slug)`.
+  - It goes through `onlyLive` and returns the C2 card fields plus `sku`, `description`, `specs` (`[{label, value}]`) and `images` (the URLs: main photo first, then the sort order).
+  - It also returns `related`: up to 4 live products from the same category, newest first, never the product itself. They have the same shape as the catalogue cards.
+  - Still never sent: cost, stock number, `created_by`, the publish/archive flags. Quotation products keep `priceTzs: null`.
+- `shop.routes.js`: `GET /api/shop/products/:slug` returns `{ product, related }`. It returns 404 for drafts, archived products, unknown slugs and malformed slugs (a malformed slug skips the database).
+- `shop.test.js`: 5 new tests:
+  - The exact set of keys, the photo order, and no leaks (cost, quantity, staff id, flags). No cookie is set.
+  - Drafts, archived, unknown and malformed slugs return 404.
+  - Quotation products hide their price, and stock is a boolean.
+  - Related products: at most 4, live only, same category, never the product itself.
+  - Related is empty when the product is alone in its category.
+
+**Changed: frontend** (approved `web/src/shop/`)
+- New `ProductPage.tsx` for `/products/:slug`:
+  - Breadcrumb: Home / Products / category (links to the filtered catalogue) / name. A long name is cut with an ellipsis.
+  - Gallery:
+    - A 4:3 main photo with fixed proportions, so nothing jumps.
+    - Thumbnails, with roving focus.
+    - Arrow keys and Home/End, both on the focused photo and on the thumbnails.
+    - A sideways swipe of 40px or more (pointer events, `touch-action: pan-y`, so scrolling still works).
+    - Previous/Next buttons and a "1 / 3" counter.
+    - A "No photo yet" state.
+  - Details: category, brand, name, the "In stock"/"Out of stock" pill, the SKU, and the price as `TZS 38,500,000` or "Request quotation".
+  - Quantity stepper, clamped to 1–99.
+  - "Add to cart": disabled when out of stock, with a hint tied to it by `aria-describedby`.
+  - "Request a quotation for bulk or tender orders" (links to `/#contact`), and a delivery/installation box as in the preview.
+  - Lower sections: Description (paragraphs), a Specifications table (`th scope="row"`; an empty value shows "—"), and Related equipment (the catalogue `ProductCard`).
+  - Each product sets the tab title (`Name | PSP Engineering Group`) and a `<meta name="description">` (the description cut to 155 characters, or a summary). Both are restored when you leave the page.
+  - States: a skeleton with the page's own shape, "Product not found" for a 404, and an error with Try again.
+- New `ProductPage.test.tsx` (7 tests): product, breadcrumb, specs, related, title and meta; gallery thumbnails, keys and swipe; stepper clamp and the confirmation; out of stock and quotation; not found; error and retry; the skeleton.
+- Other changes:
+  - `api.ts`: `ShopProductDetail`, `getProduct`.
+  - `App.tsx`: the lazy `/products/:slug` route.
+  - `Icons.tsx`: minus and plus icons.
+  - `shop.css`: product page styles, from tokens only. Touch targets are at least 44px, and there is a `:disabled` style for shop buttons. Desktop shows two columns with a sticky gallery. Reduced motion is respected.
+- `web/scripts/responsive-check.mjs`: a product-detail fixture (404 for unknown slugs; the route handler now returns that status) and 3 routes: `/products/shop-product-0` (in stock, 3 photos), `/products/shop-product-1` (out of stock, long name), and `/products/no-such-product` (not found).
+
+**Verified**
+- `node` `npm test`: 6 suites, 154 tests passed (149 before, plus 5 new).
+- `web` `npm test`: 5 files, 41 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: 60 of 60 passed (10 routes × 360/768/1280 × light/dark), and nothing scrolls sideways.
+  - I looked at `shop-product` 360 light, `shop-product-out` 360 dark, `shop-product` 1280 dark and `shop-product-missing` 360 light.
+  - In the first look the breadcrumb `/` sat too high. I fixed it (`align-items: center`) and ran everything again.
+  - The red squares are the check's 1×1 fixture image.
+
+**Decisions to review**
+- **Add to cart before C4:** the cart module does not exist yet, so the button only shows a confirmation, as the plan says. Saying "added to cart" would be false, so it reads "2 × Name noted. Online ordering opens soon; until then, contact us to place the order. Contact PSP". Nothing is stored. C4 should make the button call `cart.ts`.
+- **`specs_list`:** the plan says "specs table from `specs_list`". That column was renamed to `specs` (jsonb `[{label, value}]`) in `20261014150000_extend_products.js`, so the page reads `specs`. It is the same data.
+- **Sections, not tabs:** the preview shows Specifications/Description/Documents tabs. Documents is not in scope, and stacked sections keep all the text visible and searchable, so the page uses sections.
+- **Related order:** newest first. The featured flag is not used.
+- **The SKU is shown** on the product page, as C3 asks. The C2 list endpoint still never returns it.
+
+**Guard warnings**
+- The Progress Guard said the prompt mentioned M5.6/M5.1. Only C3 was done.
+- The Collision Guard flagged edits by session 439300c8 to the shop files, `App.tsx` and `responsive-check.mjs`. `git status` showed only this run's changes. Their edits were the committed C2 work (5bc6a42), so nothing was overwritten.
+
+**Not done:** cart page, cart writes, orders (C4 onward). Nothing was committed.
+
 ## 2026-10-14 — C2 Catalog: done, TICKED
 
 **Which step:** the prompt asked for "the current step" and described M5.6, but M5.6 was already ticked and committed (96fc42c). `docs/progress.md` said **C2**, so C2 was built. M5.6 was not touched again.
