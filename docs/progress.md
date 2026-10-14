@@ -64,7 +64,7 @@ Current step: **M4.1**
 
 ## C — Client side (public shop)
 
-- [ ] C1 Shop layout
+- [x] C1 Shop layout
 - [ ] C2 Catalog
 - [ ] C3 Product page
 - [ ] C4 Cart

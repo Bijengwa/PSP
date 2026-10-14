@@ -33,13 +33,17 @@ function OfficeRoot() {
   )
 }
 
-// Placeholder until the public shop is built.
-function ShopHome() {
+// The shop is its own bundle too; the office never loads it.
+const ShopLayout = lazy(() => import('./shop/ShopLayout'))
+const ShopHome = lazy(() => import('./shop/ShopHome'))
+
+// Title-only placeholder until C2 (catalog) and C4 (cart) are built.
+function ShopPlaceholder({ title }: { title: string }) {
   return (
-    <main className="page-message">
-      <h1>PSP Engineering Group</h1>
-      <p>Medical equipment · Tanzania</p>
-    </main>
+    <div className="shop-placeholder">
+      <h1>{title}</h1>
+      <p>Coming soon.</p>
+    </div>
   )
 }
 
@@ -56,7 +60,17 @@ function NotFound() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<ShopHome />} />
+      <Route
+        element={
+          <Suspense fallback={<p className="page-message">Loading…</p>}>
+            <ShopLayout />
+          </Suspense>
+        }
+      >
+        <Route path="/" element={<ShopHome />} />
+        <Route path="/products" element={<ShopPlaceholder title="Products" />} />
+        <Route path="/cart" element={<ShopPlaceholder title="Cart" />} />
+      </Route>
 
       <Route path="/office" element={<OfficeRoot />}>
         <Route path="auth/login" element={<Login />} />
