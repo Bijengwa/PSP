@@ -1,5 +1,48 @@
 # Overnight Log
 
+## 2026-10-14 — C6 Checkout page: verified, TICKED
+
+**Which step:** `docs/progress.md` said **C6**. The C6 code was already in the tree: an earlier run built it, then hit its session limit before it could verify the step, tick it or write a log entry (see the end of `docs/overnight-run.log`). That work was committed in 006271e, 2550871, b5dc2f5, 933815f, 8230c9d and 80d87d8. This run reviewed that code against the C6 scope and ran every check. No code had to change. Current step is now **C7**; C7 was not started. Nothing was committed.
+
+**What C6 consists of (from the earlier run)**
+- `web/src/shop/CheckoutPage.tsx` has two pages:
+  - `/checkout`:
+    - An empty cart redirects to `/cart`.
+    - The summary uses fresh `cart/prices`. It sits beside the form from 1024px and is a folded toggle on smaller screens. The toggle shows the item count and total.
+    - Form fields: name, phone, email (optional), area/city, street/plot/landmark, notes (optional, 1000 limit with a counter). Validation runs inline using the same rules as the API. Each error is tied to its input with `aria-describedby`. The first invalid field gets focus, and a form-level alert gives the number of errors. Server field errors are mapped back to the fields.
+    - A "Pay later" note, plus a hidden honeypot field.
+    - While sending, the button reads "Placing your order…" and has `aria-disabled`. A ref guard means a second submit sends nothing.
+    - 409 `LINES_UNAVAILABLE` and `items.*` errors send the person back to `/cart` with a readable notice that names each product and gives the reason. The notice can be dismissed. 429, 503 and network errors show their own messages and keep the details.
+    - Typed details are kept only in module memory, so a trip back to the cart loses nothing. They are cleared once an order is placed. Nothing is written to browser storage.
+  - `/order-confirmed`:
+    - The order number, total and quotation flag arrive in navigation state only.
+    - The page shows "PSP will contact you to confirm and arrange payment.", a Copy number button (with a fallback message if copying fails), the payment facts, "What happens next", and Continue shopping / Back to home.
+    - Opening the page with no order shows a calm "No order to show" state.
+- `api.ts`: `placeOrder` sends the details plus `[{productId, quantity}]`, with quantities as numbers. `CartPage.tsx`: shows the notice from navigation state, and the steps header is now the shared `CheckoutSteps`. `App.tsx`: lazy routes for both pages. `shop.css`: checkout and confirmation styles.
+- Tests:
+  - `CheckoutPage.test.tsx` (9 tests): empty-cart redirect, summary and pay-later note, validation, success (cart cleared, nothing personal in storage), copy, missing order, line error back to the cart, server field errors and 503, double submit.
+  - `node/src/shop/shop.test.js`: a data-path test. The cart prices the page shows and the exact body it posts produce a saved order with the right items, unit prices, line totals and total, with quotation lines unpriced.
+  - `responsive-check.mjs`: routes `shop-checkout`, `shop-checkout-errors` and `shop-order-confirmed`.
+
+**Verified in this run**
+- `node` `npm test`: 6 suites, 176 tests passed.
+- `web` `npm test`: 8 files, 68 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: every route passed at 360/768/1280 in light and dark, with no horizontal scroll. I looked at these screenshots:
+  - `shop-checkout` at 360 light, 768 light and 1280 dark
+  - `shop-checkout-errors` at 360 dark
+  - `shop-order-confirmed` at 360 light
+
+  Errors show in red under the field, and the summary folds below 1024px and sits beside the form at 1280. Very large totals (TZS 123,848,000,000) fit at 360px. The red squares are the check's 1×1 fixture image. The check regenerates the screenshots in `docs/screenshots/`, so they show as modified files.
+
+**Notes for C7 / later**
+- At 360px the steps header (Cart / Your details / Confirmed) is hidden, as on the cart page since C4. The confirmation page starts directly with its card.
+- The light-theme summary toggle wraps "Show order summary" onto two lines at 360px. It is readable, but C7 could tighten it.
+- The order number stays in browser history state (`/order-confirmed`), but no personal details do.
+
+**Guard warnings**
+- The Progress Guard said the prompt mentions M5.6 and M5.1. That text is only the M5.6 tick rule, and M5.6 was ticked long ago. Only C6 was handled.
+- The Scope Guard on `docs/progress.md` asked me to confirm every C6 "Done when" check before ticking. All of them (component tests, data-path test, responsive check in both themes) had passed before the edit.
+
 ## 2026-10-14 — C5 Orders tables and checkout API: done, TICKED
 
 **Which step:** the prompt described M5.6, but M5.6 to C4 were already ticked. `docs/progress.md` said **C5**, so only C5 was built. Current step is now **C6**; C6 was not started. Nothing was committed. C5 is backend only (no UI), so the responsive check does not apply.
