@@ -1,37 +1,52 @@
-# Overnight run, M4 track (2026-10-14): M4.4 -> M4.5 -> M4.6 -> M4.7 -> M4.8.
-# Stops when the current step becomes M6.x, M7.x or H (set at the end of M4.8).
+# Long overnight run (2026-10-14): M4.8 -> M6.1-M6.4 -> M7.1-M7.3 -> M7.5.
+# Stops when the current step becomes M7.4 (needs the user) or any H step.
+# Waits and retries when the Claude usage limit is hit.
+# Before sleeping: set Windows sleep to "Never" while plugged in, and keep this window open.
 # Run from the PSP folder:  powershell -ExecutionPolicy Bypass -File .\overnight.ps1
-$stopAt = '\*\*(M6|M7|H)'
+$stopAt = '\*\*(M7\.4|H\d)'
 $mods = ".claude\mods\psp-guards"
+$maxSteps = 25
+$maxLimitWaits = 14   # 14 x 30 minutes = 7 hours per step
 
-# Work on its own branch so main and the older overnight branches stay untouched.
 $branch = "overnight/m4"
 if (-not (git rev-parse --verify $branch 2>$null)) { git switch -c $branch } else { git switch $branch }
 
-# Save anything left uncommitted from the last session so it does not mix with the next step.
+# Save anything left uncommitted so it does not mix with the next step.
 if (git status --porcelain) { git add -A; git commit -m "pre-run: save uncommitted work" }
 
-for ($i = 1; $i -le 10; $i++) {
+for ($i = 1; $i -le $maxSteps; $i++) {
   $before = (Select-String -Path docs\progress.md -Pattern "Current step:" | Select-Object -First 1).Line
-  Write-Host "Run ${i}: $before"
+  Write-Host "$(Get-Date -Format HH:mm) Run ${i}: $before"
   if ($before -match $stopAt) { Write-Host "Reached the stop point. Stopping."; break }
 
   $prompt = @"
-Read CLAUDE.md, docs/management-plan.md (the current step, the Design bar in section 1, the whole M4 section, and the approved files list at the start of section 4) and docs/progress.md. Do the current step only, following the Development method in CLAUDE.md.
-Quality bar: the UI must feel finished, in light AND dark mode, on a 360px phone first. Use the frontend-design skill if available and follow PSP-Engineering-Group-Preview.html.
-Nobody is awake to answer questions. The new files and the playwright-core dev dependency listed in the plan are already approved. If a [Progress Guard], [Scope Guard] or [Collision Guard] warning shows the change is outside the step, or you need a decision (a file or folder not in the approved list, documents that disagree, a check you cannot run), do not guess: write the question to docs/overnight-log.md, leave docs/progress.md unchanged, and stop.
-Run the checks (node: npm test; web: npm test, npm run build, npm run lint). UI steps also need the responsive check: after M5.6 exists, run npm run check:responsive in web and look at the screenshots it saves in docs/screenshots. If the check cannot run, do not tick the step: log that and stop.
-Only if every Done when check passes: tick the step , set the next step as current, and write notes to docs/overnight-log.md (what changed, what was verified, guard warnings). Never start the next step. Never commit.
+Read CLAUDE.md, docs/management-plan.md (the current step's whole section, the Design bar in section 1, and the approved files list at the start of section 4) and docs/progress.md. Do the current step only, following the Development method in CLAUDE.md.
+Quality bar: the UI must feel finished, in light AND dark mode, on a 360px phone first. Use the frontend-design skill if available and follow PSP-Engineering-Group-Preview.html. Match the look of the existing Products and Staff pages.
+Nobody is awake to answer questions, and the user has approved this policy: where the plan is silent, choose the most reasonable option yourself and record it in docs/overnight-log.md as a Decision. Stop only if (a) you would need a file or folder outside the approved list and it is not a plain sibling of the step's own module, (b) documents disagree about a security rule, or (c) a check still fails after an honest effort to fix it. In those cases write the question to docs/overnight-log.md, leave docs/progress.md unchanged, and stop.
+If Done when asks for a manual browser run or a user sign-off, the automated tests plus npm run check:responsive (and your own look at the saved screenshots) are accepted instead; say so in the log and continue.
+Run the checks: node npm test; web npm test, npm run build, npm run lint. UI steps also need npm run check:responsive in web; add the new pages to it. Never skip a failing check.
+When every Done when check passes: tick the step, set the next step as current (see 'Overnight order' in docs/progress.md; skip M7.4), and write notes to docs/overnight-log.md (what changed, what was verified, decisions, guard warnings). Never start the next step. Never commit.
 "@
 
-  claude -p $prompt --plugin-dir $mods --permission-mode acceptEdits --allowedTools "Bash(npm *)" "Bash(npx *)" "Bash(node *)" "Bash(git status)" "Bash(git diff *)" --max-turns 150 2>&1 | Out-File -Append -Encoding utf8 docs\overnight-run.log
-  if ($LASTEXITCODE -ne 0) { Write-Host "Run $i failed"; break }
+  $attempt = 0
+  do {
+    $attempt++
+    $out = claude -p $prompt --plugin-dir $mods --permission-mode acceptEdits --allowedTools "Bash(npm *)" "Bash(npx *)" "Bash(node *)" "Bash(git status)" "Bash(git diff *)" --max-turns 200 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File -Append -Encoding utf8 docs\overnight-run.log
+    $limited = (($out -join "`n") -match "hit your (session|usage) limit")
+    if ($limited) { Write-Host "$(Get-Date -Format HH:mm) Usage limit hit. Waiting 30 minutes (wait $attempt of $maxLimitWaits)."; Start-Sleep -Seconds 1800 }
+  } while ($limited -and $attempt -lt $maxLimitWaits)
+  if ($limited) { Write-Host "Still limited after waiting. Stopping."; break }
+  if ($code -ne 0) { Write-Host "Run $i failed"; break }
 
   $after = (Select-String -Path docs\progress.md -Pattern "Current step:" | Select-Object -First 1).Line
   if ($after -eq $before) { Write-Host "Step did not advance (see docs/overnight-log.md). Stopping."; break }
 
   git add -A
   git commit -m "overnight: $before"
+  git push origin $branch 2>$null
 }
 
 git push -u origin $branch
+Write-Host "$(Get-Date -Format HH:mm) Done. Read docs/overnight-log.md."
