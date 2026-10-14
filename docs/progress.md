@@ -4,7 +4,7 @@ Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" ch
 UI steps also need the responsive check (360px, 768px, desktop) before ticking.
 Replanned: 2026-10-07. Re-ordered 2026-10-14 (shop first): M5.6 → C2 → C3 → C4 → C5 → C6 → C7, then back to M4.1.
 M4.1–M4.3 ticked on 2026-10-14 at the user's instruction after a code check (see `docs/overnight-log.md` for the checks still open).
-Current step: **M4.4**
+Current step: **M4.5**
 
 ## M1 — Management Shell
 
@@ -54,7 +54,7 @@ Current step: **M4.4**
 - [x] M4.1 IT sidebar group
 - [x] M4.2 Staff list
 - [x] M4.3 Register staff
-- [ ] M4.4 Staff profile
+- [x] M4.4 Staff profile
 - [ ] M4.5 Activate/deactivate
 - [ ] M4.6 Role assignment
 - [ ] M4.7 Reset password from the profile (end-to-end circle)

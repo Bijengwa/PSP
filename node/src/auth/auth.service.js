@@ -235,6 +235,49 @@ async function registerStaff({ fullName, email, phone, role, temporaryPassword, 
 const STAFF_STATUSES = ['active', 'inactive'];
 const STAFF_PAGE_SIZE = 25;
 
+// What IT sees about a person, in the list and on the profile. Never the password hash.
+const STAFF_DETAIL_COLUMNS = [
+  's.id',
+  's.full_name',
+  's.email',
+  's.phone_number',
+  's.is_active',
+  's.must_change_password',
+  's.last_login_at',
+  's.created_at',
+  'r.name as role',
+];
+
+function toStaffDetail(row) {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    email: row.email,
+    phone: row.phone_number,
+    role: row.role,
+    isActive: row.is_active,
+    mustChangePassword: row.must_change_password,
+    lastLoginAt: row.last_login_at,
+    createdAt: row.created_at,
+  };
+}
+
+// One person's profile for IT, or null.
+async function getStaff(id) {
+  const row = await staffQuery().where('s.id', id).first(STAFF_DETAIL_COLUMNS);
+  return row ? toStaffDetail(row) : null;
+}
+
+// IT corrects a person's name and/or phone. Returns the updated profile, or null
+// when the person does not exist. Neither field affects sign-in, so sessions stay.
+async function updateStaff(id, { fullName, phone }) {
+  const changes = { updated_at: db.fn.now() };
+  if (fullName !== undefined) changes.full_name = fullName;
+  if (phone !== undefined) changes.phone_number = phone;
+  const updated = await db('staff_profiles').where({ id }).update(changes);
+  return updated ? getStaff(id) : null;
+}
+
 // IT's staff list: search by name or email, optional status filter, paged.
 // Never selects the password hash. `total` counts every match, not just the page.
 async function listStaff({ q, status, page = 1, limit = STAFF_PAGE_SIZE }) {
@@ -253,36 +296,11 @@ async function listStaff({ q, status, page = 1, limit = STAFF_PAGE_SIZE }) {
       .orderBy([{ column: 's.full_name', order: 'asc' }, { column: 's.id' }])
       .limit(limit)
       .offset((page - 1) * limit)
-      .select(
-        's.id',
-        's.full_name',
-        's.email',
-        's.phone_number',
-        's.is_active',
-        's.must_change_password',
-        's.last_login_at',
-        's.created_at',
-        'r.name as role',
-      ),
+      .select(STAFF_DETAIL_COLUMNS),
     filters(staffQuery()).count('* as count'),
   ]);
 
-  return {
-    total: Number(count),
-    page,
-    pageSize: limit,
-    staff: rows.map((row) => ({
-      id: row.id,
-      fullName: row.full_name,
-      email: row.email,
-      phone: row.phone_number,
-      role: row.role,
-      isActive: row.is_active,
-      mustChangePassword: row.must_change_password,
-      lastLoginAt: row.last_login_at,
-      createdAt: row.created_at,
-    })),
-  };
+  return { total: Number(count), page, pageSize: limit, staff: rows.map(toStaffDetail) };
 }
 
 module.exports = {
@@ -297,6 +315,8 @@ module.exports = {
   registerStaff,
   REGISTRABLE_ROLES,
   listStaff,
+  getStaff,
+  updateStaff,
   STAFF_STATUSES,
   STAFF_PAGE_SIZE,
   findStaffById,

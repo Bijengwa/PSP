@@ -1,3 +1,64 @@
+## M4.4 Staff profile (2026-10-14): done, TICKED
+
+Only M4.4 was worked on. Current step is now **M4.5**; it was not started. Nothing was committed.
+
+**Changed**
+- `node/src/auth/auth.service.js`: new `getStaff(id)` and `updateStaff(id, { fullName, phone })`. The list and the profile share one column list and one mapper (`toStaffDetail`), so neither ever selects the password hash. A name or phone edit leaves the person's sessions alone: neither field affects sign-in.
+- `node/src/auth/auth.routes.js` (`officeRouter`, admin only, same-origin):
+  - `GET /api/office/staff/:id` returns 404 for unknown or malformed ids.
+  - `PATCH /api/office/staff/:id` takes `fullName` and/or `phone` only. Any other key (email, role, isActive, …) or an empty body gets 400 `VALIDATION_ERROR` with a message per field. Status and role are left for M4.5 and M4.6.
+  - The name and phone rules moved into `checkFullName`/`checkPhone`, shared with registration. The messages are unchanged.
+  - Logs `staff.profile_updated` with the field names, not the values.
+- New `node/src/auth/staff.test.js` (11 tests):
+  - the GET returns no password data, gives 404 for unknown and bad ids, and 403 for non-admins;
+  - the PATCH saves (tidied) and the next GET shows the change; one field can be changed alone;
+  - per-field validation errors change nothing;
+  - other fields are refused; an empty body is refused;
+  - the edited person stays signed in;
+  - unknown id gives 404, a non-admin gets 403, and another origin is refused.
+- New `web/src/management/inApp/pages/StaffProfile.tsx`:
+  - `StaffProfile` (`/office/staff/:id`):
+    - back link to Staff;
+    - avatar, name as the h1, email, and role and status badges (Active / Password change pending / Inactive);
+    - a "Contact details" card with Edit, which opens an inline Full name and Phone form. The form has visible labels, inline errors tied with `aria-describedby`, focus on the first bad field, a form alert, and a Save button with a spinner that is disabled while saving. Typed values are kept when a save fails. After saving, "Changes saved." is announced and focus goes back to Edit;
+    - an "Account" card (role, status, last sign-in, registered);
+    - a loading skeleton, a not-found state, and an error state with Try again.
+  - `MyProfile` (`/office/profile`): the signed-in person's own profile, read only, from `/api/auth/me` (name, email, role). Admins get a link to their editable staff profile; staff are told to ask IT. A Security card links to Change password.
+- `web/src/App.tsx`: routes `staff/:id` and `profile`. `Header.tsx`: titles "Staff Profile" and "My Profile".
+- `ProfileMenu.tsx`: the "Profile" entry is now a link to `/office/profile`; it was a disabled placeholder. `initials()` is exported for the profile avatar.
+- `StaffList.tsx`: names link to the profile, in both the table and the cards.
+- `AuthProvider.tsx`: new `refresh()` that reloads `/me` in place, so an admin who edits their own name sees it in the header at once. Nothing is stored.
+- `index.css`:
+  - new styles for the staff profile and My Profile;
+  - status badge tones, using the existing tokens only;
+  - on phones (≤640px), labels sit above values, the heading is smaller, and buttons and inputs are at least 44px tall.
+- New `web/src/management/inApp/pages/StaffProfile.test.tsx` (8 tests):
+  - an edit saves and shows, the PATCH body is right, and focus returns to Edit;
+  - server field errors appear beside the fields and are linked to them, and the typed value is kept;
+  - an empty name is caught before sending;
+  - Cancel;
+  - the not-found state;
+  - the error state and its retry;
+  - My Profile is read only;
+  - the profile menu links to it.
+- `web/scripts/responsive-check.mjs`: a staff fixture with a long name and email, and three routes: `office-staff-profile`, `office-staff-profile-edit` (opens the form and submits an empty name, so the errors are visible), and `office-my-profile`.
+
+**Verified**
+- `node` `npm test`: 7 suites, 187 tests passed.
+- `web` `npm test`: 10 files, 78 passed. One full run had a single failure in `src/shop/CheckoutPage.test.tsx` ("places the order…", a focus assertion). That file was not touched, and the test passed in the earlier full run and in two later full reruns. It looks flaky; worth a look.
+- `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed, 120 of 120 route/width/theme combinations ok.
+  - The first two runs stopped on a Windows `UNKNOWN: unknown error, open …` while writing an unrelated `office-products-new` screenshot. Both times a different file failed, so it looks like a passing file lock. The third and fourth runs passed in full.
+  - Screenshots I looked at: `office-staff-profile-360-light`, `office-staff-profile-edit-360-dark`, `office-my-profile-360-light`, `office-staff-profile-768-light`, `office-staff-profile-1280-dark`.
+  - Those screenshots showed one bug, now fixed: the status badge tint was overridden by the later generic `.office-status` rule, so the badge showed grey.
+
+**Notes**
+- My Profile has no phone number: `/api/auth/me` does not return one, and adding it would change the `/me` contract and its tests. Left as is. Say if you want the phone on My Profile.
+- The phone stays required on edit, as on registration. A seeded admin with no phone must enter one before saving a name change.
+- The responsive check re-saved some existing screenshots (small pixel differences only).
+
+**Guard warnings:** The Progress Guard said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago. The Scope Guard warned that M4.4 was ticked after "Current step" had already been set to M4.5. That came only from the order of the two edits to `docs/progress.md`; both were made after every M4.4 "Done when" check had passed. No Collision Guard warnings. Every new file is on the approved M4 list (`StaffProfile.tsx`, `node/src/auth/staff.test.js`, a web test beside its file).
+
 ## M4 code check (2026-10-14): M4.1, M4.2, M4.3 ticked at the user's instruction
 
 **Found in the code**

@@ -18,6 +18,18 @@ const ROUTES = [
   { name: 'office-products', path: '/office/products', ready: '.office-product-head' },
   { name: 'office-products-new', path: '/office/products/new', ready: '.office-product-head' },
   { name: 'office-products-edit', path: '/office/products/p1', ready: '.office-product-head' },
+  { name: 'office-staff-profile', path: '/office/staff/st1', ready: '.office-profile-head' },
+  {
+    name: 'office-staff-profile-edit',
+    path: '/office/staff/st1',
+    ready: '.office-profile-form .field-error',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Edit' }).click()
+      await page.getByLabel('Full name').fill('')
+      await page.getByRole('button', { name: 'Save changes' }).click()
+    },
+  },
+  { name: 'office-my-profile', path: '/office/profile', ready: '.office-profile-head' },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -167,6 +179,19 @@ const products = [
   product(4, { status: 'archived', isArchived: true, isPublished: false, images: [] }),
 ]
 
+// A staff profile with a long name and email, waiting for a password change.
+const staffMember = {
+  id: 'st1',
+  fullName: 'Rehema Mwanaisha Kisanga-Lyimo',
+  email: 'rehema.mwanaisha.kisanga-lyimo@pspengineering.example',
+  phone: '+255 712 345 678',
+  role: 'staff',
+  isActive: true,
+  mustChangePassword: true,
+  lastLoginAt: '2026-10-13T07:45:00.000Z',
+  createdAt: '2026-10-01T08:00:00.000Z',
+}
+
 const shopCategories = [
   { name: 'Imaging', slug: 'imaging', productCount: 14 },
   { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 6 },
@@ -269,6 +294,8 @@ function answer(url, request) {
   const one = pathname.match(/^\/api\/office\/products\/(p\d+)$/)
   if (one) return ok({ product: products.find((item) => item.id === one[1]) ?? products[0] })
   if (pathname === '/api/office/reset-requests') return ok({ requests: [], total: 0 })
+  const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
+  if (staffProfile) return ok({ staff: { ...staffMember, id: staffProfile[1] } })
   return ok({})
 }
 

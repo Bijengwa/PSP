@@ -759,3 +759,38 @@ C7 is still not ticked. Its "Done when" needs you to sign off the screenshots in
 - The Collision Guard said `docs/overnight-log.md` had been edited 23 minutes earlier by another Claude session. I re-read the file after my edit: the earlier entries are intact, and my new entry at the top is the only addition.
 
 Everything is written up in `docs/overnight-log.md`. Once you sign off the screenshots, or list what to change, the next run can tick C7 and set the current step to M4.1.
+M4.4 (Staff profile) is done and ticked, and the current step is now **M4.5**. I didn't start M4.5 and didn't commit anything.
+
+**What changed**
+- **API:** `GET /api/office/staff/:id` and `PATCH /api/office/staff/:id` are in `auth.routes.js` and `auth.service.js`. Both are admin only.
+  - The PATCH accepts only the full name and phone.
+  - Anything else (email, role, active status, an empty body) is refused with a clear message for each field.
+  - Name and phone use the same rules as registration.
+  - Changing them doesn't sign the person out.
+- **Staff profile page** (`/office/staff/:id`, in the new `StaffProfile.tsx`):
+  - The top shows initials, the name, the email and badges for role and status.
+  - The "Contact details" card has an Edit button that opens a name and phone form. Errors appear next to the fields, the save button shows progress, and typed values are kept if a save fails. A successful save shows "Changes saved."
+  - The "Account" card shows role, status, last sign-in and date registered.
+  - There are loading, not-found, and error-with-retry states.
+- **My Profile** (`/office/profile`): the Profile menu entry now opens the signed-in person's own read-only profile, with a link to Change password.
+- **Smaller edits:**
+  - Names in the staff list link to the profile.
+  - The header shows a title for both new pages.
+  - `AuthProvider` has a new `refresh()`, so an admin who edits their own name sees it in the header straight away.
+  - The responsive check now covers the three new pages: the profile, the edit form showing an error, and My Profile.
+
+**Checks**
+- **Node `npm test`:** 187 passed, including 11 new ones in `node/src/auth/staff.test.js`.
+- **Web `npm test`:** 78 passed, including 8 new ones in `StaffProfile.test.tsx`.
+  - One full run had a single failure in the shop checkout test, which I didn't touch.
+  - That test passed in the full run before and in two full reruns after, so it looks flaky.
+- **Lint and build:** both clean.
+- **Responsive check:** 120 of 120 page, width and theme combinations passed.
+  - The first two runs stopped on a Windows "unknown error" while saving an unrelated products screenshot. A different file failed each time, so it looks like a passing file lock; the next two runs passed in full.
+  - The screenshots showed one bug, now fixed: the "Password change pending" badge was grey instead of amber.
+
+**Decisions for you** (also in `docs/overnight-log.md`)
+- My Profile doesn't show a phone number, because `/api/auth/me` doesn't return one. Adding it would change the `/me` response and its existing tests, so I left it.
+- Phone stays required when editing, as it is on registration. The seeded admin has no phone, so they'll have to add one the first time they save a name change.
+
+**Guard warnings:** The Progress Guard flagged that the prompt mentions M5.6. That's only the rule for running the responsive check; M5.6 was finished long ago. The Scope Guard flagged the order of my two edits to `docs/progress.md`: I set the current step to M4.5 before ticking M4.4. Both edits were made after every M4.4 check had passed.
