@@ -1079,6 +1079,7 @@ export function EditProduct() {
 
 function EditLoader({ id, notice }: { id: string; notice: string | null }) {
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -1095,9 +1096,17 @@ function EditLoader({ id, notice }: { id: string; notice: string | null }) {
       () => {}, // aborted
     )
     return () => controller.abort()
-  }, [id])
+  }, [id, attempt])
 
-  if (load.status === 'loading') return <p className="office-reset-empty">Loading product…</p>
+  if (load.status === 'loading') {
+    return (
+      <ul className="office-skeleton" aria-busy="true" aria-label="Loading product">
+        {[0, 1, 2].map((n) => (
+          <li key={n} className="office-skeleton-row" />
+        ))}
+      </ul>
+    )
+  }
   if (load.status === 'error') {
     return (
       <>
@@ -1105,6 +1114,16 @@ function EditLoader({ id, notice }: { id: string; notice: string | null }) {
         <div className="office-error" role="alert">
           {load.message}
         </div>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => {
+            setLoad({ status: 'loading' })
+            setAttempt((value) => value + 1)
+          }}
+        >
+          Try again
+        </button>{' '}
         <Link className="button button-secondary" to={PRODUCTS_PATH}>
           Back to products
         </Link>

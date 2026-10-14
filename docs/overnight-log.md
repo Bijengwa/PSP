@@ -1,5 +1,225 @@
 # Overnight Log
 
+## 2026-10-14 — C5 Orders tables and checkout API: done, TICKED
+
+**Which step:** the prompt described M5.6, but M5.6 to C4 were already ticked. `docs/progress.md` said **C5**, so only C5 was built. Current step is now **C6**; C6 was not started. Nothing was committed. C5 is backend only (no UI), so the responsive check does not apply.
+
+**Changed**
+- New `node/migrations/20261014180000_create_orders.js` (up and down). It adds sequence `order_number_seq`, owned by `orders.order_number`. `orders` has: `order_number` unique, default `PSP-` plus 6 digits from the sequence; `customer_id` nullable with no foreign key; `guest_name`, `guest_phone`, `guest_email` (nullable), `delivery_area`, `delivery_address`, `notes`, `status` (default `new`), `payment_status` (default `unpaid`), `source`, `total_tzs`, `has_quotation_lines` and timestamps. Its checks: status in new/confirmed/delivered/closed/cancelled, payment unpaid/paid, source shop/staff, total ≥ 0. `order_items` holds `product_id` (FK to products), the copied `product_name`, `product_sku` and `unit_price_tzs` (null for quotation lines), plus `quantity`, `line_total_tzs` and `sort_order`. Its checks: quantity > 0, prices ≥ 0, and either both unit price and line total are null or neither is. No transition rules (M7.1).
+- `node/src/shop/shop.service.js`: `createShopOrder(guest, lines)`. Within one transaction it reads every line again from `products` (`FOR SHARE`) and refuses lines with a per-line code: `UNAVAILABLE` for unknown, draft or archived products, `OUT_OF_STOCK` for stock 0. Name, SKU and price are copied from the database. Quotation lines are saved with no price and left out of the total. Totals are computed with BigInt. Stock is not changed. Database errors are rethrown without the failing row (only code, table and constraint), so the 500 log holds no guest data.
+- `node/src/shop/shop.routes.js`: `POST /api/shop/orders` with body `{ name, phone, email?, area, address, notes?, items: [{productId, quantity}], website }`.
+  - Validation, with field errors (400 `VALIDATION_ERROR`, keys like `items.2.quantity`): name 2–100; Tanzanian phone (`0712…`, `712…`, `+255…`, `255…`, with spaces, dashes or brackets; mobile 6/7, landline 2) normalised to `+255XXXXXXXXX`; email optional and valid; area/city 2–100; street or landmark 2–200; notes up to 1000; 1–50 lines; quantity an integer 1–99; duplicate product ids refused.
+  - A filled `website` honeypot gives 400 `REJECTED` and nothing is saved.
+  - Refused lines give 409 `LINES_UNAVAILABLE` with `details.lines: [{index, productId, code}]`.
+  - Success gives 201 `{ orderNumber, totalTzs }` only. The only log line is the order number.
+- `node/src/auth/rate-limit.js`: `enforce` now counts whatever identities a scope lists, so login and forgot behave exactly as before. New scope `order`: 10 per IP and 5 per phone per hour. Phone keys are SHA-256 hashed, so Redis never holds the number. Over the limit gives 429 with `Retry-After`; Redis down gives 503.
+- `node/src/shop/shop.test.js`: the Redis stand-in is now a small fake with only `multi`/`incr`/`expire`/`ttl`. It stays dead for the read routes, so they still prove they never use Redis. There are 15 new tests, and the cleanup now also deletes orders.
+
+**Verified**
+- `node` `npm test`: 6 suites, 175 tests passed (160 before, plus 15 new). The new tests cover:
+  - Creating an order from database prices, with stock left alone.
+  - Sequential order numbers.
+  - A tampered price, name, SKU, total, status, payment status, source or customer_id has no effect.
+  - Quotation lines are saved without a price.
+  - Draft, archived, unknown and out-of-stock lines are refused per line and nothing is saved.
+  - Phone formats are normalised.
+  - Field errors are returned for invalid input.
+  - Email is optional and the line count is limited.
+  - The honeypot works.
+  - 429 with `Retry-After` per phone and per IP.
+  - 503 with no order when Redis is down.
+  - A forced failure on the `order_items` insert (temporary trigger) leaves no order row.
+  - Database errors carry no guest data.
+  - Migrating down removes both tables and the sequence, and migrating up again restores them.
+- I made the half-order test fail on purpose by running the inserts outside the transaction: it failed. Then I reverted.
+- `web` `npm test` (59 passed), `npm run build` and `npm run lint`: clean (web unchanged).
+
+**Guard warnings**
+- The Progress Guard said the prompt mentions M5.6 and M5.1, which are not current. That text in the prompt is only the tick rule for M5.6, which is already ticked. Only C5 was built.
+- The Collision Guard on `node/src/shop/shop.service.js`, `shop.routes.js` and `shop.test.js` said they were "edited by another session (3b0d92b1)". That was the C4 session, whose work is committed in 986513a (05:06). The tree was clean when this run began, and the diff holds only C5 changes. The same warning came up on `docs/progress.md` and `docs/overnight-log.md`, from the same committed C4 session.
+- The Scope Guard on `docs/progress.md` was about the order of the edits only: I moved "Current step" before ticking C5. Every C5 "Done when" check had passed before either edit.
+
+**Notes for later steps**
+- C6: quantities must be sent as JSON numbers (the string "2" is refused). Field-error keys for lines are `items.<index>.productId|quantity`. A 409 `LINES_UNAVAILABLE` should send the person back to the cart.
+- The per-IP limit still uses `req.ip` without `trust proxy` (known gap, H2). Behind a proxy, all shoppers would share one IP bucket of 10 orders an hour.
+- No same-origin check on `POST /api/shop/orders`. The body must be JSON, which a cross-site form cannot send without a CORS preflight, and CORS allows only the web origin. H2 can review this.
+
+## 2026-10-14 — C4 Cart: done, TICKED
+
+**Which step:** the prompt described M5.6, but M5.6 to C3 were already ticked. `docs/progress.md` said **C4**, so only C4 was built. Current step is now **C5**; C5 was not started. Nothing was committed.
+
+**Changed**
+- `web/src/shop/cart.ts`: now owns every cart write: `addToCart` (merges into the existing line), `setQuantity`, `removeFromCart`, `clearCart`. Quantities are clamped to 1–99. At most 50 products (the C5 checkout limit). `localStorage['psp-cart']` holds only `[{productId, quantity}]`. Corrupted or hand-edited storage reads as an empty cart, or as the valid lines only (merged and clamped), and is rewritten clean on the next write. Blocked storage gives `{ ok: false, reason: 'storage' }` and never throws. `useCart` / `useCartCount` use `useSyncExternalStore` and follow other tabs. "Price changed" works from a memory-only map of the last price this tab showed (never stored), so it shows only within one visit.
+- `node/src/shop/shop.routes.js` + `shop.service.js`: `POST /api/shop/cart/prices` takes `[{productId, quantity}]` (up to 50 lines, else 400). It reads only the id and quantity, ignores any price, name or total, merges duplicate ids and clamps quantity to 1–99. It returns `{ items: [{ product, quantity }] }` for live products only, with the same shop-safe fields as the catalogue, in cart order. Drafts, archived, unknown and non-UUID ids are left out. No session, no Redis.
+- New `web/src/shop/CartPage.tsx` at `/cart` (it replaces the placeholder in `App.tsx`). Each line shows photo, category, name (linked), stock / "Price on request" / "Price changed, was …" pills, quantity stepper, line total and unit price, and remove. Products removed from the catalogue and out-of-stock products are flagged, left out of the total, and block checkout (a disabled button with the reason) until removed. Quotation lines say "Price on request" and are left out of the total, with a note. The order summary has a "Checkout" link to `/checkout` (C6 builds that page) and "Continue shopping". The page also has: steps header (Cart / Your details / Confirmed, from 768px), skeleton, error with retry, empty state linking to `/products`, and a screen-reader status on remove. Changing a quantity or removing a line sends no new request.
+- `ProductPage.tsx`: "Add to cart" now stores the line and confirms "Added 2 × … to your cart." with a **View cart** link. It also explains a full cart, the 99 cap, or blocked storage. The header badge already reads the cart.
+- `api.ts` (`getCartPrices`), `Icons.tsx` (`IconTrash`), `shop.css` (cart section, mobile first), `scripts/responsive-check.mjs` (routes `shop-cart`, `shop-cart-ready`, `shop-cart-empty` with a cart put in localStorage, plus a fixture for the prices endpoint).
+- Tests: new `web/src/shop/cart.test.ts` (11) and `CartPage.test.tsx` (7); `ProductPage.test.tsx` updated; 6 new endpoint tests in `node/src/shop/shop.test.js`.
+
+**Verified**
+- `node` `npm test`: 6 suites, 160 tests passed (prices endpoint: drops unpublished/archived/unknown/malformed, ignores client price/name/total, hides quotation prices, merges and clamps, refuses non-lists and over 50 lines, no secrets in the answer).
+- `web` `npm test`: 7 files, 59 tests passed (cart.ts: add, merge, clamp, set, remove, clear, corrupted storage, bad lines, 50-line limit, blocked storage, change events, memory-only prices).
+- `web` `npm run build` and `npm run lint`: clean.
+- `npm run check:responsive`: every route passes at 360/768/1280 in light and dark, with no horizontal scroll. I looked at the cart screenshots. The first run showed very large line totals breaking inside the number at 360px and at 1280px. Fixed (the remove button moved to the line's top-right corner on smaller screens, no mid-number wrapping), then the check was run again and the screenshots checked again.
+- No personal data in storage: the cart holds ids and quantities only (tested).
+
+**Guard warnings**
+- Collision Guard on `node/src/shop/*`, `web/src/shop/*`, `App.tsx`, `responsive-check.mjs`, `docs/progress.md`: "edited by another session (2d6a7dfd)". That was the C3 session, whose work is committed in f57f6c1 (04:49). The tree was clean when this run began, and the diff holds only C4 changes.
+- Scope Guard on `cart.test.ts`: `localStorage.clear()` in test cleanup. Changed to `localStorage.removeItem('psp-cart')`. Nothing new is stored.
+- Scope Guard on `docs/progress.md`: about the order of the edits only (I moved "Current step" before ticking C4). All C4 "Done when" checks passed before either edit.
+
+**Notes for later steps**
+- `/checkout` does not exist yet, so the Checkout link lands on the site 404 until C6.
+- Product cards in the catalogue still only link to the product page (adding from a card was not in C4's scope).
+
+## 2026-10-14 — C3 Product page: done, TICKED
+
+**Which step:** the prompt described M5.6, but M5.6 and C2 were already ticked. `docs/progress.md` said **C3**, so only C3 was built. Current step is now **C4**; C4 was not started.
+
+**Changed: backend** (approved `node/src/shop/`)
+- `shop.service.js`: new `getShopProduct(slug)`.
+  - It goes through `onlyLive` and returns the C2 card fields plus `sku`, `description`, `specs` (`[{label, value}]`) and `images` (the URLs: main photo first, then the sort order).
+  - It also returns `related`: up to 4 live products from the same category, newest first, never the product itself. They have the same shape as the catalogue cards.
+  - Still never sent: cost, stock number, `created_by`, the publish/archive flags. Quotation products keep `priceTzs: null`.
+- `shop.routes.js`: `GET /api/shop/products/:slug` returns `{ product, related }`. It returns 404 for drafts, archived products, unknown slugs and malformed slugs (a malformed slug skips the database).
+- `shop.test.js`: 5 new tests:
+  - The exact set of keys, the photo order, and no leaks (cost, quantity, staff id, flags). No cookie is set.
+  - Drafts, archived, unknown and malformed slugs return 404.
+  - Quotation products hide their price, and stock is a boolean.
+  - Related products: at most 4, live only, same category, never the product itself.
+  - Related is empty when the product is alone in its category.
+
+**Changed: frontend** (approved `web/src/shop/`)
+- New `ProductPage.tsx` for `/products/:slug`:
+  - Breadcrumb: Home / Products / category (links to the filtered catalogue) / name. A long name is cut with an ellipsis.
+  - Gallery:
+    - A 4:3 main photo with fixed proportions, so nothing jumps.
+    - Thumbnails, with roving focus.
+    - Arrow keys and Home/End, both on the focused photo and on the thumbnails.
+    - A sideways swipe of 40px or more (pointer events, `touch-action: pan-y`, so scrolling still works).
+    - Previous/Next buttons and a "1 / 3" counter.
+    - A "No photo yet" state.
+  - Details: category, brand, name, the "In stock"/"Out of stock" pill, the SKU, and the price as `TZS 38,500,000` or "Request quotation".
+  - Quantity stepper, clamped to 1–99.
+  - "Add to cart": disabled when out of stock, with a hint tied to it by `aria-describedby`.
+  - "Request a quotation for bulk or tender orders" (links to `/#contact`), and a delivery/installation box as in the preview.
+  - Lower sections: Description (paragraphs), a Specifications table (`th scope="row"`; an empty value shows "—"), and Related equipment (the catalogue `ProductCard`).
+  - Each product sets the tab title (`Name | PSP Engineering Group`) and a `<meta name="description">` (the description cut to 155 characters, or a summary). Both are restored when you leave the page.
+  - States: a skeleton with the page's own shape, "Product not found" for a 404, and an error with Try again.
+- New `ProductPage.test.tsx` (7 tests): product, breadcrumb, specs, related, title and meta; gallery thumbnails, keys and swipe; stepper clamp and the confirmation; out of stock and quotation; not found; error and retry; the skeleton.
+- Other changes:
+  - `api.ts`: `ShopProductDetail`, `getProduct`.
+  - `App.tsx`: the lazy `/products/:slug` route.
+  - `Icons.tsx`: minus and plus icons.
+  - `shop.css`: product page styles, from tokens only. Touch targets are at least 44px, and there is a `:disabled` style for shop buttons. Desktop shows two columns with a sticky gallery. Reduced motion is respected.
+- `web/scripts/responsive-check.mjs`: a product-detail fixture (404 for unknown slugs; the route handler now returns that status) and 3 routes: `/products/shop-product-0` (in stock, 3 photos), `/products/shop-product-1` (out of stock, long name), and `/products/no-such-product` (not found).
+
+**Verified**
+- `node` `npm test`: 6 suites, 154 tests passed (149 before, plus 5 new).
+- `web` `npm test`: 5 files, 41 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: 60 of 60 passed (10 routes × 360/768/1280 × light/dark), and nothing scrolls sideways.
+  - I looked at `shop-product` 360 light, `shop-product-out` 360 dark, `shop-product` 1280 dark and `shop-product-missing` 360 light.
+  - In the first look the breadcrumb `/` sat too high. I fixed it (`align-items: center`) and ran everything again.
+  - The red squares are the check's 1×1 fixture image.
+
+**Decisions to review**
+- **Add to cart before C4:** the cart module does not exist yet, so the button only shows a confirmation, as the plan says. Saying "added to cart" would be false, so it reads "2 × Name noted. Online ordering opens soon; until then, contact us to place the order. Contact PSP". Nothing is stored. C4 should make the button call `cart.ts`.
+- **`specs_list`:** the plan says "specs table from `specs_list`". That column was renamed to `specs` (jsonb `[{label, value}]`) in `20261014150000_extend_products.js`, so the page reads `specs`. It is the same data.
+- **Sections, not tabs:** the preview shows Specifications/Description/Documents tabs. Documents is not in scope, and stacked sections keep all the text visible and searchable, so the page uses sections.
+- **Related order:** newest first. The featured flag is not used.
+- **The SKU is shown** on the product page, as C3 asks. The C2 list endpoint still never returns it.
+
+**Guard warnings**
+- The Progress Guard said the prompt mentioned M5.6/M5.1. Only C3 was done.
+- The Collision Guard flagged edits by session 439300c8 to the shop files, `App.tsx` and `responsive-check.mjs`. `git status` showed only this run's changes. Their edits were the committed C2 work (5bc6a42), so nothing was overwritten.
+
+**Not done:** cart page, cart writes, orders (C4 onward). Nothing was committed.
+
+## 2026-10-14 — C2 Catalog: done, TICKED
+
+**Which step:** the prompt asked for "the current step" and described M5.6, but M5.6 was already ticked and committed (96fc42c). `docs/progress.md` said **C2**, so C2 was built. M5.6 was not touched again.
+
+**Changed: backend** (new files under the approved `node/src/shop/`)
+- `shop.service.js`:
+  - `listShopCategories()` returns only categories that have at least one live product, each with a live `productCount`, in office order.
+  - `listShopProducts({ q, category, sort, page })` searches name, brand and SKU (the SKU is matched but never returned). It filters by category slug, sorts by `newest` | `price_asc` | `price_desc` | `name`, and returns pages of 12 with `total`.
+  - Every query goes through the existing `onlyLive`, and only these columns are selected: id, name, slug, brand, category {name, slug}, `priceTzs`, `requestQuotation`, `inStock` (`quantity > 0`, a boolean), and `imageUrl` (the main image).
+  - Quotation products return `priceTzs: null` and sort last on price.
+- `shop.routes.js`: `GET /api/shop/categories` and `GET /api/shop/products`. They are public and need no session or Redis. A bad `sort` or a malformed `category` slug gets 400; `page` is clamped to 1–10000.
+- `node/src/server.js`: mounted at `/api/shop`.
+- `shop.test.js` (10 tests):
+  - Drafts and archived products never appear, in products or in category counts.
+  - The exact set of response keys is checked, and the body never contains the SKU, cost, `created_by`/staff id or any quantity field.
+  - Quotation price is hidden; stock is a boolean.
+  - Search (name, brand, SKU; `%` and `_` are literal), the category filter, all four sorts and paging (14 rows give 12 + 2) pass.
+  - No cookie is set, and Redis is never used (the stub throws).
+
+**Changed: frontend** (`web/src/shop/`, approved)
+- New `api.ts`: types, `getProducts`, `getCategories`, the `useShopCategories` hook, `catalogSearch` (the URL query string), and `formatTzs` ("TZS 1,250,000").
+- New `ProductCard.tsx`:
+  - A card following the preview: stock pill, category, name (clamped to 3 lines), brand, price or "Price on request", and a "View details" button.
+  - Cards without a photo show an image icon. A skeleton card has the same size, so nothing jumps.
+- New `Catalog.tsx` for `/products`:
+  - Title (the category name when one is chosen) and a live "Showing 1–12 of N".
+  - Search as you type with a 300 ms pause.
+  - Sort select.
+  - Category chips with counts: one scrolling row on phones, wrapped from 768px.
+  - Previous/Next pager.
+  - All filters are in the URL (`?q&category&sort&page`). Chips and the pager are real links. The first search adds a history entry; refining it replaces that entry. The back button and reloads work.
+  - States:
+    - Skeleton cards while loading.
+    - Empty states for "no match" (with Clear filters), "no products yet" and "page past the end".
+    - An error with Try again.
+- New `Catalog.test.tsx` (6 tests): filters read from the URL, chips change the URL and reset the page, search is debounced, the empty state, error and retry, and the loading skeleton.
+- `ShopHome.tsx`: "Shop by category" now uses `GET /api/shop/categories` (real counts, only categories with live products). The photo is chosen by slug. It has a skeleton, an error with retry, and an empty state. The home page shows no product tiles, so there is no "featured" block.
+- `ShopLayout.tsx`: the header search is hidden on `/products`, which has its own search, and the cart button is pushed right with `margin-left: auto`.
+- `App.tsx`: `/products` renders `Catalog` instead of the placeholder.
+- `Icons.tsx`: chevron left/right, image and alert icons, in the same line style.
+- `shop.css`:
+  - New `--shop-ok`/`--shop-ok-soft` tokens for light and dark.
+  - Card, chip, grid (2/3/4 columns), pager, state and skeleton styles.
+  - All colours come from tokens. Touch targets are 44px. Reduced motion turns off the pulse and transitions.
+- `web/scripts/responsive-check.mjs`: each route now has its own "ready" selector. Shop fixtures were added, plus 4 shop routes: `/`, `/products`, `/products?category=imaging&page=2` and `/products?q=no-such-thing`.
+
+**Verified**
+- `node` `npm test`: 6 suites, 149 tests passed (139 before, plus 10 new).
+- `web` `npm test`: 4 files, 34 tests passed. `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: 42 of 42 passed (7 routes × 360/768/1280 × light/dark), none scroll sideways. I looked at `shop-products` at 360 light and dark and at 1280 light, `shop-home` at 360 dark, and `shop-products-empty` at 768 light: two columns on the phone, four on desktop, chips scroll inside their own row, and the empty state and pager look right. The red squares in the screenshots are the check's 1×1 fixture image, not a bug.
+
+**Decisions to review**
+- **Field names** are camelCase (`priceTzs`, `requestQuotation`, `inStock`, `imageUrl`) to match the rest of the API. The plan wrote them as `price_tzs` and so on. Say so if you want snake_case.
+- **"Published categories"** was read as "categories with at least one live product", so customers never see an empty category.
+- **Quotation products** never send a price, even if staff entered one.
+- **Product cards link to `/products/:slug`**, which C3 builds. Until then, the link shows the site's "Page not found".
+- **Two searches on `/products`:** the header search is hidden there to avoid them.
+
+**Guard warnings**
+- The Progress Guard said the prompt mentioned M5.6/M5.1. Only C2 was done.
+- The Scope Guard flagged the new `node/src/shop/` folder. It is on the approved list in plan §4.
+- The Collision Guard said another session (91d62dba) had edited `responsive-check.mjs`. `git diff` showed only this run's changes; that edit was the committed M5.6 work.
+
+**Not done:** product page, cart, orders (C3 onward). Nothing was committed.
+
+## 2026-10-14 — M5.6 Products completion: done, M5.1 to M5.6 ticked together
+
+This is the one multi-tick the plan allows for M5.6: M5.1, M5.2, M5.3, M5.4, M5.5 and M5.6 were ticked at once. Current step is now **C2**; C2 was not started.
+
+**Checked M5.1-M5.5** against the existing code (`node/src/products/`, `ProductsList.tsx`, `ProductForm.tsx`): list with search/filters/paging, add with field errors, edit/publish/archive and image upload/order/remove all exist and their node tests pass. No functional gaps found.
+
+**Changed**
+- New `web/scripts/responsive-check.mjs` and `npm run check:responsive` in `web/package.json`. It builds with an empty `VITE_API_BASE_URL` (so calls are same-origin), serves with `vite preview`, drives the installed Edge/Chrome (`BROWSER_PATH` overrides) at 360/768/1280px in light and dark, answers `/api/*` and `/uploads/*` with fixtures (including `GET /api/auth/me`), fails on sideways scroll, a wrong theme or a redirect to login, and saves screenshots to `docs/screenshots/`.
+- Dev dependency `playwright-core` added in `web/` (approved).
+- Design bar pass: loading skeletons (list and edit page, reduced-motion aware) replace plain "Loading..." text; "Try again" buttons on the list error and the edit-page error. Styles in `web/src/index.css`; code in `ProductsList.tsx` and `ProductForm.tsx`.
+
+**Verified**
+- `node`: `npm test` 5 suites, 139 tests passed.
+- `web`: `npm test` 28 passed, `npm run lint` clean, `npm run build` (tsc + vite) clean.
+- `npm run check:responsive`: 18 of 18 passed (`/office/products`, `/office/products/new`, `/office/products/p1` at 360, 768 and 1280px, light and dark). I looked at the 360 light, 360 dark and 1280 dark screenshots: no overflow, cards on phone, table on desktop.
+
+**Guard warnings:** Scope Guard noted the new `web/scripts/` folder (it is on the approved list in plan section 4) and the six ticks (allowed for M5.6 by the plan).
+
+**Not done:** shop, orders, customers, inventory untouched. Nothing committed.
+
 ## 2026-10-07 — M1.1 Layout foundation
 
 **Changed**

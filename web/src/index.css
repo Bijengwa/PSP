@@ -1674,6 +1674,38 @@ a {
   padding: 0 16px 16px;
 }
 
+/* Loading placeholder: same height as a row, so nothing jumps when data arrives. */
+.office-skeleton {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 16px 24px 24px;
+  list-style: none;
+}
+
+.office-skeleton-row {
+  height: 56px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  animation: office-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes office-skeleton-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-skeleton-row {
+    animation: none;
+  }
+}
+
+.office-retry {
+  margin: 0 24px 24px;
+}
+
 .office-list-footer {
   padding: 16px 24px;
   border-top: 1px solid var(--border);

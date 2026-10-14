@@ -394,11 +394,29 @@ export default function ProductsList() {
             {stepError}
           </div>
         )}
-        {list.status === 'loading' && <p className="office-reset-empty office-list-empty">Loading products…</p>}
+        {list.status === 'loading' && (
+          <ul className="office-skeleton" aria-busy="true" aria-label="Loading products">
+            {[0, 1, 2, 3].map((n) => (
+              <li key={n} className="office-skeleton-row" />
+            ))}
+          </ul>
+        )}
         {list.status === 'error' && (
-          <div className="office-error office-list-error" role="alert">
-            {list.message}
-          </div>
+          <>
+            <div className="office-error office-list-error" role="alert">
+              {list.message}
+            </div>
+            <button
+              type="button"
+              className="button button-secondary office-retry"
+              onClick={() => {
+                setList({ status: 'loading' })
+                setReload((value) => value + 1)
+              }}
+            >
+              Try again
+            </button>
+          </>
         )}
         {list.status === 'ready' && list.data.products.length === 0 && (
           <p className="office-reset-empty office-list-empty">No products match.</p>

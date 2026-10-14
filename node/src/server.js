@@ -62,6 +62,7 @@ app.get('/api/health', async (req, res) => {
 
 // Feature routers
 app.use('/api/auth', require('./auth/auth.routes'));
+app.use('/api/shop', require('./shop/shop.routes'));
 // Products first: the office router below requires the admin role for everything under /api/office.
 app.use('/api/office/products', require('./products/products.routes'));
 app.use('/api/office', require('./auth/auth.routes').officeRouter);

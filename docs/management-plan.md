@@ -64,7 +64,7 @@ Already built. Every stage below builds on this; nothing here gets rewritten.
 - Forgot password always gives the same response, whether or not the email exists.
 
 ### Scope (replanned 2026-10-07)
-- Build in this order: M3.2–M3.3 → M4 IT console → M5 Products → M6 Customers → M7 Orders → C client side → H hardening. Inventory, Reports, real Notifications, online payment and customer accounts stay locked until after H8.
+- Build in this order (replanned 2026-10-14, **shop first**): M5.6 Products completion → C2–C7 client side (catalog, product page, cart, orders tables + checkout API, checkout page, polish) → then M4 IT console → M6 Customers → M7 Orders → H hardening. M1–M3 are done. Staff **Orders** and **Customers** pages stay title-only placeholders until their stage; the only order work before M7 is the customer checkout (C5–C6). Inventory, Reports, real Notifications, online payment and customer accounts stay locked until after H8.
 - Until a module's stage starts, its page stays a placeholder: a title and nothing else.
 - Products, Customers and Orders ship before permissions and audit. **No real customer data goes in until H8 is signed off.**
 - One roadmap step at a time. Never two at once.
@@ -77,6 +77,18 @@ Already built. Every stage below builds on this; nothing here gets rewritten.
 - No dashboard cards or statistics until the modules behind them exist.
 - No emoji icons. No Tailwind unless requested. Follow the style of `PSP-Engineering-Group-Preview.html`.
 - The theme preference (light/dark/system) may be stored in `localStorage`. It is not auth data.
+
+### Design bar (every UI step, decided 2026-10-14)
+The product and shop screens must feel finished, not just work. Follow `PSP-Engineering-Group-Preview.html`, and apply the `frontend-design` skill if it is available.
+- **Themes:** light and dark both fully designed. First visit follows the system setting; the toggle overrides it; the choice is the only thing stored. No flash of the wrong theme on load (set `data-theme` before first paint). All colours come from CSS variables; no hard-coded colours in components.
+- **Contrast:** text and controls meet WCAG AA in both themes. Visible `:focus-visible` rings. Touch targets at least 44px on mobile.
+- **States:** every list and page has a loading skeleton, an empty state, and an error state with a retry. No blank screens, no layout jump when images load (set width/height or aspect-ratio).
+- **Forms:** labels always visible, inline field errors tied to inputs with `aria-describedby`, errors announced, submit button shows progress and is disabled while sending, nothing is lost on a failed submit.
+- **Money and text:** prices as `TZS 1,250,000` (thousands separators, no decimals). Long names wrap or truncate cleanly. Phone numbers and numbers use tabular figures where they are compared.
+- **Motion:** short and subtle (150–250ms); respect `prefers-reduced-motion`.
+- **Mobile first:** design 360px first, then widen. Tables become stacked lists. No horizontal scroll.
+- **Icons:** one consistent SVG set, no emoji.
+- **Proof:** the responsive check (see M5.6) passes at 360, 768 and 1280px in **both** themes, and screenshots are saved to `docs/screenshots/`.
 
 ### Files
 - The user decides file and folder placement. Use existing folders (`node/src/auth/`, `node/migrations/`, `web/src/management/auth/`, `web/src/management/inApp/`). If a new file or folder is needed, propose the path and ask first.
@@ -141,6 +153,15 @@ Header:
 ## 4. Roadmap
 
 Each step lists **Scope** (what to do), **Done when** (checks that must pass) and **Not in this step** (the boundary).
+
+**Current track (2026-10-14): shop first.** Run order: **M5.6 → C2 → C3 → C4 → C5 → C6 → C7**. After C7, the current step goes back to **M4.1** (IT console), then M6, M7, H. M4.1 is implemented but not ticked (see `docs/overnight-log.md`); it resumes later.
+
+**Files approved for this track (2026-10-14).** New paths are allowed exactly as listed; anything else needs a question first.
+- `node/src/shop/` (`shop.routes.js`, `shop.service.js`, `shop.test.js`), mounted in `node/src/server.js` at `/api/shop`
+- `node/migrations/<timestamp>_create_orders.js`
+- `web/src/shop/` (pages, components, `api.ts`, tests, `shop.css`)
+- `web/scripts/responsive-check.mjs`, `docs/screenshots/`
+- Dev dependency `playwright-core` in `web/` (drives the Edge or Chrome already installed; downloads no browser) — needed so UI steps can pass the 360/768/desktop check without a person.
 
 ### M1 — Management Shell
 
@@ -287,6 +308,14 @@ Order life cycle: `new` → `confirmed` → `delivered` → `closed`, or `cancel
 - **Scope:** Upload, order and remove product images. Storage location (local disk or cloud) is decided by the user before this step. Type and size checks on the server.
 - **Done when:** images upload, show in the list and detail, and bad files are refused.
 
+#### M5.6 Products completion (shop-first track)
+- **Scope:**
+  1. Check M5.1–M5.5 against their "Done when" lines using the code that already exists (`node/src/products/`, `web/src/management/inApp/pages/ProductsList.tsx`, `ProductForm.tsx`). Fix real gaps only; do not rewrite working code.
+  2. Management Products UI/UX pass to the Design bar: list, add, edit, publish/unpublish, archive, images, in both themes, at 360/768/desktop. Compare with `PSP-Engineering-Group-Preview.html`.
+  3. Build the responsive check: add dev dependency `playwright-core` and `web/scripts/responsive-check.mjs` plus `npm run check:responsive` (in `web/`). It builds the app, serves it with `vite preview`, opens each listed route in the installed Edge (else Chrome) at 360, 768 and 1280px in light and dark, fails if the page scrolls horizontally, and saves screenshots to `docs/screenshots/`. API calls are answered with fixtures through request interception, so it needs no database or Redis. Office routes need a stubbed `GET /api/auth/me`.
+- **Done when:** `node` `npm test`, `web` `npm test`, `npm run build`, `npm run lint` pass; `npm run check:responsive` passes for `/office/products`, `/office/products/new` and one edit page in both themes. Then tick M5.1–M5.5 **and** M5.6 together (the one allowed multi-tick; say so in the log).
+- **Not in this step:** the shop, orders, customers, inventory.
+
 ### M6 — Customers
 
 #### M6.1 Customer data model
@@ -305,6 +334,7 @@ Order life cycle: `new` → `confirmed` → `delivered` → `closed`, or `cancel
 ### M7 — Orders
 
 #### M7.1 Order data model
+- **Note (2026-10-14):** the `orders` and `order_items` tables are created earlier, in C5, so the shop can take orders. This step only adds what is still missing (status transition rules, staff-order fields) and must not recreate them.
 - **Scope:** Migrations for `orders` (number, `customer_id` nullable, guest name/phone/email/address snapshot, status, payment status, source `shop`/`staff`, totals, notes, timestamps) and `order_items` (product id, name, SKU and unit price copied in, quantity, line total). Status changes allowed only along the life cycle above (enforced on the server).
 - **Done when:** invalid status jumps are refused (tested).
 
@@ -331,20 +361,36 @@ Follows `PSP-Engineering-Group-Preview.html`. **Mobile-first.** Public read endp
 - **Done when:** checked at 360px, 768px and desktop; no horizontal scroll.
 
 #### C2 Catalog
-- **Scope:** `GET /api/shop/products` (search, category, paging). Product grid with category filter and search.
+- **Scope:** `GET /api/shop/categories` (published categories with counts) and `GET /api/shop/products` (search `q`, category slug, sort, page). Returns only published, not archived products, and only shop-safe fields: id, name, slug, brand, category, `price_tzs`, `request_quotation`, `in_stock` (boolean, never the stock number), main image URL. Never `created_by`, SKU internals or unpublished data.
+  Shop: `/products` grid with category chips, debounced search, sort, paging; filters live in the URL so links and the back button work. Home page "featured" and category blocks use this real data if the home page shows products. Skeleton cards, empty state, error with retry.
+- **Done when:** query-level tests prove drafts, archived products and internal fields never appear; search/filter/paging tests pass; responsive check passes in both themes.
+- **Not in this step:** product page, cart, orders.
 
 #### C3 Product page
-- **Scope:** `GET /api/shop/products/:slug`. Images, description, specs, price, "Add to cart".
+- **Scope:** `GET /api/shop/products/:slug` (404 for unpublished/archived). `/products/:slug`: image gallery (thumbnails, keyboard and swipe), name, brand, SKU, category breadcrumb, price in TZS or "Request quotation", availability ("In stock" / "Out of stock"), quantity stepper, "Add to cart" (disabled when out of stock), description, specs table from `specs_list`, up to 4 related products from the same category. Page title and meta description per product. Not-found state.
+- **Done when:** tests for the endpoint (published only); responsive check passes in both themes.
+- **Not in this step:** the cart page (button may call the cart module from C4 once it exists; until then it only shows a confirmation).
 
 #### C4 Cart
-- **Scope:** Cart page. The cart (product ids and quantities only, no personal data) may be kept in `localStorage`. Prices are always re-read from the server.
+- **Scope:** `web/src/shop/cart.ts` owns all writes (add, set quantity, remove, clear; merges duplicates; clamps quantity to 1–99). Stored in `localStorage` as product ids and quantities only. `POST /api/shop/cart/prices` takes `[{productId, quantity}]` and returns current name, price, image and availability from the database. `/cart` page: lines with image, name, unit price, quantity stepper, line total, remove; order total; unavailable or changed products flagged clearly; quotation lines labelled "Price on request" and left out of the total; header badge and a small "added to cart" confirmation; empty state with a link to the catalog; "Checkout" button (links to `/checkout`).
+- **Done when:** tests for `cart.ts` (add, merge, clamp, remove, corrupted storage) and for the prices endpoint (drops unpublished/archived, ignores client prices); responsive check passes in both themes. No personal data in storage.
+- **Not in this step:** checkout, orders.
 
-#### C5 Guest checkout
-- **Scope:** `POST /api/shop/orders`: name, phone, email (optional), delivery address, notes. The server re-prices every line from the database and creates the order (`source = shop`, `new`, `unpaid`). Rate limited per IP. A confirmation page with the order number and "PSP will contact you to confirm and arrange payment."
-- **Done when:** a tampered price in the request has no effect (tested); the order appears in the M7.2 queue.
+#### C5 Orders tables and checkout API
+- **Scope:** Migration `create_orders` (up and down): `orders` (id, `order_number` unique like `PSP-000123` from a Postgres sequence, `customer_id` nullable with no foreign key yet, guest name, phone, email nullable, delivery address fields, notes, `status` default `new`, `payment_status` default `unpaid`, `source` `shop`/`staff`, `total_tzs`, `has_quotation_lines`, timestamps) and `order_items` (order id, product id, name/SKU/unit price **copied in**, quantity, line total; unit price null for quotation lines). Check constraints on status values, positive quantities and non-negative totals. Status transition rules stay for M7.1.
+  `POST /api/shop/orders`: name (2–100), phone (Tanzanian formats accepted and normalised to +255…), email optional and valid, delivery address (area/city required, street or landmark), notes up to 1000, 1–50 lines, quantity 1–99, hidden honeypot field. The server **ignores any price, name or total from the client** and re-reads every line from the database inside one transaction. Unpublished, archived or out-of-stock products are refused with a per-line error code. Stock is not decreased (staff handle that at confirmation). Rate limited per IP and per phone using the existing `node/src/auth/rate-limit.js` approach (fails closed with 503 if Redis is down). Response: order number and total only. No personal data in logs.
+- **Done when:** tests: a tampered price/name/total has no effect; unpublished/archived/out-of-stock refused; invalid input gives field errors; rate limit returns 429 with `Retry-After`; a failure mid-way leaves no half order; migrate down works. `node` `npm test` passes.
+- **Not in this step:** any `/api/office/orders` route or Orders page (staff side stays a placeholder until M7), customer linking, the checkout page.
 
-#### C6 Shop polish
-- **Scope:** Accessibility pass, page titles and meta tags, loading and empty states, image sizes for mobile data.
+#### C6 Checkout page
+- **Scope:** `/checkout` and `/order-confirmed`. Form (name, phone, email optional, area/city, address, notes) with inline validation and clear messages; order summary beside the form on desktop and collapsible on mobile; "Pay later" note (on delivery, invoice or bank transfer). Submit shows progress and prevents double submit. Server line errors send the person back to the cart with a readable notice. Success clears the cart and shows the order number with the message "PSP will contact you to confirm and arrange payment.", a copy-number button, and "Continue shopping". Nothing personal is kept in the browser. Empty cart redirects to `/cart`.
+- **Done when:** component tests for validation, success, line-error and double-submit; an end-to-end check against the API tests data path (a created order has the right items and totals); responsive check passes in both themes.
+- **Not in this step:** staff order screens.
+
+#### C7 Shop polish
+- **Scope:** Accessibility pass (skip link, landmarks, focus order, `aria-live` for cart changes, AA contrast in both themes), page titles and meta tags on every shop route, consistent loading/empty/error states, lazy images with fixed aspect ratios, reduced-motion support, no theme flash, print style for the confirmation page, shop 404. Run the responsive check on every shop route (`/`, `/products`, a product page, `/cart`, `/checkout`, `/order-confirmed`) in both themes and save screenshots.
+- **Done when:** all checks pass; the user signs off the screenshots in `docs/screenshots/`. After ticking C7, set the current step to **M4.1**.
+- **Not in this step:** new features.
 
 ### H — Hardening before launch
 Must be done **before real customer data goes in**. Includes everything moved out of the old M3, M5 and M6.

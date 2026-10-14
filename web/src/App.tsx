@@ -33,15 +33,14 @@ function OfficeRoot() {
   )
 }
 
-// Placeholder until the public shop is built.
-function ShopHome() {
-  return (
-    <main className="page-message">
-      <h1>PSP Engineering Group</h1>
-      <p>Medical equipment · Tanzania</p>
-    </main>
-  )
-}
+// The shop is its own bundle too; the office never loads it.
+const ShopLayout = lazy(() => import('./shop/ShopLayout'))
+const ShopHome = lazy(() => import('./shop/ShopHome'))
+const Catalog = lazy(() => import('./shop/Catalog'))
+const ProductPage = lazy(() => import('./shop/ProductPage'))
+const CartPage = lazy(() => import('./shop/CartPage'))
+const CheckoutPage = lazy(() => import('./shop/CheckoutPage'))
+const OrderConfirmed = lazy(() => import('./shop/CheckoutPage').then((m) => ({ default: m.OrderConfirmed })))
 
 function NotFound() {
   return (
@@ -56,7 +55,20 @@ function NotFound() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<ShopHome />} />
+      <Route
+        element={
+          <Suspense fallback={<p className="page-message">Loading…</p>}>
+            <ShopLayout />
+          </Suspense>
+        }
+      >
+        <Route path="/" element={<ShopHome />} />
+        <Route path="/products" element={<Catalog />} />
+        <Route path="/products/:slug" element={<ProductPage />} />
+        <Route path="/cart" element={<CartPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/order-confirmed" element={<OrderConfirmed />} />
+      </Route>
 
       <Route path="/office" element={<OfficeRoot />}>
         <Route path="auth/login" element={<Login />} />

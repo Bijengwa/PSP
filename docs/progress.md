@@ -2,8 +2,9 @@
 
 Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" checks pass.
 UI steps also need the responsive check (360px, 768px, desktop) before ticking.
-Replanned: 2026-10-07.
-Current step: **M4.1**
+Replanned: 2026-10-07. Re-ordered 2026-10-14 (shop first): M5.6 → C2 → C3 → C4 → C5 → C6 → C7, then back to M4.1.
+M4.1 is implemented but not ticked (see `docs/overnight-log.md`); it resumes after C7.
+Current step: **C6**
 
 ## M1 — Management Shell
 
@@ -29,6 +30,25 @@ Current step: **M4.1**
 - [x] M3.2 Failed-login protection
 - [x] M3.3 Session revocation
 
+## M5 — Products
+
+- [x] M5.1 Product data model
+- [x] M5.2 Products list
+- [x] M5.3 Add product
+- [x] M5.4 Edit, publish, archive
+- [x] M5.5 Product images
+- [x] M5.6 Products completion (verify M5.1–M5.5, UI/UX, responsive check tool)
+
+## C — Client side (public shop)
+
+- [x] C1 Shop layout
+- [x] C2 Catalog
+- [x] C3 Product page
+- [x] C4 Cart
+- [x] C5 Orders tables and checkout API
+- [ ] C6 Checkout page
+- [ ] C7 Shop polish
+
 ## M4 — IT Console (full circle of auth)
 
 - [ ] M4.1 IT sidebar group
@@ -38,14 +58,6 @@ Current step: **M4.1**
 - [ ] M4.5 Activate/deactivate
 - [ ] M4.6 Role assignment
 - [ ] M4.7 Reset password from the profile (end-to-end circle)
-
-## M5 — Products
-
-- [ ] M5.1 Product data model
-- [ ] M5.2 Products list
-- [ ] M5.3 Add product
-- [ ] M5.4 Edit, publish, archive
-- [ ] M5.5 Product images
 
 ## M6 — Customers
 
@@ -61,15 +73,6 @@ Current step: **M4.1**
 - [ ] M7.3 Order detail and status
 - [ ] M7.4 Staff-created orders
 - [ ] M7.5 Link guest orders to customers
-
-## C — Client side (public shop)
-
-- [ ] C1 Shop layout
-- [ ] C2 Catalog
-- [ ] C3 Product page
-- [ ] C4 Cart
-- [ ] C5 Guest checkout
-- [ ] C6 Shop polish
 
 ## H — Hardening before launch
 
