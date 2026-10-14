@@ -12,6 +12,9 @@ const {
   changeOrderStatus,
   markOrderPaid,
   updateOrderItems,
+  linkOrderToCustomer,
+  unlinkOrderCustomer,
+  createCustomerFromOrder,
 } = require('./orders.service');
 
 // Office orders, mounted at /api/office/orders. Any signed-in staff member may use it
@@ -26,20 +29,24 @@ function oneOf(req, name, allowed) {
   return value;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 router.get('/', async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
   const status = oneOf(req, 'status', ORDER_STATUSES);
   const paymentStatus = oneOf(req, 'paymentStatus', PAYMENT_STATUSES);
   const source = oneOf(req, 'source', ORDER_SOURCES);
+  const customerId = req.query.customerId || undefined;
+  if (customerId && (typeof customerId !== 'string' || !UUID_PATTERN.test(customerId))) {
+    throw httpError(400, 'customerId must be a customer id');
+  }
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
 
   res.json({
     success: true,
-    data: await listOrders({ q, status, paymentStatus, source, page, limit: ORDER_PAGE_SIZE }),
+    data: await listOrders({ q, status, paymentStatus, source, customerId, page, limit: ORDER_PAGE_SIZE }),
   });
 });
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function idParam(req) {
   if (!UUID_PATTERN.test(req.params.id)) throw httpError(404, 'Not found');
@@ -129,6 +136,65 @@ router.put('/:id/items', async (req, res) => {
   if (result.error === 'unknown_item') throw validationError({ items: 'A line does not belong to this order.' });
 
   req.log.info({ event: 'order.items_changed', orderId: id, by: req.staff.id }, 'Order items changed');
+  await sendOrder(res, id);
+});
+
+// Linking a shop order to a customer (M7.5). The refusals shared by the three routes.
+function linkRefusal(result) {
+  if (result.error === 'not_shop_order') {
+    return httpError(409, 'Only shop orders are linked here. A staff order has its customer from the start.', 'NOT_SHOP_ORDER');
+  }
+  if (result.error === 'already_linked') {
+    return Object.assign(
+      httpError(409, 'This order is already linked to a customer. Unlink it first to choose another.', 'ORDER_LINKED'),
+      { details: { customerId: result.customerId } },
+    );
+  }
+  return null;
+}
+
+// Links the order to an existing customer. Body: { customerId }.
+router.put('/:id/customer', async (req, res) => {
+  const id = idParam(req);
+  const customerId = req.body?.customerId;
+  if (typeof customerId !== 'string' || !UUID_PATTERN.test(customerId)) {
+    throw validationError({ customerId: 'Choose a customer.' });
+  }
+
+  const result = await linkOrderToCustomer(id, customerId);
+  if (!result) throw httpError(404, 'Not found');
+  const refusal = linkRefusal(result);
+  if (refusal) throw refusal;
+  if (result.error === 'unknown_customer') throw validationError({ customerId: 'This customer no longer exists.' });
+
+  req.log.info({ event: 'order.customer_linked', orderId: id, customerId, by: req.staff.id }, 'Order linked to customer');
+  await sendOrder(res, id);
+});
+
+// Creates a customer from the order's guest details and links the order to it.
+router.post('/:id/customer', async (req, res) => {
+  const id = idParam(req);
+  const result = await createCustomerFromOrder(id, req.staff.id);
+  if (!result) throw httpError(404, 'Not found');
+  const refusal = linkRefusal(result);
+  if (refusal) throw refusal;
+
+  req.log.info(
+    { event: 'order.customer_created', orderId: id, customerId: result.customer.id, by: req.staff.id },
+    'Customer created from order',
+  );
+  res.status(201);
+  await sendOrder(res, id);
+});
+
+router.delete('/:id/customer', async (req, res) => {
+  const id = idParam(req);
+  const result = await unlinkOrderCustomer(id);
+  if (!result) throw httpError(404, 'Not found');
+  const refusal = linkRefusal(result);
+  if (refusal) throw refusal;
+
+  req.log.info({ event: 'order.customer_unlinked', orderId: id, by: req.staff.id }, 'Order unlinked from customer');
   await sendOrder(res, id);
 });
 

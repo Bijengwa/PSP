@@ -731,6 +731,173 @@ describe('order detail and actions (M7.3)', () => {
   });
 });
 
+describe('linking shop orders to customers (M7.5)', () => {
+  const ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+  let staffCookie;
+
+  beforeAll(async () => {
+    staffCookie = `psp_sid=${(await sessions.create({ staffId, ip: '::1', userAgent: 't' })).id}`;
+  });
+
+  async function customer(over = {}) {
+    const [row] = await db('customers')
+      .insert({ type: 'individual', full_name: 'Asha Mushi', phone: '+255712345678', created_by: staffId, ...over })
+      .returning('*');
+    return row;
+  }
+
+  const send = (method, id, body) =>
+    request(app)[method](`/api/office/orders/${id}/customer`).set('Cookie', staffCookie).set('Origin', ORIGIN).send(body);
+  const link = (id, customerId) => send('put', id, { customerId });
+  const linkedTo = async (id) => (await db('orders').where({ id }).first('customer_id')).customer_id;
+
+  test('need a session and the office origin', async () => {
+    const { id } = await order();
+    const c = await customer();
+    const noSession = await request(app).put(`/api/office/orders/${id}/customer`).set('Origin', ORIGIN).send({ customerId: c.id });
+    expect(noSession.status).toBe(401);
+    const noOrigin = await request(app)
+      .put(`/api/office/orders/${id}/customer`)
+      .set('Cookie', staffCookie)
+      .send({ customerId: c.id });
+    expect(noOrigin.status).toBe(403);
+    expect(await linkedTo(id)).toBeNull();
+  });
+
+  test("the order's phone and email find matching customers through the duplicates check", async () => {
+    const byPhone = await customer({ full_name: 'Asha M.' });
+    const byEmail = await customer({ full_name: 'Asha Office', phone: null, email: 'asha@example.com' });
+    await customer({ full_name: 'Someone else', phone: '+255754000000' });
+    const row = await order({ guest_email: 'asha@example.com' });
+
+    const res = await request(app)
+      .get('/api/office/customers/duplicates')
+      .query({ phone: row.guest_phone, email: row.guest_email })
+      .set('Cookie', staffCookie);
+    expect(res.status).toBe(200);
+    const matches = Object.fromEntries(res.body.data.matches.map((m) => [m.id, m.matchedOn]));
+    expect(matches).toEqual({ [byPhone.id]: ['phone'], [byEmail.id]: ['email'] });
+  });
+
+  test('links a shop order to an existing customer, in any status', async () => {
+    const c = await customer({ type: 'company', full_name: null, company_name: 'Bugando Medical Centre' });
+    for (const status of ['new', 'delivered', 'cancelled']) {
+      const { id } = await inStatus(status);
+      const res = await link(id, c.id);
+      expect(res.status).toBe(200);
+      expect(res.body.data.order.customer).toEqual({ id: c.id, type: 'company', name: 'Bugando Medical Centre' });
+      expect(res.body.data.order.status).toBe(status);
+      expect(await linkedTo(id)).toBe(c.id);
+    }
+  });
+
+  test('linking again to the same customer is fine; another customer needs an unlink first', async () => {
+    const first = await customer();
+    const second = await customer({ full_name: 'Juma Said', phone: '+255754100200' });
+    const { id } = await order();
+    await link(id, first.id);
+
+    expect((await link(id, first.id)).status).toBe(200);
+    const other = await link(id, second.id);
+    expect(other.status).toBe(409);
+    expect(other.body.error.code).toBe('ORDER_LINKED');
+    expect(other.body.error.details).toEqual({ customerId: first.id });
+    expect(await linkedTo(id)).toBe(first.id);
+
+    const unlinked = await send('delete', id);
+    expect(unlinked.status).toBe(200);
+    expect(unlinked.body.data.order.customer).toBeNull();
+    expect(await db('customers').where({ id: first.id }).first('id')).toBeTruthy();
+    expect((await send('delete', id)).status).toBe(200); // already unlinked
+
+    expect((await link(id, second.id)).status).toBe(200);
+    expect(await linkedTo(id)).toBe(second.id);
+  });
+
+  test('refuses a bad or unknown customer, a missing order and staff orders', async () => {
+    const c = await customer();
+    const { id } = await order();
+
+    for (const body of [{}, { customerId: 'nope' }, { customerId: 42 }]) {
+      const res = await send('put', id, body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual({ customerId: 'Choose a customer.' });
+    }
+    const unknown = await link(id, MISSING_ID);
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error.details).toEqual({ customerId: 'This customer no longer exists.' });
+    expect(await linkedTo(id)).toBeNull();
+
+    expect((await link(MISSING_ID, c.id)).status).toBe(404);
+    expect((await link('nope', c.id)).status).toBe(404);
+    expect((await send('post', MISSING_ID)).status).toBe(404);
+    expect((await send('delete', MISSING_ID)).status).toBe(404);
+
+    const staffOrder = await order({ source: 'staff', created_by: staffId, customer_id: c.id });
+    for (const res of [await link(staffOrder.id, c.id), await send('post', staffOrder.id), await send('delete', staffOrder.id)]) {
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('NOT_SHOP_ORDER');
+    }
+    expect(await linkedTo(staffOrder.id)).toBe(c.id);
+  });
+
+  test('creates a customer from the order and links it', async () => {
+    const row = await order({ guest_email: 'asha@example.com', delivery_area: 'Kariakoo, Dar es Salaam' });
+    const res = await send('post', row.id);
+    expect(res.status).toBe(201);
+
+    const created = await db('customers').first();
+    expect(created).toMatchObject({
+      type: 'individual',
+      full_name: 'Asha Mushi',
+      company_name: null,
+      phone: '+255712345678',
+      email: 'asha@example.com',
+      notes: `Added from shop order ${row.order_number}.`,
+      created_by: staffId,
+    });
+    expect(await db('customer_addresses').where({ customer_id: created.id }).select('label', 'area', 'address', 'is_default')).toEqual([
+      { label: '', area: 'Kariakoo, Dar es Salaam', address: 'Msimbazi Street', is_default: true },
+    ]);
+    expect(res.body.data.order.customer).toEqual({ id: created.id, type: 'individual', name: 'Asha Mushi' });
+    expect(await linkedTo(row.id)).toBe(created.id);
+
+    // The guest snapshot on the order is unchanged.
+    const after = await db('orders').where({ id: row.id }).first();
+    expect([after.guest_name, after.guest_phone, after.guest_email]).toEqual(['Asha Mushi', '+255712345678', 'asha@example.com']);
+  });
+
+  test('never creates two customers for one order', async () => {
+    const { id } = await order();
+    const results = await Promise.all([send('post', id), send('post', id)]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(results.find((r) => r.status === 409).body.error.code).toBe('ORDER_LINKED');
+    expect(Number((await db('customers').count('* as n'))[0].n)).toBe(1);
+
+    const linked = await order({ customer_id: (await customer({ full_name: 'Kept' })).id });
+    expect((await send('post', linked.id)).status).toBe(409);
+    expect(Number((await db('customers').count('* as n'))[0].n)).toBe(2);
+  });
+
+  test("the queue lists one customer's orders for the customer detail page", async () => {
+    const mine = await customer();
+    const other = await customer({ full_name: 'Juma Said' });
+    const a = await order({ customer_id: mine.id, created_at: new Date(Date.UTC(2026, 9, 1)) });
+    const b = await order({ customer_id: mine.id, status: 'confirmed', confirmed_at: db.fn.now() });
+    await order({ customer_id: other.id });
+    await order();
+
+    const res = await request(app).get('/api/office/orders').query({ customerId: mine.id }).set('Cookie', staffCookie);
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(2);
+    expect(res.body.data.orders.map((o) => o.id)).toEqual([b.id, a.id]);
+    expect(res.body.data.orders.every((o) => o.customerId === mine.id)).toBe(true);
+
+    const bad = await request(app).get('/api/office/orders').query({ customerId: 'nope' }).set('Cookie', staffCookie);
+    expect(bad.status).toBe(400);
+  });
+});
+
 describe('extend_orders migration', () => {
   const columns = async () =>
     (

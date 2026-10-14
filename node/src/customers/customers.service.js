@@ -138,14 +138,17 @@ async function replaceAddresses(trx, customerId, addresses) {
   );
 }
 
-async function createCustomer({ values, addresses, createdBy }) {
-  return db.transaction(async (trx) => {
+// Runs in its own transaction, or in `outer` when the caller has one (an order being
+// linked to the new customer, M7.5).
+async function createCustomer({ values, addresses, createdBy }, outer = null) {
+  const create = async (trx) => {
     const [{ id }] = await trx('customers')
       .insert({ ...toRow(values), created_by: createdBy })
       .returning('id');
     await replaceAddresses(trx, id, addresses);
     return findCustomer(id, trx);
-  });
+  };
+  return outer ? create(outer) : db.transaction(create);
 }
 
 // `addresses` undefined leaves them as they are. Returns null when the customer is gone.

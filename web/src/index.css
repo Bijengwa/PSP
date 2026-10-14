@@ -2822,3 +2822,199 @@ a {
     text-align: left;
   }
 }
+
+/* Linking shop orders to customers (M7.5) */
+.office-order-link h2:focus {
+  outline: none;
+}
+
+.office-order-link h2:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.office-link-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.office-link-heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.office-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-link-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.office-link-option .office-avatar {
+  flex-shrink: 0;
+}
+
+.office-link-option-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.office-link-option-text .office-staff-name {
+  max-width: 100%;
+}
+
+.office-link-option-text .office-link-contacts {
+  font-variant-numeric: tabular-nums;
+}
+
+.office-link-match {
+  margin-top: 4px;
+}
+
+/* In a column, the list filters' flex basis would become a height. */
+.office-link-group .office-search {
+  flex: none;
+}
+
+.office-link-action {
+  flex-shrink: 0;
+}
+
+.office-link-current {
+  background: var(--surface-muted);
+}
+
+.office-skeleton.office-link-skeleton {
+  padding: 0;
+}
+
+.office-link-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.office-link-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.office-order-link .office-confirm {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.office-customer-orders {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-customer-order {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.office-customer-order:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.office-customer-order-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.office-customer-order-end {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  margin-left: auto;
+  text-align: right;
+}
+
+.office-customer-order-end .office-badges {
+  justify-content: flex-end;
+}
+
+.office-customer-orders-more {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .office-link-option {
+    flex-wrap: wrap;
+    padding: 12px;
+  }
+
+  .office-link-option-text {
+    flex-basis: calc(100% - 48px);
+  }
+
+  .office-link-action {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .office-link-create .button {
+    width: 100%;
+  }
+
+  .office-order-link .office-staff-link,
+  .office-customer-order .office-order-number {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .office-customer-order {
+    flex-direction: column;
+  }
+
+  .office-customer-order-end {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-left: 0;
+    text-align: left;
+  }
+}

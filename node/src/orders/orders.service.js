@@ -1,5 +1,5 @@
 const db = require('../db');
-const { phoneDigits } = require('../customers/customers.service');
+const { phoneDigits, createCustomer } = require('../customers/customers.service');
 
 const ORDER_STATUSES = ['new', 'confirmed', 'delivered', 'closed', 'cancelled'];
 const PAYMENT_STATUSES = ['unpaid', 'paid'];
@@ -184,6 +184,83 @@ async function updateOrderItems(id, lines) {
   });
 }
 
+// Linking shop orders to customers (M7.5). Only shop (guest) orders are linked here;
+// staff orders get their customer when they are entered. The order's guest and
+// delivery snapshot never changes. Each function locks the order row first, so two
+// staff linking the same order at once cannot both win. They return null when the
+// order does not exist, or { error } with 'not_shop_order' or 'already_linked'
+// (with `customerId`, the customer it is linked to now).
+async function lockShopOrder(trx, id) {
+  const order = await trx('orders').where({ id }).forUpdate().first();
+  if (!order) return { missing: true };
+  if (order.source !== 'shop') return { error: 'not_shop_order' };
+  return { order };
+}
+
+// Links the order to an existing customer. Linking it again to the same customer is a
+// no-op; a different customer must be unlinked first. Returns { linked: true }, or
+// { error: 'unknown_customer' } as well as the errors above.
+async function linkOrderToCustomer(id, customerId) {
+  return db.transaction(async (trx) => {
+    const { missing, error, order } = await lockShopOrder(trx, id);
+    if (missing) return null;
+    if (error) return { error };
+    if (order.customer_id === customerId) return { linked: true };
+    if (order.customer_id) return { error: 'already_linked', customerId: order.customer_id };
+    if (!(await trx('customers').where({ id: customerId }).first('id'))) return { error: 'unknown_customer' };
+
+    await trx('orders').where({ id }).update({ customer_id: customerId, updated_at: trx.fn.now() });
+    return { linked: true };
+  });
+}
+
+// Removes the link, keeping the order and the customer. Unlinking an unlinked order is
+// a no-op. Returns { unlinked: true } or the errors above.
+async function unlinkOrderCustomer(id) {
+  return db.transaction(async (trx) => {
+    const { missing, error, order } = await lockShopOrder(trx, id);
+    if (missing) return null;
+    if (error) return { error };
+    if (order.customer_id) {
+      await trx('orders').where({ id }).update({ customer_id: null, updated_at: trx.fn.now() });
+    }
+    return { unlinked: true };
+  });
+}
+
+// Creates an individual customer from the order's guest details (name, phone, email,
+// and the delivery address as the default address) and links the order to it, in one
+// transaction. Refused when the order is already linked, so a double click cannot make
+// two customers. Returns { customer } or the errors above.
+async function createCustomerFromOrder(id, createdBy) {
+  return db.transaction(async (trx) => {
+    const { missing, error, order } = await lockShopOrder(trx, id);
+    if (missing) return null;
+    if (error) return { error };
+    if (order.customer_id) return { error: 'already_linked', customerId: order.customer_id };
+
+    const customer = await createCustomer(
+      {
+        values: {
+          type: 'individual',
+          fullName: order.guest_name,
+          companyName: null,
+          tin: null,
+          contactPerson: null,
+          phone: order.guest_phone,
+          email: order.guest_email,
+          notes: `Added from shop order ${order.order_number}.`,
+        },
+        addresses: [{ label: '', area: order.delivery_area, address: order.delivery_address, isDefault: true }],
+        createdBy,
+      },
+      trx,
+    );
+    await trx('orders').where({ id }).update({ customer_id: customer.id, updated_at: trx.fn.now() });
+    return { customer };
+  });
+}
+
 function escapeLike(value) {
   return value.replace(/[\\%_]/g, '\\$&');
 }
@@ -208,9 +285,10 @@ function toListOrder(row) {
 }
 
 // The orders queue: search by order number, name or phone, filter by status, payment
-// status and source, paged, newest first. `total` counts every match; `counts` is how
-// many each status tab would show with the same search and other filters.
-async function listOrders({ q, status, paymentStatus, source, page = 1, limit = ORDER_PAGE_SIZE }) {
+// status, source and linked customer (the customer detail page, M7.5), paged, newest
+// first. `total` counts every match; `counts` is how many each status tab would show
+// with the same search and other filters.
+async function listOrders({ q, status, paymentStatus, source, customerId, page = 1, limit = ORDER_PAGE_SIZE }) {
   const filters = (query, { withStatus = true } = {}) => {
     if (q) {
       const like = `%${escapeLike(q)}%`;
@@ -225,6 +303,7 @@ async function listOrders({ q, status, paymentStatus, source, page = 1, limit = 
     if (withStatus && status) query.where('orders.status', status);
     if (paymentStatus) query.where('orders.payment_status', paymentStatus);
     if (source) query.where('orders.source', source);
+    if (customerId) query.where('orders.customer_id', customerId);
     return query;
   };
 
@@ -272,4 +351,7 @@ module.exports = {
   listOrders,
   findOrder,
   updateOrderItems,
+  linkOrderToCustomer,
+  unlinkOrderCustomer,
+  createCustomerFromOrder,
 };

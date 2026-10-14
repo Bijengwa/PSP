@@ -78,16 +78,29 @@ function json(status: number, body: unknown) {
 const ok = (order: OrderDetailRecord) => json(200, { success: true, data: { order } })
 
 type Call = { method: string; path: string; body: unknown }
+type Lookup = { path: string; params: Record<string, string> }
 
-// Answers every API call with `handler`; returns the calls made.
-function stubApi(handler: (call: Call) => Response) {
+// The customer directory, as the link card asks it (M7.5): customers with the order's
+// phone or email, and a search.
+type Directory = { matches?: unknown[]; search?: unknown[]; lookups?: Lookup[] }
+
+// Answers every order API call with `handler`; returns the calls made. Customer
+// lookups are answered from `directory` and recorded there, not in the calls.
+function stubApi(handler: (call: Call) => Response, directory: Directory = {}) {
   const calls: Call[] = []
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
+      const parsed = new URL(url, 'http://localhost')
+      if (parsed.pathname.startsWith('/api/office/customers')) {
+        directory.lookups?.push({ path: parsed.pathname, params: Object.fromEntries(parsed.searchParams) })
+        return parsed.pathname.endsWith('/duplicates')
+          ? json(200, { success: true, data: { matches: directory.matches ?? [] } })
+          : json(200, { success: true, data: { customers: directory.search ?? [] } })
+      }
       const call = {
         method: init?.method ?? 'GET',
-        path: new URL(url, 'http://localhost').pathname,
+        path: parsed.pathname,
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       }
       calls.push(call)
@@ -127,7 +140,7 @@ describe('OrderDetail', () => {
 
     expect(screen.getByRole('link', { name: '+255 712 345 678' }).getAttribute('href')).toBe('tel:+255712345678')
     expect(screen.getByRole('link', { name: 'asha@example.com' }).getAttribute('href')).toBe('mailto:asha@example.com')
-    expect(screen.getByText('Not linked')).not.toBeNull()
+    expect(within(screen.getByRole('region', { name: 'Customer record' })).getByText('Not linked.')).not.toBeNull()
     expect(screen.getByText('Call before delivery.')).not.toBeNull()
     expect(screen.getAllByText('Not yet')).toHaveLength(3)
 
@@ -331,6 +344,146 @@ describe('OrderDetail', () => {
     expect(screen.getByText('No notes on this order.')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Close order' })).not.toBeNull()
     expect(screen.queryByRole('button', { name: 'Cancel order' })).toBeNull()
+    // Staff orders are not linked from here.
+    expect(screen.queryByRole('region', { name: 'Customer record' })).toBeNull()
+  })
+
+  describe('linking to a customer (M7.5)', () => {
+    const asha = {
+      id: 'c1',
+      type: 'individual',
+      fullName: 'Asha Mushi',
+      companyName: null,
+      tin: null,
+      contactPerson: null,
+      phone: '+255712345678',
+      email: 'asha@example.com',
+      createdAt: AT,
+      updatedAt: AT,
+    }
+    const bugando = {
+      ...asha,
+      id: 'c2',
+      type: 'company',
+      fullName: null,
+      companyName: 'Bugando Medical Centre',
+      phone: '+255282500000',
+      email: null,
+    }
+    const linkedTo = (customer: OrderDetailRecord['customer']) => ({ ...newOrder, customer })
+    const card = () => screen.getByRole('region', { name: 'Customer record' })
+
+    it("suggests customers with the order's phone or email and links one", async () => {
+      const lookups: Lookup[] = []
+      const calls = stubApi(
+        (call) => (call.method === 'PUT' ? ok(linkedTo({ id: 'c1', type: 'individual', name: 'Asha Mushi' })) : ok(newOrder)),
+        { matches: [{ ...asha, matchedOn: ['phone', 'email'] }], lookups },
+      )
+      renderAt()
+
+      const matches = await within(await screen.findByRole('region', { name: 'Customer record' })).findByRole('list', {
+        name: 'Matching customers',
+      })
+      expect(lookups[0]).toEqual({
+        path: '/api/office/customers/duplicates',
+        params: { phone: '+255712345678', email: 'asha@example.com' },
+      })
+      expect(within(matches).getByText('Same phone and email')).not.toBeNull()
+      expect(within(matches).getByText('+255 712 345 678 · asha@example.com')).not.toBeNull()
+      expect(within(matches).getByRole('link', { name: 'Asha Mushi' }).getAttribute('href')).toBe('/office/customers/c1')
+
+      fireEvent.click(within(matches).getByRole('button', { name: 'Link to Asha Mushi' }))
+      expect((await screen.findByRole('status')).textContent).toContain('Linked to Asha Mushi.')
+      expect(calls[1]).toEqual({ method: 'PUT', path: '/api/office/orders/o1/customer', body: { customerId: 'c1' } })
+      expect(within(card()).getByText("This order is listed on the customer's page.")).not.toBeNull()
+      expect(within(card()).getByRole('button', { name: 'Unlink' })).not.toBeNull()
+      expect(document.activeElement?.textContent).toBe('Customer record')
+    })
+
+    it('with no match, finds a customer by search and links them', async () => {
+      const lookups: Lookup[] = []
+      const calls = stubApi(
+        (call) => (call.method === 'PUT' ? ok(linkedTo({ id: 'c2', type: 'company', name: 'Bugando Medical Centre' })) : ok(newOrder)),
+        { search: [bugando], lookups },
+      )
+      renderAt()
+
+      expect(await screen.findByText('No customer has this phone or email yet.')).not.toBeNull()
+      fireEvent.change(within(card()).getByLabelText('Find another customer'), { target: { value: 'Bugando' } })
+      const results = await screen.findByRole('list', { name: 'Search results' })
+      expect(lookups.at(-1)).toEqual({ path: '/api/office/customers', params: { q: 'Bugando' } })
+      expect(within(results).getByText('+255 282 500 000')).not.toBeNull()
+
+      fireEvent.click(within(results).getByRole('button', { name: 'Link to Bugando Medical Centre' }))
+      expect((await screen.findByRole('status')).textContent).toContain('Linked to Bugando Medical Centre.')
+      expect(calls[1].body).toEqual({ customerId: 'c2' })
+    })
+
+    it('a search with no result says so', async () => {
+      stubApi(() => ok(newOrder))
+      renderAt()
+
+      fireEvent.change(await screen.findByLabelText('Find another customer'), { target: { value: 'Nobody here' } })
+      expect(await screen.findByText('No customers match “Nobody here”.')).not.toBeNull()
+    })
+
+    it('creates a customer from the order after asking', async () => {
+      const calls = stubApi(
+        (call) => (call.method === 'POST' ? ok(linkedTo({ id: 'c9', type: 'individual', name: 'Asha Mushi' })) : ok(newOrder)),
+        { matches: [{ ...bugando, matchedOn: ['phone'] }] },
+      )
+      renderAt()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Create customer from this order' }))
+      const group = screen.getByRole('group', { name: 'Create a customer for Asha Mushi?' })
+      expect(document.activeElement?.textContent).toBe('Not now')
+      expect(await within(group).findByText(/One customer already has this phone or email\./)).not.toBeNull()
+      expect(calls).toHaveLength(1)
+
+      fireEvent.click(within(group).getByRole('button', { name: 'Create and link' }))
+      expect((await screen.findByRole('status')).textContent).toContain('Customer Asha Mushi created and linked.')
+      expect(calls[1]).toEqual({ method: 'POST', path: '/api/office/orders/o1/customer', body: undefined })
+      expect(within(card()).getByRole('link', { name: 'Asha Mushi' }).getAttribute('href')).toBe('/office/customers/c9')
+    })
+
+    it('unlinks a linked shop order', async () => {
+      const calls = stubApi((call) =>
+        call.method === 'DELETE' ? ok(newOrder) : ok(linkedTo({ id: 'c2', type: 'company', name: 'Bugando Medical Centre' })),
+      )
+      renderAt()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Unlink' }))
+      expect((await screen.findByRole('status')).textContent).toContain('Unlinked from Bugando Medical Centre.')
+      expect(calls[1]).toMatchObject({ method: 'DELETE', path: '/api/office/orders/o1/customer' })
+      expect(await screen.findByText('No customer has this phone or email yet.')).not.toBeNull()
+    })
+
+    it('linked by someone else meanwhile: shows why and the order as it is now', async () => {
+      let gets = 0
+      stubApi(
+        (call) => {
+          if (call.method === 'PUT') {
+            return json(409, {
+              success: false,
+              error: {
+                message: 'This order is already linked to a customer. Unlink it first to choose another.',
+                code: 'ORDER_LINKED',
+              },
+            })
+          }
+          gets += 1
+          return ok(gets === 1 ? newOrder : linkedTo({ id: 'c2', type: 'company', name: 'Bugando Medical Centre' }))
+        },
+        { matches: [{ ...asha, matchedOn: ['phone'] }] },
+      )
+      renderAt()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Link to Asha Mushi' }))
+      expect((await within(card()).findByRole('alert')).textContent).toBe(
+        'This order is already linked to a customer. Unlink it first to choose another.',
+      )
+      expect(await within(card()).findByRole('link', { name: 'Bugando Medical Centre' })).not.toBeNull()
+    })
   })
 
   it('shows "Order not found" for a 404, and an error with Try again', async () => {

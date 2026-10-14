@@ -4,6 +4,8 @@ import { apiRequest, type ApiResult } from '../../../api/client'
 import { initials } from '../layout/ProfileMenu'
 import { CUSTOMERS_PATH, type CustomerAddress, type CustomerRecord } from './CustomerForm'
 import { displayName, phoneText } from './CustomersList'
+import { ORDERS_PATH, PLACED, PaymentBadge, StatusBadge, type OrderRow } from './OrdersList'
+import { TZS } from './ProductForm'
 
 type LoadState =
   | { status: 'loading' }
@@ -112,8 +114,148 @@ function AddressItem({ address }: { address: CustomerAddress }) {
   )
 }
 
-// /office/customers/:id: one customer's contacts, addresses and notes. The Orders
-// section stays empty until orders can be linked to customers (M7.5).
+type OrdersState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; orders: OrderRow[]; total: number; page: number }
+
+const ordersUrl = (customerId: string, page: number) =>
+  `/api/office/orders?${new URLSearchParams({ customerId, page: String(page) })}`
+
+function orderTotal(order: OrderRow) {
+  if (order.hasQuotationLines && order.totalTzs === 0) return 'Price on request'
+  return `TZS ${TZS.format(order.totalTzs)}`
+}
+
+// The orders linked to this customer (M7.5), newest first, a page at a time.
+function CustomerOrders({ customerId }: { customerId: string }) {
+  const [state, setState] = useState<OrdersState>({ status: 'loading' })
+  const [attempt, setAttempt] = useState(0)
+  const [more, setMore] = useState<{ working: boolean; error: string | null }>({ working: false, error: null })
+
+  useEffect(() => {
+    const controller = new AbortController()
+    apiRequest<{ orders: OrderRow[]; total: number; page: number }>(ordersUrl(customerId, 1), {
+      signal: controller.signal,
+    }).then(
+      (result) =>
+        setState(
+          result.ok
+            ? { status: 'ready', orders: result.data.orders, total: result.data.total, page: 1 }
+            : { status: 'error', message: errorText(result) },
+        ),
+      () => {}, // aborted
+    )
+    return () => controller.abort()
+  }, [customerId, attempt])
+
+  function retry() {
+    setState({ status: 'loading' })
+    setAttempt((n) => n + 1)
+  }
+
+  async function showMore() {
+    if (state.status !== 'ready' || more.working) return
+    setMore({ working: true, error: null })
+    const result = await apiRequest<{ orders: OrderRow[]; total: number }>(ordersUrl(customerId, state.page + 1))
+    if (!result.ok) {
+      setMore({ working: false, error: errorText(result) })
+      return
+    }
+    setMore({ working: false, error: null })
+    const seen = new Set(state.orders.map((order) => order.id))
+    setState({
+      status: 'ready',
+      orders: [...state.orders, ...result.data.orders.filter((order) => !seen.has(order.id))],
+      total: result.data.total,
+      page: state.page + 1,
+    })
+  }
+
+  return (
+    <section className="office-card" aria-labelledby="customer-orders-heading">
+      <h2 id="customer-orders-heading">Orders</h2>
+      {state.status === 'ready' && state.total > 0 && (
+        <p className="office-card-sub office-number">
+          {state.total} {state.total === 1 ? 'order' : 'orders'}, newest first
+        </p>
+      )}
+
+      {state.status === 'loading' && (
+        <ul className="office-skeleton office-profile-skeleton" aria-busy="true" aria-label="Loading orders">
+          {[0, 1].map((n) => (
+            <li key={n} className="office-skeleton-row" />
+          ))}
+        </ul>
+      )}
+
+      {state.status === 'error' && (
+        <>
+          <div className="office-error" role="alert">
+            {state.message}
+          </div>
+          <div className="office-reset-actions">
+            <button type="button" className="button button-secondary" onClick={retry}>
+              Try again
+            </button>
+          </div>
+        </>
+      )}
+
+      {state.status === 'ready' && state.orders.length === 0 && (
+        <p className="office-address-empty">
+          No orders linked to this customer yet. A shop order is linked from its{' '}
+          <Link className="office-staff-link" to={ORDERS_PATH}>
+            order page
+          </Link>
+          .
+        </p>
+      )}
+
+      {state.status === 'ready' && state.orders.length > 0 && (
+        <>
+          <ul className="office-customer-orders">
+            {state.orders.map((order) => (
+              <li key={order.id} className="office-customer-order">
+                <span className="office-customer-order-main">
+                  <Link className="office-order-number office-staff-link" to={`${ORDERS_PATH}/${order.id}`}>
+                    {order.orderNumber}
+                  </Link>
+                  <span className="office-staff-meta office-number">
+                    {PLACED.format(new Date(order.createdAt))} · {order.source === 'shop' ? 'Shop order' : 'Staff order'}
+                  </span>
+                </span>
+                <span className="office-customer-order-end">
+                  <span className="office-order-total">{orderTotal(order)}</span>
+                  {order.hasQuotationLines && order.totalTzs > 0 && (
+                    <span className="office-staff-meta">+ items on request</span>
+                  )}
+                  <span className="office-badges">
+                    <StatusBadge order={order} />
+                    <PaymentBadge order={order} />
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {state.orders.length < state.total && (
+            <div className="office-customer-orders-more">
+              <div className="office-error" role="alert" hidden={!more.error}>
+                {more.error}
+              </div>
+              <button type="button" className="button button-secondary" onClick={showMore} disabled={more.working}>
+                {more.working && <span className="spinner" aria-hidden="true" />}
+                {more.working ? 'Loading…' : `Show more (${state.total - state.orders.length} left)`}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+// /office/customers/:id: one customer's contacts, addresses, linked orders and notes.
 export default function CustomerDetail() {
   const { id = '' } = useParams()
   const location = useLocation()
@@ -305,10 +447,7 @@ export default function CustomerDetail() {
             )}
           </section>
 
-          <section className="office-card" aria-labelledby="customer-orders-heading">
-            <h2 id="customer-orders-heading">Orders</h2>
-            <p className="office-address-empty">Orders linked to this customer will be listed here.</p>
-          </section>
+          <CustomerOrders customerId={customer.id} />
         </div>
 
         <div className="office-product-side">

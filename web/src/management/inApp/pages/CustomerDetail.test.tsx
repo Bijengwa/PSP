@@ -45,18 +45,44 @@ function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status })
 }
 
-// Answers every API call with `handler`; returns the requested paths.
-function stubApi(handler: () => Response) {
+// Answers the customer with `handler` and the customer's orders with `orders` (a
+// function of the requested page, or a list for page 1); returns the requested paths
+// (with the query for orders).
+function stubApi(handler: () => Response, orders: ((page: number) => Response) | unknown[] = []) {
   const paths: string[] = []
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
-      paths.push(new URL(url, 'http://localhost').pathname)
+      const parsed = new URL(url, 'http://localhost')
+      if (parsed.pathname === '/api/office/orders') {
+        paths.push(`${parsed.pathname}${parsed.search}`)
+        const page = Number(parsed.searchParams.get('page'))
+        if (typeof orders === 'function') return orders(page)
+        return json(200, { success: true, data: { orders, total: orders.length, page, pageSize: 25 } })
+      }
+      paths.push(parsed.pathname)
       return handler()
     }),
   )
   return paths
 }
+
+const orderRow = (n: number, patch: Record<string, unknown> = {}) => ({
+  id: `o${n}`,
+  orderNumber: `PSP-00012${n}`,
+  status: 'new',
+  paymentStatus: 'unpaid',
+  source: 'shop',
+  customerId: 'c1',
+  guestName: 'Neema Kweka',
+  guestPhone: '+255712345678',
+  deliveryArea: 'Mwanza',
+  totalTzs: 1250000,
+  hasQuotationLines: false,
+  itemCount: 2,
+  createdAt: '2026-10-10T08:00:00.000Z',
+  ...patch,
+})
 
 const found = (customer: CustomerRecord) => () => json(200, { success: true, data: { customer } })
 
@@ -77,7 +103,6 @@ describe('CustomerDetail', () => {
 
     expect(screen.getByLabelText('Loading customer')).not.toBeNull()
     expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe('Bugando Medical Centre')
-    expect(paths).toEqual(['/api/office/customers/c1'])
     expect(screen.getByText('Company')).not.toBeNull()
     expect(screen.getByRole('link', { name: 'Customers' }).getAttribute('href')).toBe('/office/customers')
     expect(screen.getByRole('link', { name: 'Edit customer' }).getAttribute('href')).toBe('/office/customers/c1/edit')
@@ -100,7 +125,59 @@ describe('CustomerDetail', () => {
     expect(within(items[1]).queryByText('Default')).toBeNull()
 
     expect(screen.getByRole('region', { name: 'Notes' }).textContent).toContain('Pays by bank transfer.\nCall before delivery.')
-    expect(within(screen.getByRole('region', { name: 'Orders' })).getByText(/will be listed here/)).not.toBeNull()
+    const orders = screen.getByRole('region', { name: 'Orders' })
+    expect(await within(orders).findByText(/No orders linked to this customer yet/)).not.toBeNull()
+    expect(within(orders).getByRole('link', { name: 'order page' }).getAttribute('href')).toBe('/office/orders')
+    expect(paths).toEqual(['/api/office/customers/c1', '/api/office/orders?customerId=c1&page=1'])
+  })
+
+  it("lists the customer's orders with totals, status and payment, and shows more", async () => {
+    const first = [
+      orderRow(3, { status: 'confirmed', paymentStatus: 'paid', source: 'staff' }),
+      orderRow(2, { totalTzs: 0, hasQuotationLines: true }),
+    ]
+    const paths = stubApi(found(company), (page) =>
+      json(200, {
+        success: true,
+        data: { orders: page === 1 ? first : [orderRow(1, { status: 'cancelled' })], total: 3, page, pageSize: 2 },
+      }),
+    )
+    renderAt('/office/customers/c1')
+
+    const region = await screen.findByRole('region', { name: 'Orders' })
+    await within(region).findByText('3 orders, newest first')
+    const items = within(region).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(within(items[0]).getByRole('link', { name: 'PSP-000123' }).getAttribute('href')).toBe('/office/orders/o3')
+    expect(within(items[0]).getByText('TZS 1,250,000')).not.toBeNull()
+    expect(within(items[0]).getByText('Confirmed')).not.toBeNull()
+    expect(within(items[0]).getByText('Paid')).not.toBeNull()
+    expect(within(items[0]).getByText(/Staff order/)).not.toBeNull()
+    expect(within(items[1]).getByText('Price on request')).not.toBeNull()
+    expect(within(items[1]).getByText('Unpaid')).not.toBeNull()
+
+    fireEvent.click(within(region).getByRole('button', { name: 'Show more (1 left)' }))
+    expect(await within(region).findByRole('link', { name: 'PSP-000121' })).not.toBeNull()
+    expect(within(region).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(region).queryByRole('button', { name: /Show more/ })).toBeNull()
+    expect(paths.at(-1)).toBe('/api/office/orders?customerId=c1&page=2')
+  })
+
+  it('shows an orders error with Try again', async () => {
+    let attempts = 0
+    stubApi(found(company), () => {
+      attempts += 1
+      return attempts === 1
+        ? json(500, { success: false, error: { message: 'Internal server error' } })
+        : json(200, { success: true, data: { orders: [orderRow(1)], total: 1, page: 1, pageSize: 25 } })
+    })
+    renderAt('/office/customers/c1')
+
+    const region = await screen.findByRole('region', { name: 'Orders' })
+    expect((await within(region).findByRole('alert')).textContent).toBe('Internal server error')
+    fireEvent.click(within(region).getByRole('button', { name: 'Try again' }))
+    expect(await within(region).findByRole('link', { name: 'PSP-000121' })).not.toBeNull()
+    expect(within(region).getByText('1 order, newest first')).not.toBeNull()
   })
 
   it('shows an individual with nothing filled in', async () => {

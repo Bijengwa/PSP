@@ -1634,3 +1634,93 @@ M7.2 ticked; current step is **M7.3**. M7.3 was not started. Nothing committed.
 - Scope Guard: it warned about the order of "tick M7.3" and "set M7.5 as current" in `progress.md`. Both changes are intended: every Done when check passed, so M7.3 is ticked and M7.5 is next in the overnight order.
 
 M7.3 ticked; current step is **M7.5** (the overnight order skips M7.4). M7.5 was not started. Nothing committed.
+
+## M7.5 Link guest orders to customers (2026-10-15, overnight): TICKED
+
+**Changed**
+- `node/src/orders/orders.service.js`: three new functions. Each runs in one transaction, locks the order row first (`FOR UPDATE`), and works on **shop orders only**. The order's guest and delivery snapshot is never changed.
+  - `linkOrderToCustomer(id, customerId)` links an order to an existing customer. Linking again to the same customer does nothing. Linking a different customer is refused (`already_linked`) until the order is unlinked. An unknown customer is refused.
+  - `unlinkOrderCustomer(id)` removes the link and keeps both records. Unlinking an order that has no link does nothing.
+  - `createCustomerFromOrder(id, staffId)` creates an individual customer from the guest name, phone and email, and links the order to it. The delivery area and address become the default address, and the note says "Added from shop order PSP-…". It is refused when the order is already linked, so a double click cannot create two customers.
+  - `listOrders` has a new `customerId` filter.
+- `node/src/customers/customers.service.js`: `createCustomer` can now run inside a transaction passed in by the caller. Without one it works as before.
+- `node/src/orders/orders.routes.js`:
+  - `PUT /api/office/orders/:id/customer {customerId}` links.
+  - `POST /api/office/orders/:id/customer` creates a customer from the order and links it (201).
+  - `DELETE /api/office/orders/:id/customer` unlinks.
+  - All three need a signed-in staff member and the office origin, and return the order as it is now.
+  - They give 409 `NOT_SHOP_ORDER` for a staff order, and 409 `ORDER_LINKED` (with the current `customerId`) when the order is linked to someone else.
+  - They give 400 for a missing, malformed or unknown customer, and 404 for a missing order.
+  - `GET /api/office/orders?customerId=` lists one customer's orders. A malformed id gives 400.
+  - Log lines carry ids only.
+- The suggestions reuse the M6.3 `GET /api/office/customers/duplicates?phone=&email=`. Checkout and Customers store phone (`+255…`) and email (lowercase) in the same form, so the order's own values match on the indexed columns.
+- `node/src/orders/orders.test.js`: 8 new API tests.
+  - Session and origin are required.
+  - The order's stored phone and email find the right customers through the duplicates check.
+  - Linking works for new, delivered and cancelled orders.
+  - Linking the same customer again is fine. Another customer is refused until the order is unlinked.
+  - Bad or unknown customers, missing orders and staff orders are refused.
+  - Creating from an order stores the right customer, address and note, links the order, and leaves the snapshot alone.
+  - Two creates at the same moment make exactly one customer (one 201, one 409).
+  - The `customerId` filter works, and a bad id gives 400.
+- `web/src/management/inApp/pages/OrderDetail.tsx`: a new **Customer record** card on shop orders.
+  - **Not linked:**
+    - "Same phone or email" lists the matching customers: avatar, name (linking to their page), phone and email, a "Same phone" / "Same email" / "Same phone and email" badge, and a **Link** button. It has a skeleton while loading, an empty line when there are no matches, and an error with Try again.
+    - "Find another customer" is a debounced search of the customer directory. It shows the first 5 results, each with Link.
+    - "Create customer from this order" asks once inline ("Create a customer for <name>?"). The question says what will be copied and how many customers already have that phone or email.
+  - **Linked:** the customer, with **Unlink**.
+  - After a change, a notice appears and focus moves to the card heading. A 409 shows the server's reason in the card and reloads the order as it is now.
+  - The "Customer record" row in "Customer and delivery" now shows on staff orders only.
+- `web/src/management/inApp/pages/CustomerDetail.tsx`: the Orders section now lists the customer's orders.
+  - Each row has the order number (links to the order), the date and source, the total (or "Price on request" / "+ items on request"), and the status and payment badges.
+  - The section says "N orders, newest first", and "Show more (N left)" loads the next page.
+  - It has a loading skeleton, an empty state, and an error with Try again.
+- `web/src/index.css`: a new "Linking shop orders to customers (M7.5)" block that uses only existing variables. On phones, the Link and Unlink buttons are full width and 44px tall, the links have 44px targets, and order rows stack.
+- Tests:
+  - `OrderDetail.test.tsx`: 6 new tests: suggest and link, search and link, a search with no results, create after asking, unlink, and a refused link. The stub now answers customer lookups separately, so the existing call checks did not change.
+  - `CustomerDetail.test.tsx`: 2 new tests: the orders list with Show more, and the orders error with Try again.
+- `web/scripts/responsive-check.mjs`:
+  - New routes: `office-order-link`, `office-order-link-search`, `office-order-link-create`, and `office-order-linked` (o5, a closed shop order linked to Asha Mushi).
+  - `office-customer-detail` now shows 5 of 7 orders, so Show more appears.
+  - The fixtures now answer customer searches and `customerId`.
+- Changes outside M7.5 files (see Decisions):
+  - `web/src/shop/NotFoundPage.test.tsx`: one wait raised to 5 s.
+  - `StaffProfile.test.tsx`: two waits raised to 5 s, and two tests get 15 s.
+  - `StaffProfile.tsx`: the Access card's focus effect now uses `useLayoutEffect`.
+  - `responsive-check.mjs`: a screenshot save is retried when the file is locked.
+
+**Decisions**
+- M7.5 has no "Done when" line, so I used the M6.x/M7.x bar: API and pages tested, and the responsive check passing in both themes.
+- Linking is for shop orders only, as the plan says ("On a shop order…"). Staff orders get their customer when they are entered (M7.4).
+- Linking is allowed in every status, including closed and cancelled. A link records whose order it was and changes nothing on the order.
+- An order linked to another customer must be unlinked first (409). It is never re-linked silently, so two staff cannot overwrite each other unnoticed. Unlink is one click without a question, because linking again undoes it. Creating a customer asks once, because it adds a record.
+- No new customer endpoints: the suggestions use the M6.3 duplicates check (exact stored phone or email, at most 5), and the search uses `GET /api/office/customers?q=`.
+- A customer created from an order is an individual, because a guest name does not say whether it is a person or a company. Staff can change the type on the edit form. Matching customers do not block creating one (duplicates are only warnings, as in M6.3), but the question says how many there are.
+- The customer's orders come from the queue endpoint with a `customerId` filter, so they are paged and reuse the queue's row shape.
+- I first named the card buttons `office-link-button`, but that class already existed for text-link buttons. The screenshots showed the buttons as underlined text, so I renamed mine to `office-link-action`.
+- Test reliability. Tests that existed before this step failed now and then in the full parallel suite:
+  - `NotFoundPage`: a lazy page took longer than the 1 s wait.
+  - `StaffProfile` password reset: a focus wait timed out at 1 s.
+  - `StaffProfile` deactivate: focus sometimes never reached Reactivate. `activeElement` was still `body` after 5 s.
+  - The first two got 5 s waits, the same fix as in M7.2 and M7.3. A longer wait cannot fix the third, so I changed the Access card's focus effect from `useEffect` to `useLayoutEffect`. That is the fix M7.3 used on the order page. Users see the same behaviour: the same element gets focus, just before paint.
+  - After these fixes the full suite passed 5 times in a row.
+- `responsive-check.mjs`: on Windows, a screenshot being replaced was sometimes locked (`UNKNOWN: unknown error, open …png`, a different file each run). That stopped the whole run. Now a lock (`UNKNOWN`, `EBUSY` or `EPERM`) is retried up to 5 times. Any other error, or a lock that does not clear, still fails the check.
+- The `frontend-design` skill is not available in this session. I followed the existing Customers and Orders pages and `PSP-Engineering-Group-Preview.html`.
+
+**Verified**
+- `node` `npm test`: 9 suites, 323 tests passed (8 new).
+- `web` `npm test`: 16 files, 144 tests passed (8 new), 5 runs in a row after the fixes. `npm run build` passed (it runs inside the responsive check). `npm run lint` is clean.
+- `npm run check:responsive` passed for every route at 360, 768 and 1280px in light and dark ("Responsive check passed.").
+- Earlier runs found three problems, which I fixed and checked again:
+  - the contact line in a match could not wrap (562px wide at 360);
+  - the shared search box took a 280px height inside the card;
+  - Link and Unlink looked like text (the class clash above).
+- I looked at these screenshots: `office-order-link` at 360 light, `office-order-link-search` at 360 dark, `office-order-link-create` at 1280 light, `office-order-linked` at 768 dark, and `office-customer-detail` at 360 light and 1280 dark. Long names and emails wrap, buttons are full width on phones, badges are readable in both themes, and nothing scrolls sideways.
+- Per the overnight policy, the tests, the responsive check and the screenshots stand in for a manual browser run.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. Per the overnight order, the current step is now M7.4, and it needs the user's confirmation before anyone builds it.
+- Scope Guard: it warned about the order of "tick M7.5" and "set M7.4 as current" in `progress.md`. Both changes are intended. Every check passed, M7.5 is ticked, and M7.4 is the stop point named in the overnight order.
+- `git status` and `git diff` needed approval in this session, so I reviewed the change file by file.
+
+M7.5 ticked; current step is **M7.4** (needs the user). The overnight run stops here. M7.4 was not started. Nothing committed.

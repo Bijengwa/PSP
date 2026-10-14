@@ -4,6 +4,7 @@
 // API calls are answered with fixtures, so no database or Redis is needed.
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
@@ -110,8 +111,9 @@ const ROUTES = [
     },
   },
   { name: 'office-customer-edit', path: '/office/customers/c2/edit', ready: '.office-address' },
-  { name: 'office-customer-detail', path: '/office/customers/c2', ready: '.office-customer-address' },
-  // c3 is answered with no contacts, addresses or notes.
+  // c2 has five linked orders on the first page of seven (M7.5).
+  { name: 'office-customer-detail', path: '/office/customers/c2', ready: '.office-customer-order' },
+  // c3 is answered with no contacts, addresses, notes or orders.
   { name: 'office-customer-detail-empty', path: '/office/customers/c3', ready: '.office-profile-head' },
   { name: 'office-orders', path: '/office/orders', ready: '.office-list-footer' },
   {
@@ -149,6 +151,29 @@ const ROUTES = [
   },
   // o6: cancelled with a reason, linked to a customer, entered by staff.
   { name: 'office-order-cancelled', path: '/office/orders/o6', ready: '.office-order-steps' },
+  // M7.5. o2 is an unlinked shop order whose phone matches the long-named company.
+  { name: 'office-order-link', path: '/office/orders/o2', ready: '.office-link-match' },
+  {
+    name: 'office-order-link-search',
+    path: '/office/orders/o2',
+    ready: '[aria-label="Search results"]',
+    act: async (page) => {
+      await page.locator('.office-link-match').waitFor()
+      await page.getByLabel('Find another customer').fill('Asha')
+      await page.getByLabel('Find another customer').scrollIntoViewIfNeeded()
+    },
+  },
+  {
+    name: 'office-order-link-create',
+    path: '/office/orders/o2',
+    ready: '.office-order-link .office-confirm',
+    act: async (page) => {
+      await page.locator('.office-link-match').waitFor()
+      await page.getByRole('button', { name: 'Create customer from this order' }).click()
+    },
+  },
+  // o5: a closed shop order linked to Asha Mushi.
+  { name: 'office-order-linked', path: '/office/orders/o5', ready: '.office-link-current' },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -424,7 +449,11 @@ function orderDetail(id) {
   return ok({
     order: {
       ...row,
-      customer: cancelled ? { id: 'c2', type: 'company', name: customers[1].companyName } : null,
+      customer: cancelled
+        ? { id: 'c2', type: 'company', name: customers[1].companyName }
+        : row.id === 'o5'
+          ? { id: 'c1', type: 'individual', name: customers[0].fullName }
+          : null,
       createdBy: cancelled ? { id: 's1', fullName: 'Amina Mushi' } : null,
       source: cancelled ? 'staff' : row.source,
       guestEmail: cancelled ? null : 'procurement.office@bugando-medical-centre.example',
@@ -563,7 +592,10 @@ function answer(url, request) {
   if (pathname === '/api/office/staff') return ok({ staff: staffList, total: 31, page: 1, pageSize: 25 })
   if (pathname === '/api/office/customers') {
     const counts = { all: 27, individual: 15, company: 12 }
-    if (searchParams.get('q')) return ok({ customers: [], total: 0, page: 1, pageSize: 25, counts: { all: 0, individual: 0, company: 0 } })
+    const q = searchParams.get('q')
+    if (q?.startsWith('no-such')) return ok({ customers: [], total: 0, page: 1, pageSize: 25, counts: { all: 0, individual: 0, company: 0 } })
+    // The order page's customer search (M7.5).
+    if (q) return ok({ customers: customers.slice(0, 3), total: 3, page: 1, pageSize: 25, counts })
     return ok({ customers, total: 27, page: 1, pageSize: 25, counts })
   }
   // A typed phone matches the long-named company; the customer being edited is left out.
@@ -587,6 +619,12 @@ function answer(url, request) {
     })
   }
   if (pathname === '/api/office/orders') {
+    // A customer's orders (M7.5): c2 has seven, c3 none.
+    const customerId = searchParams.get('customerId')
+    if (customerId) {
+      const mine = customerId === 'c2' ? orders.slice(0, 5).map((row) => ({ ...row, customerId })) : []
+      return ok({ orders: mine, total: mine.length ? 7 : 0, page: 1, pageSize: 25 })
+    }
     // The sidebar asks for new orders only, to show its badge.
     if (searchParams.get('status') === 'new' && !searchParams.get('page')) return ok({ orders: [], total: 4, page: 1, pageSize: 25 })
     const none = { all: 0, new: 0, confirmed: 0, delivered: 0, closed: 0, cancelled: 0 }
@@ -605,6 +643,19 @@ function answer(url, request) {
 }
 
 // ---------- helpers ----------
+
+// Windows can briefly lock a screenshot being replaced (a virus scan or the file
+// indexer reading the old one). Try again a few times before giving up.
+async function saveShot(file, image) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await writeFile(file, image)
+    } catch (error) {
+      if (attempt >= 5 || !['UNKNOWN', 'EBUSY', 'EPERM'].includes(error?.code)) throw error
+      await new Promise((resolve) => setTimeout(resolve, 200 * attempt))
+    }
+  }
+}
 
 function findBrowser() {
   if (process.env.BROWSER_PATH && existsSync(process.env.BROWSER_PATH)) return process.env.BROWSER_PATH
@@ -721,13 +772,10 @@ try {
           if (metrics.h1s !== 1) problems.push(`${metrics.h1s} h1 headings`)
           if (metrics.missing.length) problems.push(`missing ${metrics.missing.join(', ')}`)
         }
-        await page.screenshot({
-          path: path.join(shotsDir, `${route.name}-${size.name}-${theme}.png`),
-          fullPage: true,
-        })
+        await saveShot(path.join(shotsDir, `${route.name}-${size.name}-${theme}.png`), await page.screenshot({ fullPage: true }))
         if (route.print && size.name === '768') {
           await page.emulateMedia({ media: 'print' })
-          await page.screenshot({ path: path.join(shotsDir, `${route.name}-print-${theme}.png`), fullPage: true })
+          await saveShot(path.join(shotsDir, `${route.name}-print-${theme}.png`), await page.screenshot({ fullPage: true }))
           await page.emulateMedia({ media: 'screen' })
         }
         console.log(`${problems.length ? 'FAIL' : 'ok  '} ${label}${problems.length ? ': ' + problems.join('; ') : ''}`)

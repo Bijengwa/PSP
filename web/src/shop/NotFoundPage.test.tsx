@@ -42,6 +42,7 @@ describe('shop 404 and page changes', () => {
     link.focus()
     fireEvent.click(link)
 
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('main')))
+    // The products page is another lazy chunk.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('main')), LAZY_LOAD)
   })
 })

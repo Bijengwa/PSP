@@ -182,7 +182,8 @@ describe('StaffProfile access', () => {
     const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')
     expect(patch?.[0]).toMatch(/\/api\/office\/staff\/p1$/)
     expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ isActive: false })
-  })
+    // The two 5 s waits above need more than the 5 s default for the whole test.
+  }, 15000)
 
   it('Cancel closes the confirmation without sending anything', async () => {
     const fetchMock = stubApi(() => ok({ staff: person }))
@@ -373,7 +374,8 @@ describe('StaffProfile password reset', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Reset password' }))
 
     const input = within(card).getByLabelText('Temporary password') as HTMLInputElement
-    await waitFor(() => expect(document.activeElement).toBe(input))
+    // Up to 5 s: in the full parallel suite the focus effect can run after the 1 s default.
+    await waitFor(() => expect(document.activeElement).toBe(input), { timeout: 5000 })
     expect(input.type).toBe('password')
     expect(input.getAttribute('aria-describedby')).toContain('profile-password-rules')
     expect(within(card).getByRole('list', { name: 'Password rules' })).not.toBeNull()
@@ -382,7 +384,7 @@ describe('StaffProfile password reset', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Set temporary password' }))
 
     const again = await within(card).findByRole('button', { name: 'Reset password' })
-    await waitFor(() => expect(document.activeElement).toBe(again))
+    await waitFor(() => expect(document.activeElement).toBe(again), { timeout: 5000 })
     expect(screen.getByRole('status').textContent).toBe(
       'Temporary password set for Sam Staff. They have been signed out. 2 pending reset requests were resolved.',
     )
@@ -396,7 +398,7 @@ describe('StaffProfile password reset', () => {
     expect(post?.[0]).toMatch(/\/api\/office\/staff\/p1\/reset-password$/)
     expect(post?.[1]?.method).toBe('POST')
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ temporaryPassword: STRONG })
-  })
+  }, 15000)
 
   it('catches a weak password before sending anything', async () => {
     const fetchMock = stubReset(() => ok({ staff: person, resolvedRequests: 0 }))

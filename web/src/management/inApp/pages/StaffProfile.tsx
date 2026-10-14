@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { apiRequest } from '../../../api/client'
 import { CHANGE_PASSWORD_PATH, useAuth } from '../../auth/AuthProvider'
@@ -616,9 +616,10 @@ function AccessCard({ staff, isSelf, onChanged }: AccessProps) {
   const actionRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   // Where focus goes after the next render: the confirmation, or back to the action.
+  // Moved during the commit, before paint (as on the order page), so it cannot be late.
   const focusTo = useRef<'confirm' | 'action' | null>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const target = focusTo.current
     if (!target) return
     focusTo.current = null

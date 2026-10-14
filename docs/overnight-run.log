@@ -1143,3 +1143,36 @@ M7.3 (order detail and status) is built and every check passed, so I ticked it a
 **Guard warnings** (logged):
 - One said `OrdersList.tsx` had been edited by another session. That was the finished, committed M7.2 work, and nothing was overwritten.
 - One questioned ticking M7.3 and moving to M7.5 together. Both are intended.
+I'll be notified when the responsive check finishes.
+
+Lint is clean. Waiting for the responsive check (about 10+ minutes) before updating progress and the log.
+
+M7.5 is built and ticked. The current step is now **M7.4**, which the overnight order leaves for you to confirm before it's built. I didn't start M7.4 and didn't commit anything.
+
+**What staff can now do**
+- **On a shop order:** a new "Customer record" card does three things:
+  - It lists existing customers with the same phone or email as the order, each with a Link button.
+  - It has a search box for finding any other customer to link.
+  - It can create a new customer from the order's name, phone, email and delivery address. This asks once before it creates anything.
+  - Once an order is linked, the card shows that customer with an Unlink button.
+- **On a customer's page:** the Orders section lists that customer's orders, newest first, with totals, status and payment, and a "Show more" button.
+
+**Main choices I made where the plan was silent** (all recorded as Decisions in `docs/overnight-log.md`)
+- Linking only applies to shop orders; staff orders get their customer when they are entered (M7.4). It works in any order status.
+- An order linked to one customer has to be unlinked before it can be linked to another, so two staff can't overwrite each other without noticing.
+- A customer created from an order is set up as an individual; staff can change it to a company on the edit form.
+- I added no new customer endpoints. The suggestions and search use the existing duplicate check and customer search.
+
+**Checks**
+- `node` `npm test`: 323 passed (8 new).
+- `web` `npm test`: 144 passed (8 new), 5 full runs in a row.
+- `npm run build` passed and `npm run lint` is clean.
+- `npm run check:responsive` passed for every route at 360, 768 and 1280px in light and dark. I added four order-page routes and gave the customer page fixture orders. I looked at the screenshots: on the way, they showed one layout bug that made the order page scroll sideways at 360px, a search box that was far too tall, and Link/Unlink buttons that looked like plain text (my class name clashed with an existing one). I fixed all three.
+
+**Changes outside M7.5 that you should check**
+- **Flaky tests that already existed:** the full web suite failed now and then in older tests.
+  - Two waits in `NotFoundPage.test.tsx` and `StaffProfile.test.tsx` were too short; I raised them to 5 s, as the M7.2 and M7.3 runs did.
+  - In one `StaffProfile` test, focus sometimes never reached the button, so a longer wait couldn't help. I changed that card's focus code in `StaffProfile.tsx` from `useEffect` to `useLayoutEffect`, the same fix M7.3 used. Users see the same behaviour.
+- **Responsive check script:** Windows sometimes locked an old screenshot while the check was replacing it, which stopped the whole run. Screenshot saves now retry up to 5 times. Any other error, or a lock that doesn't clear, still fails the check.
+
+The `frontend-design` skill wasn't available, so I matched the existing Customers and Orders pages and the preview file. I couldn't run `git status` or `git diff` because they needed approval, so I reviewed the changes file by file.

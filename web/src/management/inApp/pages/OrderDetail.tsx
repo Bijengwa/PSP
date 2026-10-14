@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { Link, useParams } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
 import '../../auth/auth.css'
+import { initials } from '../layout/ProfileMenu'
 import { ORDERS_CHANGED } from '../layout/Sidebar'
 import { Facts } from './CustomerDetail'
 import { CUSTOMERS_PATH } from './CustomerForm'
-import { phoneText } from './CustomersList'
+import { displayName, phoneText, type Customer } from './CustomersList'
 import {
   ORDERS_PATH,
   PLACED,
@@ -170,6 +171,31 @@ const PlusIcon = () => (
 const TrashIcon = () => (
   <Svg size={16}>
     <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+  </Svg>
+)
+const SearchIcon = () => (
+  <Svg>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="M16 16l4.5 4.5" />
+  </Svg>
+)
+const BuildingIcon = () => (
+  <Svg>
+    <path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16" />
+    <path d="M15 9h4a1 1 0 0 1 1 1v11" />
+    <path d="M8 8h3M8 12h3M8 16h3M3 21h18" />
+  </Svg>
+)
+const LinkIcon = () => (
+  <Svg size={16}>
+    <path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" />
+    <path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" />
+  </Svg>
+)
+const PersonPlusIcon = () => (
+  <Svg>
+    <circle cx="10" cy="8" r="3.5" />
+    <path d="M3.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6" />
   </Svg>
 )
 
@@ -346,6 +372,347 @@ function ItemsTable({ order, draft, onDraft }: ItemsProps) {
         </tr>
       </tfoot>
     </table>
+  )
+}
+
+// ---------- linking a shop order to a customer (M7.5) ----------
+
+type CustomerMatch = Customer & { matchedOn: ('phone' | 'email')[] }
+type Found<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; items: T[] }
+
+const SEARCH_DEBOUNCE_MS = 300
+const SEARCH_MIN = 2
+const SEARCH_SHOWN = 5
+
+function matchText(match: CustomerMatch) {
+  const on = match.matchedOn
+  if (on.includes('phone') && on.includes('email')) return 'Same phone and email'
+  return on.includes('phone') ? 'Same phone' : 'Same email'
+}
+
+function CustomerAvatar({ customer }: { customer: Pick<Customer, 'type'> & { name: string } }) {
+  return customer.type === 'company' ? (
+    <span className="office-avatar office-avatar-company" aria-hidden="true">
+      <BuildingIcon />
+    </span>
+  ) : (
+    <span className="office-avatar" aria-hidden="true">
+      {initials(customer.name)}
+    </span>
+  )
+}
+
+// Customers who have the order's phone or email (the M6.3 duplicates check, which
+// compares the stored forms the shop also uses).
+function useMatches(order: OrderDetailRecord, enabled: boolean) {
+  const [found, setFound] = useState<Found<CustomerMatch>>({ status: 'loading' })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (!enabled) return
+    const controller = new AbortController()
+    const params = new URLSearchParams({ phone: order.guestPhone })
+    if (order.guestEmail) params.set('email', order.guestEmail)
+    apiRequest<{ matches: CustomerMatch[] }>(`/api/office/customers/duplicates?${params}`, {
+      signal: controller.signal,
+    }).then(
+      (result) =>
+        setFound(result.ok ? { status: 'ready', items: result.data.matches } : { status: 'error', message: errorText(result) }),
+      () => {}, // aborted
+    )
+    return () => controller.abort()
+  }, [order.guestPhone, order.guestEmail, enabled, attempt])
+
+  function retry() {
+    setFound({ status: 'loading' })
+    setAttempt((n) => n + 1)
+  }
+
+  return { found, retry }
+}
+
+// The customer directory searched by name, company, phone or email, after a short pause.
+function useCustomerSearch(q: string) {
+  const [found, setFound] = useState<Found<Customer> | null>(null)
+  const term = q.trim()
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      if (term.length < SEARCH_MIN) {
+        setFound(null)
+        return
+      }
+      setFound({ status: 'loading' })
+      apiRequest<{ customers: Customer[] }>(`/api/office/customers?${new URLSearchParams({ q: term })}`, {
+        signal: controller.signal,
+      }).then(
+        (result) =>
+          setFound(
+            result.ok
+              ? { status: 'ready', items: result.data.customers.slice(0, SEARCH_SHOWN) }
+              : { status: 'error', message: errorText(result) },
+          ),
+        () => {}, // aborted
+      )
+    }, SEARCH_DEBOUNCE_MS)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [term])
+
+  return found
+}
+
+type LinkProps = {
+  order: OrderDetailRecord
+  onChanged: (order: OrderDetailRecord, notice: string) => void
+  onRefused: () => void
+}
+
+// The "Customer record" card of a shop order: the linked customer with Unlink, or
+// customers with the same phone or email, a search of the directory, and a way to
+// create a customer from the order. Linking is undone with Unlink, so it does not ask
+// first; creating a customer does.
+function CustomerLinkCard({ order, onChanged, onRefused }: LinkProps) {
+  const linked = order.customer
+  const { found: matches, retry: retryMatches } = useMatches(order, !linked)
+  const [q, setQ] = useState('')
+  const results = useCustomerSearch(linked ? '' : q)
+
+  const [working, setWorking] = useState<string | null>(null) // customer id, 'create' or 'unlink'
+  const [error, setError] = useState<string | null>(null)
+  const [asking, setAsking] = useState(false)
+  const askRef = useRef<HTMLDivElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  // The button that was used is gone after a change, so focus moves to the card heading.
+  const focusHeading = useRef(false)
+
+  useLayoutEffect(() => {
+    if (asking) askRef.current?.querySelector<HTMLElement>('button:last-child')?.focus()
+  }, [asking])
+
+  useLayoutEffect(() => {
+    if (!focusHeading.current) return
+    focusHeading.current = false
+    headingRef.current?.focus()
+  })
+
+  const path = `/api/office/orders/${encodeURIComponent(order.id)}/customer`
+
+  async function send(key: string, method: 'PUT' | 'POST' | 'DELETE', body: unknown, done: (order: OrderDetailRecord) => string) {
+    if (working) return
+    setWorking(key)
+    setError(null)
+    const result = await apiRequest<{ order: OrderDetailRecord }>(path, { method, body })
+    setWorking(null)
+    if (result.ok) {
+      setAsking(false)
+      setQ('')
+      focusHeading.current = true
+      onChanged(result.data.order, done(result.data.order))
+      return
+    }
+    if (result.status === 409 || result.status === 404) {
+      setAsking(false)
+      setError(errorText(result))
+      focusHeading.current = true
+      onRefused()
+      return
+    }
+    const field = (result.details as { customerId?: unknown } | undefined)?.customerId
+    setError(typeof field === 'string' ? field : errorText(result))
+  }
+
+  const link = (customer: Customer) =>
+    send(customer.id, 'PUT', { customerId: customer.id }, () => `Linked to ${displayName(customer)}.`)
+  const create = () =>
+    send('create', 'POST', undefined, (next) => `Customer ${next.customer?.name ?? ''} created and linked.`)
+  const unlink = (name: string) => send('unlink', 'DELETE', undefined, () => `Unlinked from ${name}.`)
+
+  // One customer that could be linked: who they are, how to reach them, and Link.
+  function option(customer: Customer, note?: string) {
+    const name = displayName(customer)
+    const contacts = [customer.phone && phoneText(customer.phone), customer.email].filter(Boolean).join(' · ')
+    const busy = working === customer.id
+    return (
+      <li key={customer.id} className="office-link-option">
+        <CustomerAvatar customer={{ type: customer.type, name }} />
+        <span className="office-link-option-text">
+          <Link className="office-staff-name office-staff-link" to={`${CUSTOMERS_PATH}/${customer.id}`}>
+            {name}
+          </Link>
+          <span className="office-staff-meta office-link-contacts">{contacts || 'No contact details'}</span>
+          {note && <span className="office-status office-status-pending office-link-match">{note}</span>}
+        </span>
+        <button
+          type="button"
+          className="button button-secondary office-link-action"
+          onClick={() => link(customer)}
+          disabled={working !== null}
+          aria-label={`Link to ${name}`}
+        >
+          {busy ? <span className="spinner" aria-hidden="true" /> : <LinkIcon />}
+          {busy ? 'Linking…' : 'Link'}
+        </button>
+      </li>
+    )
+  }
+
+  const errorBox = (
+    <div className="office-error" role="alert" hidden={!error}>
+      {error}
+    </div>
+  )
+
+  if (linked) {
+    return (
+      <section className="office-card office-order-link" aria-labelledby="order-customer-heading">
+        <h2 id="order-customer-heading" ref={headingRef} tabIndex={-1}>
+          Customer record
+        </h2>
+        <p className="office-card-sub">This order is listed on the customer's page.</p>
+        <div className="office-link-option office-link-current">
+          <CustomerAvatar customer={linked} />
+          <span className="office-link-option-text">
+            <Link className="office-staff-name office-staff-link" to={`${CUSTOMERS_PATH}/${linked.id}`}>
+              {linked.name}
+            </Link>
+            <span className="office-staff-meta">{linked.type === 'company' ? 'Company' : 'Individual'}</span>
+          </span>
+          <button
+            type="button"
+            className="button button-secondary office-link-action"
+            onClick={() => unlink(linked.name)}
+            disabled={working !== null}
+          >
+            {working === 'unlink' && <span className="spinner" aria-hidden="true" />}
+            {working === 'unlink' ? 'Unlinking…' : 'Unlink'}
+          </button>
+        </div>
+        {errorBox}
+      </section>
+    )
+  }
+
+  const matchIds = new Set(matches.status === 'ready' ? matches.items.map((m) => m.id) : [])
+
+  return (
+    <section className="office-card office-order-link" aria-labelledby="order-customer-heading">
+      <h2 id="order-customer-heading">Customer record</h2>
+      <p className="office-card-sub">
+        <span className="office-profile-empty">Not linked.</span> Link this shop order to a customer so it is listed on
+        their page.
+      </p>
+
+      <div className="office-link-group" role="group" aria-labelledby="order-matches-heading">
+        <h3 id="order-matches-heading" className="office-link-heading">
+          Same phone or email
+        </h3>
+        {matches.status === 'loading' && (
+          <ul className="office-skeleton office-link-skeleton" aria-busy="true" aria-label="Looking for matching customers">
+            <li className="office-skeleton-row" />
+          </ul>
+        )}
+        {matches.status === 'error' && (
+          <div className="office-link-error">
+            <p className="office-address-empty">Matching customers could not be checked. {matches.message}</p>
+            <button type="button" className="button button-secondary" onClick={retryMatches}>
+              Try again
+            </button>
+          </div>
+        )}
+        {matches.status === 'ready' &&
+          (matches.items.length === 0 ? (
+            <p className="office-address-empty">No customer has this phone or email yet.</p>
+          ) : (
+            <ul className="office-link-list" aria-label="Matching customers">
+              {matches.items.map((match) => option(match, matchText(match)))}
+            </ul>
+          ))}
+      </div>
+
+      <div className="office-link-group">
+        <label className="office-link-heading" htmlFor="order-customer-search">
+          Find another customer
+        </label>
+        <div className="office-search">
+          <span className="office-search-icon">
+            <SearchIcon />
+          </span>
+          <input
+            id="order-customer-search"
+            className="field-input"
+            type="search"
+            placeholder="Name, company, phone or email"
+            autoComplete="off"
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
+          />
+        </div>
+        {results?.status === 'loading' && (
+          <ul className="office-skeleton office-link-skeleton" aria-busy="true" aria-label="Searching customers">
+            <li className="office-skeleton-row" />
+          </ul>
+        )}
+        {results?.status === 'error' && <p className="office-address-empty">{results.message}</p>}
+        {results?.status === 'ready' &&
+          (results.items.length === 0 ? (
+            <p className="office-address-empty" role="status">
+              No customers match “{q.trim()}”.
+            </p>
+          ) : (
+            <ul className="office-link-list" aria-label="Search results">
+              {results.items.map((customer) =>
+                option(customer, matchIds.has(customer.id) ? 'Same phone or email' : undefined),
+              )}
+            </ul>
+          ))}
+      </div>
+
+      {errorBox}
+
+      {asking ? (
+        <div className="office-confirm" role="group" aria-labelledby="order-create-question" ref={askRef}>
+          <p id="order-create-question" className="office-confirm-question">
+            Create a customer for {order.guestName}?
+          </p>
+          <p className="office-confirm-text">
+            A new individual customer is added with this order's name, phone, email and delivery address, and the
+            order is linked to it. You can edit the customer afterwards.
+            {matches.status === 'ready' &&
+              matches.items.length > 0 &&
+              ` ${matches.items.length === 1 ? 'One customer already has' : `${matches.items.length} customers already have`} this phone or email.`}
+          </p>
+          <div className="office-reset-actions">
+            <button type="button" className="button button-primary" onClick={create} disabled={working !== null}>
+              {working === 'create' && <span className="spinner" aria-hidden="true" />}
+              {working === 'create' ? 'Creating…' : 'Create and link'}
+            </button>
+            <button type="button" className="button button-secondary" onClick={() => setAsking(false)} disabled={working !== null}>
+              Not now
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="office-link-create">
+          <p className="office-address-empty">Not in the directory yet?</p>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => {
+              setError(null)
+              setAsking(true)
+            }}
+            disabled={working !== null}
+          >
+            <PersonPlusIcon />
+            Create customer from this order
+          </button>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -604,7 +971,10 @@ export default function OrderDetail() {
         <span className="office-staff-meta">{order.deliveryArea}</span>
       </span>,
     ],
-    [
+  ]
+  // A shop order's link has its own card below; a staff order has its customer from the start.
+  if (order.source === 'staff') {
+    contactRows.push([
       'Customer record',
       order.customer ? (
         <Link className="office-staff-link" to={`${CUSTOMERS_PATH}/${order.customer.id}`}>
@@ -613,8 +983,20 @@ export default function OrderDetail() {
       ) : (
         <span className="office-profile-empty">Not linked</span>
       ),
-    ],
-  ]
+    ])
+  }
+
+  function customerChanged(next: OrderDetailRecord, message: string) {
+    setLoad({ status: 'ready', order: next })
+    setError(null)
+    setNotice(message)
+  }
+
+  // Someone else linked or unlinked it meanwhile: the card shows why; show the order as it is now.
+  function customerRefused() {
+    setNotice(null)
+    refresh()
+  }
 
   const recordRows: [string, ReactNode][] = [
     ['Source', order.source === 'shop' ? 'Shop (guest checkout)' : 'Entered by staff'],
@@ -777,6 +1159,10 @@ export default function OrderDetail() {
             <p className="office-card-sub">As given when the order was placed</p>
             <Facts rows={contactRows} />
           </section>
+
+          {order.source === 'shop' && (
+            <CustomerLinkCard order={order} onChanged={customerChanged} onRefused={customerRefused} />
+          )}
         </div>
 
         <div className="office-product-side">
