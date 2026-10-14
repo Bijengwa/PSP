@@ -1,3 +1,69 @@
+## M4.6 Role assignment (2026-10-14): done, TICKED
+
+Only M4.6 was worked on. Current step is now **M4.7**; it was not started. Nothing was committed.
+
+**What "done" meant here:** the plan gives M4.6 a Scope but no "Done when" line. I used the Scope itself as the bar, and each part has a test: the role comes from the existing `roles` rows, the person's sessions end, an admin cannot remove their own admin role, and the last active admin cannot be demoted. The standard checks and the responsive check also had to pass. Say if you meant something more.
+
+**Changed**
+- `node/src/auth/auth.service.js`:
+  - new `listRoles()`, which returns the `roles` rows (name, description);
+  - new `setStaffRole(id, role, { actorId })`. An unknown role is refused (`role`). It uses the same locking as `setStaffActive`: first the active admins (in id order), then the target, all in one transaction. Removing your own admin role is refused (`self`), and so is demoting the last *active* admin (`last_admin`). An inactive admin can be demoted. Setting the same role again changes nothing and keeps the sessions. A real change calls `destroyAllForStaff` inside the transaction (if Redis is down the write rolls back, 503) and again after the commit.
+- `node/src/auth/auth.routes.js` (`officeRouter`, admin only, same origin):
+  - `GET /api/office/roles` lists the assignable roles;
+  - `PATCH /api/office/staff/:id` with `{ role }` alone. A mixed body or a non-string value gives 400 `VALIDATION_ERROR` with `details.role`. So does an unknown role (the check is case-sensitive). Your own admin role gives 409 `CANNOT_DEMOTE_SELF`, the last active admin gives 409 `LAST_ADMIN`, and an unknown id gives 404. A real change logs `staff.role_changed` with the ids and the old and new role names.
+  - Name/phone and `{ isActive }` work as before.
+- `node/src/auth/staff.test.js`:
+  - the `person`/`me`/`login` helpers moved to file level so the status and role tests share them;
+  - one M4.4 case changed: `{ role: 'admin' }` alone is valid now, so the "other fields" case sends `{ role: 'admin', fullName }` instead;
+  - 11 new tests:
+    - the roles list (admin only);
+    - a promotion ends every session (two devices); the person signs in again as admin and can reach IT endpoints, and the acting admin stays signed in;
+    - a demotion ends the sessions, and after signing in again IT endpoints give 403;
+    - the same role keeps the sessions;
+    - your own admin role gives 409;
+    - the last active admin is refused (service level, as in M4.5);
+    - an inactive admin can be demoted;
+    - two admins demoting each other in parallel leave exactly one admin;
+    - unknown or invalid roles and mixed bodies are refused and change nothing;
+    - with Redis down the request gives 503 and the role is unchanged;
+    - 404, non-admin 403 and foreign-origin 403.
+- `web/src/management/inApp/pages/StaffProfile.tsx`: a new **Role** card between Account and Access.
+  - **Change role** loads `GET /api/office/roles` (a skeleton while loading; an error with Try again and Cancel).
+  - It shows one radio tile per role with the role's description. The current role is marked "Current", and focus goes to it.
+  - A note says the person will be signed out and sign in again as the chosen role. **Save role** stays disabled until a different role is picked, and shows a spinner while sending. A server refusal appears in an alert and the choice is kept.
+  - On success, the badge and Account facts update, the page status line says "<name> is now <Role> and has been signed out.", and focus returns to Change role.
+  - On your own admin profile there is no button, only a note.
+- `web/src/index.css`: `.office-role-*` styles (tokens only):
+  - the chosen tile uses `--primary-soft` with a primary border, and a keyboard focus ring goes around the whole tile;
+  - transitions are 150ms and turn off under reduced motion;
+  - tiles are at least 44px tall, and on phones the buttons are full width.
+- `web/src/management/inApp/pages/StaffProfile.test.tsx`: 5 new tests:
+  - change role (PATCH body, focus, announcement, disabled Save until a new choice);
+  - a server refusal is shown and the choice is kept;
+  - a failed roles load can be retried;
+  - Cancel sends nothing;
+  - there is no role change on your own admin profile.
+- `web/scripts/responsive-check.mjs`: a `/api/office/roles` fixture and the route `office-staff-profile-role` (form open, Admin chosen).
+
+**Verified**
+- `node` `npm test`: 7 suites, 209 tests passed (198 before).
+- `web` `npm test`: 10 files, 88 tests passed (83 before). `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed, 25 routes × 3 widths × 2 themes, with no sideways scroll.
+  - The first three runs stopped on the Windows `UNKNOWN: unknown error, open …png` error seen in M4.4, each time on a different, already existing screenshot (`office-staff-profile-768-light`, `office-my-profile-360-dark`, `office-staff-profile-1280-dark`). The fourth run passed in full.
+  - Something seems to hold the screenshot files open now and then (antivirus or indexing?), so this is worth a look.
+- Screenshots I looked at: `office-staff-profile-role-360-light`, `-360-dark`, `-1280-light`, and `office-staff-profile-768-dark` (closed card with Change role). All are readable in both themes, wrap the long name cleanly, and show full-width 44px buttons on phones.
+- Not done: a mutation check (removing the session revocation to show the tests fail). The shell command needed approval.
+
+**Notes**
+- The role list comes from the database, so roles added later (H3) will appear without UI changes. Their label is the raw name unless it is added to `ROLE_LABELS`.
+- Registration (`REGISTRABLE_ROLES`) still offers only admin and staff; it was not touched.
+- The check re-saved some existing screenshots (pixel differences only).
+
+**Guard warnings**
+- **Progress Guard:** said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago.
+- **Collision Guard:** fired on `auth.service.js`, `auth.routes.js`, `staff.test.js`, `StaffProfile.tsx`, `StaffProfile.test.tsx`, `index.css` and `responsive-check.mjs`. The other session (adcf4232) was the M4.5 run, and its work is in commit d6f6f0c. After my first edit, `git status` showed only my own change, so nothing was overwritten.
+- Every file touched is on the approved M4 list. No new files except screenshots.
+
 ## M4.5 Activate/deactivate (2026-10-14): done, TICKED
 
 Only M4.5 was worked on. Current step is now **M4.6**; it was not started. Nothing was committed.

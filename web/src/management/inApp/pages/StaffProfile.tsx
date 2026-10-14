@@ -237,6 +237,200 @@ function ContactForm({ staff, onSaved, onCancel }: EditFormProps) {
   )
 }
 
+type RoleOption = { name: string; description: string | null }
+
+type RolesState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; roles: RoleOption[] }
+
+type RoleProps = {
+  staff: StaffDetail
+  isSelf: boolean
+  onChanged: (staff: StaffDetail) => void
+}
+
+// Change the role to one of the existing roles. The person is signed out everywhere
+// and signs in again under the new role. The server refuses removing your own admin
+// role and demoting the last active admin, and its message is shown here.
+function RoleCard({ staff, isSelf, onChanged }: RoleProps) {
+  const [open, setOpen] = useState(false)
+  const [roles, setRoles] = useState<RolesState>({ status: 'loading' })
+  const [rolesAttempt, setRolesAttempt] = useState(0)
+  const [choice, setChoice] = useState(staff.role)
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const actionRef = useRef<HTMLButtonElement>(null)
+  const optionsRef = useRef<HTMLFieldSetElement>(null)
+  // Where focus goes after the next render: the chosen option, or back to the action.
+  const focusTo = useRef<'options' | 'action' | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const controller = new AbortController()
+    apiRequest<{ roles: RoleOption[] }>('/api/office/roles', { signal: controller.signal }).then(
+      (result) => {
+        if (result.ok) {
+          setRoles({ status: 'ready', roles: result.data.roles })
+          focusTo.current = 'options'
+        } else if (result.status === 503) {
+          setRoles({ status: 'error', message: 'The service is temporarily unavailable. Please try again shortly.' })
+        } else setRoles({ status: 'error', message: result.message })
+      },
+      () => {}, // aborted
+    )
+    return () => controller.abort()
+  }, [open, rolesAttempt])
+
+  useEffect(() => {
+    const target = focusTo.current
+    if (!target) return
+    if (target === 'options') {
+      const checked = optionsRef.current?.querySelector<HTMLInputElement>('input:checked')
+      if (!checked) return
+      checked.focus()
+    } else actionRef.current?.focus()
+    focusTo.current = null
+  })
+
+  function start() {
+    setChoice(staff.role)
+    setError(null)
+    setRoles({ status: 'loading' })
+    setOpen(true)
+  }
+
+  function cancel() {
+    setOpen(false)
+    setError(null)
+    focusTo.current = 'action'
+  }
+
+  function retryRoles() {
+    setRoles({ status: 'loading' })
+    setRolesAttempt((n) => n + 1)
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (working || choice === staff.role) return
+    setWorking(true)
+    setError(null)
+    const result = await apiRequest<{ staff: StaffDetail }>(`/api/office/staff/${staff.id}`, {
+      method: 'PATCH',
+      body: { role: choice },
+    })
+    setWorking(false)
+
+    if (result.ok) {
+      setOpen(false)
+      onChanged(result.data.staff)
+      focusTo.current = 'action'
+      return
+    }
+    // 401 and 503 are also handled by the auth provider (login / unavailable screen).
+    if (result.status === 403) setError('Only administrators can change roles.')
+    else if (result.status === 404) setError('This person no longer exists.')
+    else if (result.status === 503) setError('The service is temporarily unavailable. Please try again shortly.')
+    else setError(result.message)
+  }
+
+  const firstName = staff.fullName.split(' ')[0]
+  const locked = isSelf && staff.role === 'admin'
+
+  return (
+    <section className="office-card" aria-labelledby="profile-role-heading">
+      <div className="office-profile-card-head">
+        <h2 id="profile-role-heading">Role</h2>
+        {!open && !locked && (
+          <button ref={actionRef} type="button" className="button button-secondary" onClick={start}>
+            Change role
+          </button>
+        )}
+      </div>
+
+      <p className="office-card-sub">
+        {locked
+          ? 'This is your own account. You cannot remove your own admin role; another admin can change it.'
+          : `${firstName} is ${roleLabel(staff.role)}. Changing the role signs them out on every device at once.`}
+      </p>
+
+      {open && roles.status === 'loading' && (
+        <ul className="office-skeleton office-role-skeleton" aria-busy="true" aria-label="Loading roles">
+          {[0, 1].map((n) => (
+            <li key={n} className="office-skeleton-row" />
+          ))}
+        </ul>
+      )}
+
+      {open && roles.status === 'error' && (
+        <>
+          <div className="office-error" role="alert">
+            {roles.message}
+          </div>
+          <div className="office-reset-actions">
+            <button type="button" className="button button-secondary" onClick={retryRoles}>
+              Try again
+            </button>
+            <button type="button" className="button button-secondary" onClick={cancel}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+
+      {open && roles.status === 'ready' && (
+        <form className="office-role-form" onSubmit={handleSubmit} noValidate aria-busy={working}>
+          <fieldset ref={optionsRef} className="office-role-options" disabled={working}>
+            <legend className="field-label">New role</legend>
+            {roles.roles.map((role) => (
+              <label key={role.name} className="office-role-option">
+                <input
+                  type="radio"
+                  name="role"
+                  value={role.name}
+                  checked={choice === role.name}
+                  onChange={() => setChoice(role.name)}
+                  aria-describedby={role.description ? `role-${role.name}-description` : undefined}
+                />
+                <span className="office-role-option-name">
+                  {roleLabel(role.name)}
+                  {role.name === staff.role && <span className="office-status">Current</span>}
+                </span>
+                {role.description && (
+                  <span id={`role-${role.name}-description`} className="office-role-option-text">
+                    {role.description}
+                  </span>
+                )}
+              </label>
+            ))}
+          </fieldset>
+
+          <p className="office-role-note">
+            {choice === staff.role
+              ? 'Choose a different role to continue.'
+              : `${staff.fullName} is signed out right away and signs in again as ${roleLabel(choice)}.`}
+          </p>
+
+          <div className="office-error" role="alert" hidden={!error}>
+            {error}
+          </div>
+
+          <div className="office-reset-actions">
+            <button type="submit" className="button button-primary" disabled={working || choice === staff.role}>
+              {working && <span className="spinner" aria-hidden="true" />}
+              {working ? 'Saving…' : 'Save role'}
+            </button>
+            <button type="button" className="button button-secondary" onClick={cancel} disabled={working}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
+
 type AccessProps = {
   staff: StaffDetail
   isSelf: boolean
@@ -362,7 +556,7 @@ function AccessCard({ staff, isSelf, onChanged }: AccessProps) {
 }
 
 // /office/staff/:id (admins): one person's profile. Name and phone can be
-// corrected, and access deactivated or given back; email and role cannot change here.
+// corrected, the role changed, and access deactivated or given back; the email cannot change.
 export default function StaffProfile() {
   const { id = '' } = useParams()
   const { state, refresh } = useAuth()
@@ -419,6 +613,11 @@ export default function StaffProfile() {
         ? `${staff.fullName} is active again and can sign in.`
         : `${staff.fullName} is deactivated and has been signed out.`,
     )
+  }
+
+  function roleChanged(staff: StaffDetail) {
+    setLoad({ status: 'ready', staff })
+    setNotice(`${staff.fullName} is now ${roleLabel(staff.role)} and has been signed out.`)
   }
 
   function retry() {
@@ -530,6 +729,7 @@ export default function StaffProfile() {
         <p className="office-settings-hint office-profile-note">The email address is the sign-in name and cannot be changed.</p>
       </section>
 
+      <RoleCard staff={staff} isSelf={staff.id === selfId} onChanged={roleChanged} />
       <AccessCard staff={staff} isSelf={staff.id === selfId} onChanged={statusChanged} />
     </div>
   )

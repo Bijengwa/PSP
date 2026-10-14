@@ -830,3 +830,36 @@ The step's "Done when" passes: a test shows a deactivated person gets 401 on the
 - **Scope Guard:** it asked me to confirm the "Done when" check before ticking; it passed.
 
 All of this is written up in `docs/overnight-log.md`.
+M4.6 (role assignment) is done and ticked. `docs/progress.md` now says the current step is **M4.7**, which I did not start. Nothing was committed.
+
+One thing to know first: the plan gives M4.6 a Scope but no "Done when" line. I treated each part of the Scope as the bar and wrote a test for each: the role must be one of the existing `roles` rows, the person's sessions end, an admin can't remove their own admin role, and the last active admin can't be demoted. The normal checks also had to pass. I flagged this in the log in case you meant more.
+
+**What changed**
+- **API:**
+  - New `GET /api/office/roles` lists the roles from the database.
+  - `PATCH /api/office/staff/:id` now accepts `{ role }` on its own. A real change signs the person out everywhere at once. If Redis is down, nothing changes and the request returns 503.
+  - Refusals:
+    - an unknown role or a mixed body: 400;
+    - removing your own admin role: 409;
+    - demoting the last active admin: 409. An inactive admin can still be demoted.
+  - Two admins demoting each other at the same time can't leave the office with no admin.
+- **Staff profile page:** a new Role card between Account and Access.
+  - "Change role" shows one option per role, with its description, and marks the current one.
+  - A note says the person will be signed out. "Save role" stays disabled until a different role is picked.
+  - Loading, error-with-retry and server-refusal states are all handled.
+  - On your own admin profile the card shows only a note, no button.
+- **Tests:** 11 new backend tests and 5 new web tests, plus a new role screen in the responsive check.
+
+**Verified**
+- `node` `npm test`: 209 passed.
+- `web`: `npm test` 88 passed; lint and build are clean.
+- `npm run check:responsive` passed for every route at 360, 768 and 1280px in light and dark. The first three runs stopped on the Windows "unknown error" when saving a screenshot (a different existing file each time, as in M4.4). The fourth run passed in full. Something seems to hold those files open now and then, perhaps antivirus or indexing, so it's worth a look.
+- I looked at the new role screenshots (360 light and dark, 1280 light, and the 768 dark profile with the card closed). Both themes are readable and nothing scrolls sideways.
+- **Not done:** a mutation check (removing the sign-out to prove the tests catch it). The shell command needed approval nobody could give tonight.
+
+**Guard warnings** (all in the log)
+- **Progress Guard:** it flagged the mention of M5.6. That's only the rule for when to run the responsive check; M5.6 was finished long ago.
+- **Collision Guard:** it fired on every file I edited. The other session was the M4.5 run, and its work is already in commit d6f6f0c, so nothing was overwritten.
+- **Scope Guard:** it asked me to confirm the "Done when" checks before ticking. Since M4.6 has none, I used the Scope bar described at the top.
+
+Every file I touched is on the approved M4 list. The only new files are screenshots.

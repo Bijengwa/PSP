@@ -240,6 +240,114 @@ describe('StaffProfile access', () => {
   })
 })
 
+describe('StaffProfile role', () => {
+  const roles = [
+    { name: 'admin', description: 'Full access to the office' },
+    { name: 'staff', description: 'Normal office employee' },
+  ]
+
+  // Profile reads, the roles list, and `patch` for the role change.
+  function stubRoles(patch: (body: { role: string }) => Response, rolesResponse = () => ok({ roles })) {
+    return stubApi((url, init) => {
+      if (url.endsWith('/api/office/roles')) return rolesResponse()
+      if (init?.method === 'PATCH') return patch(JSON.parse(String(init.body)))
+      return ok({ staff: person })
+    })
+  }
+
+  it('changes the role to one of the existing roles and says the person was signed out', async () => {
+    const fetchMock = stubRoles((body) => ok({ staff: { ...person, role: body.role } }))
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Role' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Change role' }))
+
+    const staffOption = await within(card).findByRole('radio', { name: /Staff/ })
+    await waitFor(() => expect(document.activeElement).toBe(staffOption))
+    expect((staffOption as HTMLInputElement).checked).toBe(true)
+    const adminOption = within(card).getByRole('radio', { name: /Admin/ })
+    expect(adminOption.getAttribute('aria-describedby')).toBe('role-admin-description')
+    const save = within(card).getByRole('button', { name: 'Save role' }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+
+    fireEvent.click(adminOption)
+    expect(save.disabled).toBe(false)
+    expect(within(card).getByText('Sam Staff is signed out right away and signs in again as Admin.')).not.toBeNull()
+    fireEvent.click(save)
+
+    const change = await within(card).findByRole('button', { name: 'Change role' })
+    await waitFor(() => expect(document.activeElement).toBe(change))
+    expect(screen.getByRole('status').textContent).toBe('Sam Staff is now Admin and has been signed out.')
+    expect(within(card).getByText(/Sam is Admin\./)).not.toBeNull()
+
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')
+    expect(patch?.[0]).toMatch(/\/api\/office\/staff\/p1$/)
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ role: 'admin' })
+  })
+
+  it('shows the server refusal and keeps the choice', async () => {
+    stubRoles(() =>
+      json(409, {
+        success: false,
+        error: { message: 'The last active admin cannot be given another role.', code: 'LAST_ADMIN' },
+      }),
+    )
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Role' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Change role' }))
+    fireEvent.click(await within(card).findByRole('radio', { name: /Admin/ }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save role' }))
+
+    expect((await within(card).findByRole('alert')).textContent).toBe(
+      'The last active admin cannot be given another role.',
+    )
+    expect((within(card).getByRole('radio', { name: /Admin/ }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByRole('status').textContent).toBe('')
+  })
+
+  it('a failed roles load shows the error with a retry that works', async () => {
+    let calls = 0
+    stubRoles(
+      () => ok({ staff: person }),
+      () => {
+        calls += 1
+        return calls === 1 ? json(500, { success: false, error: { message: 'Database error' } }) : ok({ roles })
+      },
+    )
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Role' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Change role' }))
+    expect((await within(card).findByRole('alert')).textContent).toBe('Database error')
+    fireEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+    expect(await within(card).findByRole('radio', { name: /Admin/ })).not.toBeNull()
+  })
+
+  it('Cancel closes the choice without sending anything', async () => {
+    const fetchMock = stubRoles(() => ok({ staff: person }))
+    renderAt('/office/staff/p1')
+
+    const card = await screen.findByRole('region', { name: 'Role' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Change role' }))
+    fireEvent.click(await within(card).findByRole('radio', { name: /Admin/ }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Cancel' }))
+
+    expect(within(card).queryByRole('radio')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(within(card).getByRole('button', { name: 'Change role' })))
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
+  })
+
+  it('offers no role change on your own admin profile', async () => {
+    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'admin' } }))
+    renderAt(`/office/staff/${admin.id}`)
+
+    const card = await screen.findByRole('region', { name: 'Role' })
+    expect(within(card).getByText(/You cannot remove your own admin role/)).not.toBeNull()
+    expect(within(card).queryByRole('button')).toBeNull()
+  })
+})
+
 describe('MyProfile', () => {
   it('shows the signed-in person read only', async () => {
     stubApi(() => json(404, {}), { ...admin, id: 's9', fullName: 'Neema Staff', email: 'neema@psp.test', role: 'staff' })

@@ -15,6 +15,8 @@ const {
   getStaff,
   updateStaff,
   setStaffActive,
+  listRoles,
+  setStaffRole,
   STAFF_STATUSES,
   STAFF_PAGE_SIZE,
   toPublicStaff,
@@ -305,9 +307,50 @@ async function changeStatus(req, res, staffId, isActive) {
   res.json({ success: true, data: { staff: result.staff } });
 }
 
-// Name and phone, or the status on its own. Role changes are a separate step (M4.6).
+// Change the role: { role } alone, one of the existing roles. The person's sessions
+// end, so they sign in again under the new role.
+async function changeRole(req, res, staffId, role) {
+  const result = await setStaffRole(staffId, role, { actorId: req.staff.id });
+  if (!result) throw httpError(404, 'Not found');
+  if (result.error === 'role') {
+    throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), {
+      details: { role: 'Choose one of the existing roles.' },
+    });
+  }
+  if (result.error === 'self') {
+    throw httpError(409, 'You cannot remove your own admin role.', 'CANNOT_DEMOTE_SELF');
+  }
+  if (result.error === 'last_admin') {
+    throw httpError(409, 'The last active admin cannot be given another role.', 'LAST_ADMIN');
+  }
+
+  if (result.changed) {
+    req.log.info(
+      { event: 'staff.role_changed', staffId, from: result.from, to: role, by: req.staff.id },
+      'Staff role changed',
+    );
+  }
+  res.json({ success: true, data: { staff: result.staff } });
+}
+
+// The roles IT can assign on the staff profile.
+officeRouter.get('/roles', async (req, res) => {
+  res.json({ success: true, data: { roles: await listRoles() } });
+});
+
+// Name and phone, the status on its own, or the role on its own.
 officeRouter.patch('/staff/:id', async (req, res) => {
   const staffId = uuidParam(req, 'id');
+  if (req.body && typeof req.body === 'object' && 'role' in req.body) {
+    const keys = Object.keys(req.body);
+    const fields = {};
+    if (keys.length > 1) fields.role = 'Change the role on its own, without other fields.';
+    else if (typeof req.body.role !== 'string' || !req.body.role) fields.role = 'Choose one of the existing roles.';
+    if (fields.role) {
+      throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: fields });
+    }
+    return changeRole(req, res, staffId, req.body.role);
+  }
   if (req.body && typeof req.body === 'object' && 'isActive' in req.body) {
     const keys = Object.keys(req.body);
     const fields = {};

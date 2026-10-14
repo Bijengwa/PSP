@@ -1339,6 +1339,109 @@ a {
   margin: 0;
 }
 
+/* Role change: one tile per existing role. */
+.office-role-skeleton {
+  padding: 0;
+}
+
+.office-role-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+}
+
+.office-role-options {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.office-role-options legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.office-role-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 2px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.office-role-option:hover {
+  border-color: var(--border-strong);
+}
+
+.office-role-option:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.office-role-option:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.office-role-options:disabled .office-role-option {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.office-role-option input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+}
+
+/* The ring is drawn on the whole tile instead. */
+.office-role-option input:focus-visible {
+  outline: none;
+}
+
+.office-role-option-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.office-role-option-text {
+  grid-column: 2;
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.office-role-note {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .office-role-option {
+    transition: none;
+  }
+}
+
 @media (max-width: 640px) {
   .office-avatar-large {
     width: 48px;
@@ -1372,6 +1475,7 @@ a {
   }
 
   .office-profile-form .office-reset-actions .button,
+  .office-role-form .office-reset-actions .button,
   .office-confirm .office-reset-actions .button {
     flex: 1 1 auto;
   }
