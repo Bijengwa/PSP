@@ -490,6 +490,57 @@ describe('POST /api/shop/orders', () => {
     expect((await db('products').where({ id: pump.id }).first()).quantity_in_stock).toBe(1);
   });
 
+  // C6 data path: the cart prices the checkout page shows, then the exact body it posts
+  // (web/src/shop/api.ts placeOrder), end up as the saved order with the same items and total.
+  test('the checkout page data path: cart prices and the placed order agree on items and total', async () => {
+    const monitor = await product({ name: 'Bedside monitor', price_tzs: 4850000 });
+    const oximeter = await product({ name: 'Pulse oximeter', price_tzs: 85000 });
+    const ct = await product({ name: 'CT scanner', request_quotation: true, price_tzs: null });
+    const cart = [
+      { productId: monitor.id, quantity: 2 },
+      { productId: oximeter.id, quantity: 3 },
+      { productId: ct.id, quantity: 1 },
+    ];
+
+    // What the summary shows: priced lines summed, quotation lines left out.
+    const shown = await request(app).post('/api/shop/cart/prices').send(cart);
+    expect(shown.status).toBe(200);
+    const summaryTotal = shown.body.data.items
+      .filter((item) => !item.product.requestQuotation && item.product.priceTzs !== null)
+      .reduce((sum, item) => sum + item.product.priceTzs * item.quantity, 0);
+    expect(summaryTotal).toBe(2 * 4850000 + 3 * 85000);
+
+    const res = await place({
+      name: 'Neema Mushi',
+      phone: '0712 345 678',
+      email: '',
+      area: 'Mikocheni, Dar es Salaam',
+      address: 'Plot 12, near the Total station',
+      notes: '',
+      website: '',
+      items: cart,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.totalTzs).toBe(summaryTotal);
+
+    const order = await db('orders').where({ order_number: res.body.data.orderNumber }).first();
+    expect(order).toMatchObject({
+      guest_email: null,
+      notes: '',
+      total_tzs: String(summaryTotal),
+      has_quotation_lines: true,
+      status: 'new',
+      payment_status: 'unpaid',
+      source: 'shop',
+    });
+    const items = await db('order_items').where({ order_id: order.id }).orderBy('sort_order');
+    expect(items.map((i) => [i.product_id, i.product_name, i.quantity, i.unit_price_tzs, i.line_total_tzs])).toEqual([
+      [monitor.id, 'Bedside monitor', 2, '4850000', '9700000'],
+      [oximeter.id, 'Pulse oximeter', 3, '85000', '255000'],
+      [ct.id, 'CT scanner', 1, null, null],
+    ]);
+  });
+
   test('order numbers come from a sequence and are unique', async () => {
     const row = await product();
     const first = await place({ ...guest(), items: [{ productId: row.id, quantity: 1 }] });
