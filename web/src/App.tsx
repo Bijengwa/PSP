@@ -39,6 +39,8 @@ const ShopHome = lazy(() => import('./shop/ShopHome'))
 const Catalog = lazy(() => import('./shop/Catalog'))
 const ProductPage = lazy(() => import('./shop/ProductPage'))
 const CartPage = lazy(() => import('./shop/CartPage'))
+const CheckoutPage = lazy(() => import('./shop/CheckoutPage'))
+const OrderConfirmed = lazy(() => import('./shop/CheckoutPage').then((m) => ({ default: m.OrderConfirmed })))
 
 function NotFound() {
   return (
@@ -64,6 +66,8 @@ export default function App() {
         <Route path="/products" element={<Catalog />} />
         <Route path="/products/:slug" element={<ProductPage />} />
         <Route path="/cart" element={<CartPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/order-confirmed" element={<OrderConfirmed />} />
       </Route>
 
       <Route path="/office" element={<OfficeRoot />}>
