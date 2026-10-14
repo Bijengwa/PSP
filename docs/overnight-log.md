@@ -1,5 +1,25 @@
 # Overnight Log
 
+## 2026-10-14 — M5.6 Products completion: done, M5.1 to M5.6 ticked together
+
+This is the one multi-tick the plan allows for M5.6: M5.1, M5.2, M5.3, M5.4, M5.5 and M5.6 were ticked at once. Current step is now **C2**; C2 was not started.
+
+**Checked M5.1-M5.5** against the existing code (`node/src/products/`, `ProductsList.tsx`, `ProductForm.tsx`): list with search/filters/paging, add with field errors, edit/publish/archive and image upload/order/remove all exist and their node tests pass. No functional gaps found.
+
+**Changed**
+- New `web/scripts/responsive-check.mjs` and `npm run check:responsive` in `web/package.json`. It builds with an empty `VITE_API_BASE_URL` (so calls are same-origin), serves with `vite preview`, drives the installed Edge/Chrome (`BROWSER_PATH` overrides) at 360/768/1280px in light and dark, answers `/api/*` and `/uploads/*` with fixtures (including `GET /api/auth/me`), fails on sideways scroll, a wrong theme or a redirect to login, and saves screenshots to `docs/screenshots/`.
+- Dev dependency `playwright-core` added in `web/` (approved).
+- Design bar pass: loading skeletons (list and edit page, reduced-motion aware) replace plain "Loading..." text; "Try again" buttons on the list error and the edit-page error. Styles in `web/src/index.css`; code in `ProductsList.tsx` and `ProductForm.tsx`.
+
+**Verified**
+- `node`: `npm test` 5 suites, 139 tests passed.
+- `web`: `npm test` 28 passed, `npm run lint` clean, `npm run build` (tsc + vite) clean.
+- `npm run check:responsive`: 18 of 18 passed (`/office/products`, `/office/products/new`, `/office/products/p1` at 360, 768 and 1280px, light and dark). I looked at the 360 light, 360 dark and 1280 dark screenshots: no overflow, cards on phone, table on desktop.
+
+**Guard warnings:** Scope Guard noted the new `web/scripts/` folder (it is on the approved list in plan section 4) and the six ticks (allowed for M5.6 by the plan).
+
+**Not done:** shop, orders, customers, inventory untouched. Nothing committed.
+
 ## 2026-10-07 — M1.1 Layout foundation
 
 **Changed**

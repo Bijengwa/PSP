@@ -537,3 +537,17 @@ M4.1 is built, but I did not tick it. The 360px / 768px / desktop check could no
 - There is no frontend test that a non-admin doesn't see the IT group. It would need a new file, for example `web/src/management/inApp/layout/Sidebar.test.tsx`. Per CLAUDE.md I didn't create it, so please approve that path or say which existing test file to use.
 
 I wrote this up in `docs/overnight-log.md`. I did not start M4.2 and did not commit.
+M5.6 is done and ticked, with M5.1ΓÇôM5.5 ticked alongside it as the plan allows. The current step is now C2, which I have not started. Nothing is committed.
+
+**What I checked**
+- **M5.1ΓÇôM5.5:** the existing code (list and filters, add form, edit/publish/archive, images) matches the "Done when" lines, so I made no functional changes.
+- **`node`:** `npm test` passes (139 tests).
+- **`web`:** `npm test` passes (28 tests), and `npm run lint` and `npm run build` are clean.
+- **`npm run check:responsive`:** all 18 cases pass (`/office/products`, `/office/products/new` and `/office/products/p1` at 360, 768 and 1280px, light and dark). I looked at the 360 light, 360 dark and 1280 dark screenshots in `docs/screenshots/`; there is no sideways scroll, the phone shows cards and desktop shows the table.
+
+**What I changed**
+- **Responsive check:** `web/scripts/responsive-check.mjs` and `npm run check:responsive` are new, with `playwright-core` added as a dev dependency. It builds with an empty API base URL, serves with `vite preview`, answers API calls with fixtures including `GET /api/auth/me`, and uses the installed Edge or Chrome.
+- **UI pass:** skeleton loaders (respecting reduced motion) replace the plain "LoadingΓÇª" text on the products list and edit page, and both error states now have a "Try again" button. The styles are in `web/src/index.css`.
+- **Docs:** `docs/progress.md` is updated and the write-up is at the top of `docs/overnight-log.md`.
+
+**Guard warnings:** the Scope Guard flagged the new `web/scripts/` folder and the six ticks at once. Both are explicitly approved in the plan (┬º4 approved files, and the M5.6 "Done when" line).

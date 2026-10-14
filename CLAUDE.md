@@ -34,18 +34,21 @@ Never continue to the next step automatically.
 
 ### Scope
 
-Build in the order of `docs/management-plan.md` §4 (replanned 2026-10-07):
-M3.2–M3.3 → M4 IT console → M5 Products → M6 Customers → M7 Orders →
-C client side → H hardening.
+Current track (changed 2026-10-14, shop first): M5.6 → C2 → C3 → C4 → C5 → C6 → C7.
+After C7 go back to M4.1, then M4 IT console → M6 Customers → M7 Orders → H hardening
+(`docs/management-plan.md` §4 has the details and the files approved for this track).
 
-A module's page stays a placeholder (title only) until its stage starts.
+Staff Orders and Customers pages stay title-only placeholders until their stage.
+The only order work before M7 is the customer checkout (C5–C6): the orders tables and
+`POST /api/shop/orders`, no `/api/office/orders`.
 Inventory, Reports, real Notifications, online payment and customer accounts
 stay locked until H8 is signed off. No real customer data before H8.
 
 Do not implement more than one roadmap step at once.
 
-Every UI step must pass at 360px, 768px and desktop with no horizontal scroll
-before it is ticked.
+Every UI step must pass at 360px, 768px and desktop, in light and dark, with no horizontal scroll
+before it is ticked. Once M5.6 exists, run `npm run check:responsive` in `web/`. Follow the
+Design bar in `docs/management-plan.md` §1.
 
 ### Authentication
 
