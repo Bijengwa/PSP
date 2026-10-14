@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { formatTzs, getCartPrices, imageSrc, type ShopProduct } from './api'
 import {
   MAX_QUANTITY,
@@ -20,6 +20,9 @@ type Answer = { attempt: number; requested: Set<string> } & (
 
 type Row = { line: CartLine; product: ShopProduct | null; was?: number | null }
 
+// Navigation state from the checkout when products could not be ordered.
+export type CartNotice = { notice: string }
+
 const isQuote = (product: ShopProduct) => product.requestQuotation || product.priceTzs === null
 const available = (row: Row): row is Row & { product: ShopProduct } => row.product !== null && row.product.inStock
 const units = (n: number) => `${n} ${n === 1 ? 'item' : 'items'}`
@@ -31,6 +34,9 @@ export default function CartPage() {
   const [attempt, setAttempt] = useState(0)
   const [answer, setAnswer] = useState<Answer | null>(null)
   const [message, setMessage] = useState('')
+  const location = useLocation()
+  const notice = (location.state as Partial<CartNotice> | null)?.notice
+  const [closedNotice, setClosedNotice] = useState<string | null>(null) // location key of a dismissed notice
 
   // Removing a line or changing a quantity needs no new request; a product the
   // last answer did not cover does.
@@ -108,6 +114,16 @@ export default function CartPage() {
   return (
     <div className="shop-container shop-cart-page">
       <CartHead count={allUnits} />
+
+      {typeof notice === 'string' && closedNotice !== location.key && (
+        <div className="shop-cart-alert shop-cart-notice" role="alert">
+          <IconAlert size={18} />
+          <span>{notice}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setClosedNotice(location.key)}>
+            <IconClose size={16} />
+          </button>
+        </div>
+      )}
 
       <div className="shop-cart-layout">
         <section className="shop-cart-panel" aria-labelledby="cart-items">
@@ -209,18 +225,24 @@ function CartHead({ count }: { count?: number }) {
         Your cart
         {count !== undefined && <span className="shop-cart-count"> · {units(count)}</span>}
       </h1>
-      <ol className="shop-cart-steps" aria-label="Checkout steps">
-        <li aria-current="step">
-          <span>1</span>Cart
-        </li>
-        <li>
-          <span>2</span>Your details
-        </li>
-        <li>
-          <span>3</span>Confirmed
-        </li>
-      </ol>
+      <CheckoutSteps current={1} />
     </div>
+  )
+}
+
+const STEPS = ['Cart', 'Your details', 'Confirmed']
+
+// Shared with the checkout and confirmation pages.
+export function CheckoutSteps({ current }: { current: 1 | 2 | 3 }) {
+  return (
+    <ol className="shop-cart-steps" aria-label="Checkout steps">
+      {STEPS.map((label, index) => (
+        <li key={label} aria-current={index + 1 === current ? 'step' : undefined}>
+          <span>{index + 1}</span>
+          {label}
+        </li>
+      ))}
+    </ol>
   )
 }
 

@@ -80,6 +80,30 @@ export function getCartPrices(lines: CartLine[], signal?: AbortSignal) {
   })
 }
 
+// The checkout (C6). Pay later, no account. Only ids and quantities are sent for the
+// lines; the server reads names and prices again. `website` is the hidden honeypot.
+export type CheckoutDetails = {
+  name: string
+  phone: string
+  email: string
+  area: string
+  address: string
+  notes: string
+  website: string
+}
+
+export type PlacedOrder = { orderNumber: string; totalTzs: number }
+
+// A refused line (409 LINES_UNAVAILABLE): `index` is its place in the posted items.
+export type RefusedLine = { index: number; productId: string; code: 'UNAVAILABLE' | 'OUT_OF_STOCK' }
+
+export function placeOrder(details: CheckoutDetails, lines: CartLine[]) {
+  return apiRequest<PlacedOrder>('/api/shop/orders', {
+    method: 'POST',
+    body: { ...details, items: lines.map(({ productId, quantity }) => ({ productId, quantity })) },
+  })
+}
+
 const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 
 // "TZS 1,250,000"
