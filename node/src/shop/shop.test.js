@@ -304,8 +304,23 @@ describe('GET /api/shop/categories', () => {
     const res = await request(app).get('/api/shop/categories');
     expect(res.status).toBe(200);
     expect(res.body.data.categories).toEqual([
-      { name: 'Imaging', slug: 'imaging', productCount: 1 },
-      { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 2 },
+      { name: 'Imaging', slug: 'imaging', productCount: 1, imageUrl: null },
+      { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 2, imageUrl: null },
+    ]);
+  });
+
+  test('returns the main photo of a live product in the category', async () => {
+    const live = await product({ category_id: 2 });
+    const draft = await product({ category_id: 2, is_published: false });
+    await db('product_images').insert([
+      { product_id: live.id, url: '/uploads/products/live-second.png', sort_order: 1, is_main: false },
+      { product_id: live.id, url: '/uploads/products/live-main.png', sort_order: 0, is_main: true },
+      { product_id: draft.id, url: '/uploads/products/draft.png', sort_order: 0, is_main: true },
+    ]);
+
+    const res = await request(app).get('/api/shop/categories');
+    expect(res.body.data.categories).toEqual([
+      expect.objectContaining({ slug: 'patient-monitoring', imageUrl: '/uploads/products/live-main.png' }),
     ]);
   });
 

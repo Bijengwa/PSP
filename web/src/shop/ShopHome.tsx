@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { useShopCategories } from './api'
+import { imageSrc, useShopCategories } from './api'
 import { IconArrow, IconCheck, IconDocument, IconImage, IconShield, IconTruck, IconWrench } from './Icons'
 import PageMeta from './PageMeta'
 
@@ -94,7 +94,7 @@ function HomeCategories() {
   return (
     <ul className="shop-categories">
       {categories.map((category) => {
-        const photo = CATEGORY_PHOTOS[category.slug]
+        const photo = category.imageUrl ? imageSrc(category.imageUrl) : CATEGORY_PHOTOS[category.slug]
         return (
           <li key={category.slug}>
             <Link to={`/products?category=${category.slug}`} className="shop-category">

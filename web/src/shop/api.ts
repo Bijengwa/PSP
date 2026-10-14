@@ -3,7 +3,7 @@ import { apiRequest, apiUrl, type ApiResult } from '../api/client'
 import type { CartLine } from './cart'
 
 // Public catalogue API (C2). Only live products, only shop-safe fields.
-export type ShopCategory = { name: string; slug: string; productCount: number }
+export type ShopCategory = { name: string; slug: string; productCount: number; imageUrl: string | null }
 
 export type ShopProduct = {
   id: string

@@ -58,8 +58,23 @@ async function listShopCategories() {
     .join(liveQuery().select('p.category_id').as('live'), 'live.category_id', 'c.id')
     .groupBy('c.id')
     .orderBy(['c.sort_order', 'c.id'])
-    .select('c.name', 'c.slug', db.raw('count(*) as product_count'));
-  return rows.map((row) => ({ name: row.name, slug: row.slug, productCount: Number(row.product_count) }));
+    .select(
+      'c.name',
+      'c.slug',
+      db.raw('count(*) as product_count'),
+      // Main photo of the newest live product in the category that has one.
+      db.raw(
+        `(select i.url from product_images i join products p on p.id = i.product_id
+          where p.category_id = c.id and p.is_published = true and p.is_archived = false
+          order by p.created_at desc, p.id, i.is_main desc, i.sort_order, i.created_at limit 1) as image_url`,
+      ),
+    );
+  return rows.map((row) => ({
+    name: row.name,
+    slug: row.slug,
+    productCount: Number(row.product_count),
+    imageUrl: row.image_url ?? null,
+  }));
 }
 
 // Search by name, brand or SKU (the SKU is matched but never returned).
