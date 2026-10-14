@@ -689,3 +689,22 @@ C5 (orders tables and the checkout API) is built and ticked, and the current ste
 - Without the proxy setting (`trust proxy`, planned for H2), everyone behind a reverse proxy would share one limit of 10 orders an hour per IP.
 - The order endpoint has no same-origin check. It relies on the body having to be JSON and on CORS allowing only the web app's origin. H2 should review this.
 You've hit your session limit ┬╖ resets 8:40am (Africa/Kampala)
+C6 (Checkout page) passed every check, so I ticked it and set the current step to **C7**. I didn't start C7 and didn't commit anything.
+
+**What happened:** an earlier run had already built C6 and committed it. That run hit its session limit before it could verify the step, tick it or write the log. This run checked that code against the C6 scope and ran every check. Nothing needed fixing, so I changed no code.
+
+**Checks:**
+- **Node `npm test`:** 176 tests pass. This includes the end-to-end check: the prices the checkout shows and the body it sends produce a saved order with the right items, line totals and total.
+- **Web:** `npm test` passes (68 tests, 9 of them for checkout). They cover validation, success, a line error sending the person back to the cart, and a double submit sending only one order. `npm run lint` and `npm run build` are clean.
+- **`npm run check:responsive`:** every route passes at 360, 768 and 1280px in light and dark, with no sideways scroll. I looked at the checkout, the checkout with errors, and the confirmation screenshots. They look finished in both themes, and very large totals fit at 360px.
+
+**Changed:**
+- `docs/progress.md`: C6 ticked, current step C7.
+- `docs/overnight-log.md`: new entry with what C6 contains, what was verified, two small notes for C7 and the guard warnings.
+- `docs/screenshots/`: the responsive check regenerated these, so they show as modified.
+
+**Guard warnings** (both are in the log):
+- **Progress Guard:** it noted the prompt mentions M5.6. That text is only the M5.6 tick rule, and M5.6 was already ticked.
+- **Scope Guard:** it asked me to confirm the "Done when" checks before ticking. They had all passed before the edit.
+
+**For C7:** at 360px in the light theme, the "Show order summary" toggle wraps onto two lines. It's readable but could be tightened.

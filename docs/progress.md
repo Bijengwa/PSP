@@ -4,7 +4,7 @@ Plan: `docs/management-plan.md`. Tick a box only when that step's "Done when" ch
 UI steps also need the responsive check (360px, 768px, desktop) before ticking.
 Replanned: 2026-10-07. Re-ordered 2026-10-14 (shop first): M5.6 → C2 → C3 → C4 → C5 → C6 → C7, then back to M4.1.
 M4.1 is implemented but not ticked (see `docs/overnight-log.md`); it resumes after C7.
-Current step: **C6**
+Current step: **C7**
 
 ## M1 — Management Shell
 
@@ -46,7 +46,7 @@ Current step: **C6**
 - [x] C3 Product page
 - [x] C4 Cart
 - [x] C5 Orders tables and checkout API
-- [ ] C6 Checkout page
+- [x] C6 Checkout page
 - [ ] C7 Shop polish
 
 ## M4 — IT Console (full circle of auth)
