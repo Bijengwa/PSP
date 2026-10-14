@@ -794,3 +794,39 @@ M4.4 (Staff profile) is done and ticked, and the current step is now **M4.5**. I
 - Phone stays required when editing, as it is on registration. The seeded admin has no phone, so they'll have to add one the first time they save a name change.
 
 **Guard warnings:** The Progress Guard flagged that the prompt mentions M5.6. That's only the rule for running the responsive check; M5.6 was finished long ago. The Scope Guard flagged the order of my two edits to `docs/progress.md`: I set the current step to M4.5 before ticking M4.4. Both edits were made after every M4.4 check had passed.
+M4.5 (Activate/deactivate) is done and ticked; the current step is now **M4.6**, which I didn't start. Nothing was committed.
+
+The step's "Done when" passes: a test shows a deactivated person gets 401 on their very next request, all their sessions are gone, and they can't log in again.
+
+**Backend**
+- `PATCH /api/office/staff/:id` now also takes `{ isActive }`. It has to be a true/false value sent without other fields, or the request is refused with 400.
+- Deactivating someone signs them out of every device in the same request. If Redis is down, nothing changes and the call returns 503.
+- Rows are never deleted, and there is no DELETE route.
+- An admin can't deactivate themselves (409), and the last active admin can't be deactivated (409).
+- If two admins deactivate each other at the same moment, one of them stays active.
+
+**UI** ΓÇö the staff profile has a new "Access" card:
+- **Active person:** a red Deactivate button opens an inline confirmation before anything is sent.
+- **Inactive person:** a Reactivate button.
+- **Your own profile:** a note only, no button.
+- Server refusals show inside the card.
+- I checked the new screenshots (360, 768 and 1280px, light and dark): no sideways scroll, and buttons are full width and at least 44px tall on phones.
+
+**Checks**
+- node `npm test`: 198 passed.
+- web `npm test`: 83 passed on the final two runs. Runs made while the screenshot check was running had flaky failures:
+  - A focus check in `StaffProfile.test.tsx` (an M4.4 test). I fixed it by making the test wait for focus to move.
+  - Two tests in `ProductPage.test.tsx`, a file I didn't touch, failed once and then passed on the next runs. It looks like the same flakiness as the checkout test noted in M4.4 and is worth a look.
+- `npm run lint` and `npm run build`: clean.
+- `npm run check:responsive`: passed, including the two new screens (the open confirmation and an inactive person).
+
+**Not verified**
+- The rule that the last active admin can't be deactivated can't be reached through the API (whoever calls it is an active admin), so it is tested at the service level.
+- I didn't do the extra proof that the "deactivate each other at once" test fails without the database lock, because that shell command needed approval.
+
+**Guard warnings**
+- **Collision Guard:** it fired on several files. The other session was the earlier M4.4 run, whose work was already committed, so nothing was overwritten.
+- **Progress Guard:** the M5.6 mention is only the rule for when to run the screenshot check.
+- **Scope Guard:** it asked me to confirm the "Done when" check before ticking; it passed.
+
+All of this is written up in `docs/overnight-log.md`.

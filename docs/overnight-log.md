@@ -1,3 +1,74 @@
+## M4.5 Activate/deactivate (2026-10-14): done, TICKED
+
+Only M4.5 was worked on. Current step is now **M4.6**; it was not started. Nothing was committed.
+
+**Changed**
+- `node/src/auth/auth.service.js`: new `setStaffActive(id, isActive, { actorId })`.
+  - Refuses an admin's own account (`self`) before touching anything.
+  - In one transaction it locks the active admins (in id order) and then the target row, so two admins deactivating each other at once cannot leave zero. The last active admin is refused (`last_admin`).
+  - Deactivation calls `destroyAllForStaff` inside the transaction, so if Redis is down the write rolls back and nothing changes (503). It calls it again after the commit, so a login that raced the write cannot survive. `requireAuth` already reads `is_active` from Postgres on every request.
+  - Rows are only updated, never deleted. Reactivation sets `is_active = true` and leaves sessions alone (there are none).
+- `node/src/auth/auth.routes.js`: `PATCH /api/office/staff/:id` with `{ isActive }`.
+  - The status must be sent on its own and must be a boolean; otherwise 400 `VALIDATION_ERROR` with `details.isActive`.
+  - Your own account gives 409 `CANNOT_DEACTIVATE_SELF`. The last active admin gives 409 `LAST_ADMIN`. An unknown id gives 404.
+  - Logs `staff.deactivated` / `staff.reactivated` (ids only) when the status actually changes.
+  - Name/phone edits (M4.4) are unchanged. No DELETE route exists.
+- `node/src/auth/staff.test.js`:
+  - the fake Redis gained `incr`/`ttl`, so login can be tested in this file;
+  - one M4.4 case changed: `{ isActive: false }` alone is now valid, so the "other fields" case sends `{ isActive: false, fullName }` instead;
+  - 11 new tests:
+    - **a deactivated person gets 401 on their very next request**, their Redis session set is empty, and login is refused;
+    - every session ends (two devices) and the admin stays signed in;
+    - the row is kept, DELETE is 404, and reactivation lets the person log in again;
+    - the list's `status=inactive` filter follows the change;
+    - self-deactivation gives 409;
+    - another admin can be deactivated;
+    - the last active admin is refused and keeps their sessions (service level: over HTTP the caller is always an active admin);
+    - two admins deactivating each other in parallel leave exactly one active;
+    - bad values and mixed bodies are refused and change nothing;
+    - Redis down gives 503 and the status is unchanged;
+    - 404 / non-admin 403 / foreign-origin 403.
+- `web/src/management/inApp/pages/StaffProfile.tsx`: a new "Access" card on the staff profile.
+  - **Active person:** "Deactivate" (red outline) opens an inline confirmation ("Deactivate <name>?", what happens, then "Deactivate account" and Cancel). Focus goes to Cancel.
+  - **Inactive person:** a "Reactivate" button, with no confirmation.
+  - **Your own profile:** no button, only a note.
+  - Buttons show a spinner and are disabled while sending. Server refusals (for example the last-admin 409) show in an alert inside the card.
+  - On success the badge and the Account facts update, the top status line announces the result, and focus returns to the card's action button.
+- `web/src/index.css`:
+  - new tokens `--danger-hover` and `--on-danger` (light and dark);
+  - new `.button-danger` and `.button-danger-outline` classes;
+  - styles for the `.office-confirm` panel;
+  - on phones the confirm buttons are full width and at least 44px tall.
+- `web/src/management/inApp/pages/StaffProfile.test.tsx`:
+  - 5 new tests: confirm-then-deactivate (PATCH body, focus, notice, Inactive badge), Cancel sends nothing, reactivate, a server refusal is shown, and no buttons on your own profile;
+  - the focus checks now use `waitFor`. The existing M4.4 test "shows server field errors…" failed once under load: focus moves in an effect that can run just after the error text appears.
+- `web/scripts/responsive-check.mjs`: new routes `office-staff-profile-deactivate` (with the confirmation open) and `office-staff-profile-inactive` (fixture id `st2` is answered as inactive).
+
+**Verified**
+- `node` `npm test`: 7 suites, 198 tests passed.
+- `web` `npm test`: 10 files, 83 tests. The final two runs passed in full. Earlier runs, made while the responsive check was running, had flaky failures:
+  - the StaffProfile focus test, fixed as described above;
+  - once, two `src/shop/ProductPage.test.tsx` tests. That file was not touched, and the tests passed on the next runs. This looks like the same load-related flakiness as the CheckoutPage test logged in M4.4; worth a look.
+- `npm run lint`: clean. A first lint run flagged a setState call inside an effect in the new card; it was replaced by a ref.
+- `npm run build`: clean.
+- `npm run check:responsive`: passed, including tsc and build (now 24 routes × 3 widths × 2 themes). Screenshots I looked at:
+  - `office-staff-profile-deactivate-360-light` and `-360-dark`;
+  - `office-staff-profile-deactivate-768-dark`;
+  - `office-staff-profile-inactive-360-light` and `-1280-dark`;
+  - `office-staff-profile-768-light`.
+  - In all of them the confirmation and Reactivate states are readable, with no sideways scroll and full-width 44px buttons on phones.
+- Not done: a mutation check (removing the row locks to show that the race test fails). It needed a shell command that required approval.
+
+**Notes**
+- The check re-saved some existing screenshots (pixel differences only).
+- In the 1280 full-page screenshots the sidebar background stops at the viewport height on long pages. That was already the case before this step and was not touched.
+
+**Guard warnings**
+- **Progress Guard:** said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago.
+- **Collision Guard:** fired on `staff.test.js`, `StaffProfile.tsx`, `StaffProfile.test.tsx`, `index.css`, `responsive-check.mjs` and `progress.md`. The other session (8ba649c6) was the M4.4 run. Its work is in commit 5a32081, and before editing, `git status` showed no uncommitted changes, so nothing was overwritten.
+- **Scope Guard:** asked to confirm the Done-when check before ticking. It passed: the "refused on their very next request" test is above.
+- Every file touched is on the approved M4 list.
+
 ## M4.4 Staff profile (2026-10-14): done, TICKED
 
 Only M4.4 was worked on. Current step is now **M4.5**; it was not started. Nothing was committed.

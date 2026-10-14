@@ -14,6 +14,7 @@ const {
   listStaff,
   getStaff,
   updateStaff,
+  setStaffActive,
   STAFF_STATUSES,
   STAFF_PAGE_SIZE,
   toPublicStaff,
@@ -285,9 +286,39 @@ officeRouter.get('/staff/:id', async (req, res) => {
   res.json({ success: true, data: { staff } });
 });
 
-// Name and phone only. Status and role changes are separate steps (M4.5, M4.6).
+// Deactivate or reactivate: { isActive } alone. Deactivation ends the person's
+// sessions at once; the row is kept.
+async function changeStatus(req, res, staffId, isActive) {
+  const result = await setStaffActive(staffId, isActive, { actorId: req.staff.id });
+  if (!result) throw httpError(404, 'Not found');
+  if (result.error === 'self') {
+    throw httpError(409, 'You cannot deactivate your own account.', 'CANNOT_DEACTIVATE_SELF');
+  }
+  if (result.error === 'last_admin') {
+    throw httpError(409, 'The last active admin cannot be deactivated.', 'LAST_ADMIN');
+  }
+
+  if (result.changed) {
+    const event = isActive ? 'staff.reactivated' : 'staff.deactivated';
+    req.log.info({ event, staffId, by: req.staff.id }, isActive ? 'Staff reactivated' : 'Staff deactivated');
+  }
+  res.json({ success: true, data: { staff: result.staff } });
+}
+
+// Name and phone, or the status on its own. Role changes are a separate step (M4.6).
 officeRouter.patch('/staff/:id', async (req, res) => {
   const staffId = uuidParam(req, 'id');
+  if (req.body && typeof req.body === 'object' && 'isActive' in req.body) {
+    const keys = Object.keys(req.body);
+    const fields = {};
+    if (keys.length > 1) fields.isActive = 'Change the status on its own, without other fields.';
+    else if (typeof req.body.isActive !== 'boolean') fields.isActive = 'Send true to activate or false to deactivate.';
+    if (fields.isActive) {
+      throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: fields });
+    }
+    return changeStatus(req, res, staffId, req.body.isActive);
+  }
+
   const parsed = parseProfileEdit(req.body);
   if (parsed.fields) {
     throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: parsed.fields });

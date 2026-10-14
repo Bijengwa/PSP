@@ -44,12 +44,21 @@ jest.mock('../redis', () => {
     async expire() {
       return 1;
     }
+    // Login rate limiting counts attempts; the counters never expire here.
+    async incr(key) {
+      const next = Number(this.data.get(key) ?? 0) + 1;
+      this.data.set(key, String(next));
+      return next;
+    }
+    async ttl() {
+      return 900;
+    }
     multi() {
       const queued = [];
       const chain = {
         exec: async () => Promise.all(queued.map(([command, args]) => this[command](...args))),
       };
-      for (const command of ['set', 'sAdd', 'expire']) {
+      for (const command of ['set', 'sAdd', 'expire', 'incr', 'ttl']) {
         chain[command] = (...args) => {
           queued.push([command, args]);
           return chain;
@@ -187,7 +196,12 @@ describe('PATCH /api/office/staff/:id', () => {
   });
 
   test('other fields cannot be changed through this route', async () => {
-    for (const body of [{ email: 'new@psp.test' }, { role: 'admin' }, { isActive: false }, { fullName: 'Sam', passwordHash: 'x' }]) {
+    for (const body of [
+      { email: 'new@psp.test' },
+      { role: 'admin' },
+      { isActive: false, fullName: 'Sam' },
+      { fullName: 'Sam', passwordHash: 'x' },
+    ]) {
       const res = await as(adminCookie).patch(`/api/office/staff/${staffId}`, body);
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
@@ -224,5 +238,167 @@ describe('PATCH /api/office/staff/:id', () => {
     expect(foreign.status).toBe(403);
     const row = await db('staff_profiles').where({ id: staffId }).first('full_name');
     expect(row.full_name).toBe('Sam Staff');
+  });
+});
+
+describe('PATCH /api/office/staff/:id { isActive }', () => {
+  const redis = require('../redis');
+  const { setStaffActive } = require('./auth.service');
+  let roleIds;
+  let made = 0;
+
+  // A fresh person with one live session, so each test owns who it deactivates.
+  async function person(role = 'staff') {
+    made += 1;
+    const email = `p${made}@psp.test`;
+    const [row] = await db('staff_profiles')
+      .insert({
+        full_name: `Person ${made}`,
+        email,
+        phone_number: '+255 700 000 100',
+        password_hash: await hashPassword('Correct-Horse-42!'),
+        role_id: roleIds[role],
+        must_change_password: false,
+      })
+      .returning('id');
+    const cookie = `psp_sid=${(await sessions.create({ staffId: row.id, ip: '::1', userAgent: 't' })).id}`;
+    return { id: row.id, email, cookie };
+  }
+
+  const me = (cookie) => request(app).get('/api/auth/me').set('Cookie', cookie);
+  const login = (email) =>
+    request(app).post('/api/auth/login').set('Origin', ORIGIN).send({ email, password: 'Correct-Horse-42!' });
+
+  beforeAll(async () => {
+    const roles = await db('roles').select('id', 'name');
+    roleIds = Object.fromEntries(roles.map((r) => [r.name, r.id]));
+  });
+
+  test('a deactivated person is refused on their very next request', async () => {
+    const sam = await person();
+    expect((await me(sam.cookie)).status).toBe(200);
+
+    const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false });
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff).toMatchObject({ id: sam.id, isActive: false });
+
+    expect((await me(sam.cookie)).status).toBe(401);
+    expect(await redis.client.sMembers(`psp:staff-sess:${sam.id}`)).toEqual([]);
+    expect((await login(sam.email)).status).toBe(401);
+  });
+
+  test('every session ends, not only one, and the admin stays signed in', async () => {
+    const sam = await person();
+    const phone = `psp_sid=${(await sessions.create({ staffId: sam.id, ip: '::2', userAgent: 'phone' })).id}`;
+
+    await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false });
+
+    expect((await me(sam.cookie)).status).toBe(401);
+    expect((await me(phone)).status).toBe(401);
+    expect((await me(adminCookie)).status).toBe(200);
+  });
+
+  test('the row is kept, and reactivation lets the person sign in again', async () => {
+    const sam = await person();
+    await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false });
+    expect(await db('staff_profiles').where({ id: sam.id }).first('is_active')).toEqual({ is_active: false });
+    const remove = await request(app).delete(`/api/office/staff/${sam.id}`).set('Cookie', adminCookie).set('Origin', ORIGIN);
+    expect(remove.status).toBe(404);
+
+    const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { isActive: true });
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff).toMatchObject({ id: sam.id, isActive: true });
+    expect((await login(sam.email)).status).toBe(200);
+  });
+
+  test('the staff list status filter follows the change', async () => {
+    const sam = await person();
+    await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false });
+
+    const inactive = await as(adminCookie).get(`/api/office/staff?status=inactive&q=${encodeURIComponent(sam.email)}`);
+    expect(inactive.body.data.staff.map((s) => s.id)).toEqual([sam.id]);
+  });
+
+  test('an admin cannot deactivate themselves', async () => {
+    const res = await as(adminCookie).patch(`/api/office/staff/${adminId}`, { isActive: false });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({
+      code: 'CANNOT_DEACTIVATE_SELF',
+      message: 'You cannot deactivate your own account.',
+    });
+    expect((await me(adminCookie)).status).toBe(200);
+  });
+
+  test('another admin can be deactivated while one stays active', async () => {
+    const other = await person('admin');
+    const res = await as(adminCookie).patch(`/api/office/staff/${other.id}`, { isActive: false });
+
+    expect(res.status).toBe(200);
+    expect((await me(other.cookie)).status).toBe(401);
+  });
+
+  test('the last active admin cannot be deactivated, and keeps their sessions', async () => {
+    // Over HTTP the caller is always an active admin, so this guard is reached
+    // through the service (and through the race in the next test).
+    const result = await setStaffActive(adminId, false, { actorId: staffId });
+
+    expect(result).toEqual({ error: 'last_admin' });
+    expect(await db('staff_profiles').where({ id: adminId }).first('is_active')).toEqual({ is_active: true });
+    expect((await me(adminCookie)).status).toBe(200);
+  });
+
+  test('two admins deactivating each other at once leave one active', async () => {
+    const one = await person('admin');
+    const results = await Promise.all([
+      setStaffActive(one.id, false, { actorId: adminId }),
+      setStaffActive(adminId, false, { actorId: one.id }),
+    ]);
+
+    expect(results.filter((r) => r.error === 'last_admin')).toHaveLength(1);
+    const active = await db('staff_profiles').where({ role_id: roleIds.admin, is_active: true }).select('id');
+    expect(active).toHaveLength(1);
+
+    // Put the main admin back for the tests after this one.
+    if (active[0].id !== adminId) {
+      await db('staff_profiles').where({ id: adminId }).update({ is_active: true });
+      adminCookie = `psp_sid=${(await sessions.create({ staffId: adminId, ip: '::1', userAgent: 't' })).id}`;
+    }
+  });
+
+  test('a bad value, or the status mixed with other fields, is refused and changes nothing', async () => {
+    const sam = await person();
+    for (const body of [{ isActive: 'false' }, { isActive: null }, { isActive: false, phone: '+255 700 000 002' }]) {
+      const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details.isActive).toEqual(expect.any(String));
+    }
+    expect((await me(sam.cookie)).status).toBe(200);
+  });
+
+  test('when Redis is down the status does not change (503)', async () => {
+    const sam = await person();
+    const spy = jest.spyOn(redis.client, 'sMembers').mockRejectedValueOnce(new Error('connection lost'));
+
+    const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false });
+    spy.mockRestore();
+
+    expect(res.status).toBe(503);
+    expect(await db('staff_profiles').where({ id: sam.id }).first('is_active')).toEqual({ is_active: true });
+  });
+
+  test('unknown ids are 404; a non-admin gets 403; another origin is refused', async () => {
+    const sam = await person();
+    expect((await as(adminCookie).patch(`/api/office/staff/${MISSING_ID}`, { isActive: false })).status).toBe(404);
+    expect((await as(staffCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false })).status).toBe(403);
+
+    const foreign = await request(app)
+      .patch(`/api/office/staff/${sam.id}`)
+      .set('Cookie', adminCookie)
+      .set('Origin', 'https://evil.example')
+      .send({ isActive: false });
+    expect(foreign.status).toBe(403);
+    expect((await me(sam.cookie)).status).toBe(200);
   });
 });

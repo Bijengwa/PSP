@@ -18,7 +18,9 @@
   --on-primary: #ffffff;
   --navy: #0d2b3e;
   --danger: #b42318;
+  --danger-hover: #912018;
   --danger-soft: #fde4e1;
+  --on-danger: #ffffff;
   --warning: #8a5300;
   --warning-soft: #fdecc8;
   --hover-overlay: rgb(255 255 255 / 55%);
@@ -53,7 +55,9 @@
   --on-primary: #062221;
   --navy: #0d2b3e;
   --danger: #ff8a80;
+  --danger-hover: #ffa59d;
   --danger-soft: #3d1916;
+  --on-danger: #2a0b08;
   --warning: #f5c26b;
   --warning-soft: #3d2e10;
   --hover-overlay: rgb(255 255 255 / 5%);
@@ -128,6 +132,31 @@ a {
 
 .button-secondary:hover:not(:disabled) {
   background: var(--surface-muted);
+}
+
+/* Actions that take something away (deactivate). */
+.button-danger {
+  background: var(--danger);
+  color: var(--on-danger);
+}
+
+.button-danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
+.button-danger-outline {
+  background: var(--surface);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.button-danger-outline:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.button-danger:focus-visible,
+.button-danger-outline:focus-visible {
+  outline-color: var(--danger);
 }
 
 /* ---------- Full-page messages (loading, 404, errors) ---------- */
@@ -1281,6 +1310,35 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+/* Inline confirmation before a destructive action. */
+.office-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+}
+
+.office-confirm-question {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.office-confirm-text {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.office-confirm .office-reset-actions {
+  margin-top: 8px;
+}
+
+.office-card > .office-error {
+  margin: 0;
+}
+
 @media (max-width: 640px) {
   .office-avatar-large {
     width: 48px;
@@ -1313,7 +1371,8 @@ a {
     min-height: 44px;
   }
 
-  .office-profile-form .office-reset-actions .button {
+  .office-profile-form .office-reset-actions .button,
+  .office-confirm .office-reset-actions .button {
     flex: 1 1 auto;
   }
 }

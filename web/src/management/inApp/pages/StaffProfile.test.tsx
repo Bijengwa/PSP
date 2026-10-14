@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../../auth/AuthProvider'
@@ -74,7 +74,7 @@ describe('StaffProfile', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Samuel Mushi' })).not.toBeNull()
     expect(screen.getByText('+255 712 345 678')).not.toBeNull()
     expect(screen.getByRole('status').textContent).toBe('Changes saved.')
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' }))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })))
 
     const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')
     expect(patch?.[0]).toMatch(/\/api\/office\/staff\/p1$/)
@@ -106,7 +106,8 @@ describe('StaffProfile', () => {
     expect(phone.getAttribute('aria-invalid')).toBe('true')
     expect(phone.getAttribute('aria-describedby')).toContain(error.id)
     expect(screen.getByRole('alert').textContent).toBe('Check the highlighted fields.')
-    expect(document.activeElement).toBe(phone)
+    // Focus moves in an effect, which can run just after the error text appears.
+    await waitFor(() => expect(document.activeElement).toBe(phone))
   })
 
   it('catches an empty name before sending anything', async () => {
@@ -152,6 +153,90 @@ describe('StaffProfile', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Database error')
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Sam Staff' })).not.toBeNull()
+  })
+})
+
+describe('StaffProfile access', () => {
+  it('deactivates only after confirming, then offers Reactivate', async () => {
+    const fetchMock = stubApi((_, init) =>
+      init?.method === 'PATCH' ? ok({ staff: { ...person, isActive: false } }) : ok({ staff: person }),
+    )
+    renderAt('/office/staff/p1')
+
+    const access = await screen.findByRole('region', { name: 'Access' })
+    fireEvent.click(within(access).getByRole('button', { name: 'Deactivate' }))
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
+
+    const confirm = within(access).getByRole('group', { name: 'Deactivate Sam Staff?' })
+    await waitFor(() => expect(document.activeElement).toBe(within(confirm).getByRole('button', { name: 'Cancel' })))
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Deactivate account' }))
+
+    const reactivate = await within(access).findByRole('button', { name: 'Reactivate' })
+    await waitFor(() => expect(document.activeElement).toBe(reactivate))
+    expect(screen.getByRole('status').textContent).toBe('Sam Staff is deactivated and has been signed out.')
+    expect(screen.getAllByText('Inactive').length).toBeGreaterThan(0)
+
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')
+    expect(patch?.[0]).toMatch(/\/api\/office\/staff\/p1$/)
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ isActive: false })
+  })
+
+  it('Cancel closes the confirmation without sending anything', async () => {
+    const fetchMock = stubApi(() => ok({ staff: person }))
+    renderAt('/office/staff/p1')
+
+    const access = await screen.findByRole('region', { name: 'Access' })
+    fireEvent.click(within(access).getByRole('button', { name: 'Deactivate' }))
+    fireEvent.click(within(access).getByRole('button', { name: 'Cancel' }))
+
+    expect(within(access).queryByRole('group')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(within(access).getByRole('button', { name: 'Deactivate' })))
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
+  })
+
+  it('reactivates an inactive person', async () => {
+    const fetchMock = stubApi((_, init) =>
+      init?.method === 'PATCH' ? ok({ staff: person }) : ok({ staff: { ...person, isActive: false } }),
+    )
+    renderAt('/office/staff/p1')
+
+    const access = await screen.findByRole('region', { name: 'Access' })
+    expect(within(access).getByText(/This account is deactivated/)).not.toBeNull()
+    fireEvent.click(within(access).getByRole('button', { name: 'Reactivate' }))
+
+    expect(await within(access).findByRole('button', { name: 'Deactivate' })).not.toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('Sam Staff is active again and can sign in.')
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ isActive: true })
+  })
+
+  it('shows the server refusal and keeps the person active', async () => {
+    stubApi((_, init) =>
+      init?.method === 'PATCH'
+        ? json(409, {
+            success: false,
+            error: { message: 'The last active admin cannot be deactivated.', code: 'LAST_ADMIN' },
+          })
+        : ok({ staff: person }),
+    )
+    renderAt('/office/staff/p1')
+
+    const access = await screen.findByRole('region', { name: 'Access' })
+    fireEvent.click(within(access).getByRole('button', { name: 'Deactivate' }))
+    fireEvent.click(within(access).getByRole('button', { name: 'Deactivate account' }))
+
+    expect((await within(access).findByRole('alert')).textContent).toBe('The last active admin cannot be deactivated.')
+    expect(within(access).getByRole('button', { name: 'Deactivate account' })).not.toBeNull()
+    expect(screen.getAllByText('Active').length).toBeGreaterThan(0)
+  })
+
+  it('offers no deactivation on your own profile', async () => {
+    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'admin' } }))
+    renderAt(`/office/staff/${admin.id}`)
+
+    const access = await screen.findByRole('region', { name: 'Access' })
+    expect(within(access).getByText(/This is your own account/)).not.toBeNull()
+    expect(within(access).queryByRole('button')).toBeNull()
   })
 })
 

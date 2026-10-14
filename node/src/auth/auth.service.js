@@ -278,6 +278,43 @@ async function updateStaff(id, { fullName, phone }) {
   return updated ? getStaff(id) : null;
 }
 
+// IT deactivates or reactivates a person. Rows are never deleted. Returns { staff },
+// null when the person does not exist, { error: 'self' } when an admin tries to
+// deactivate themselves, or { error: 'last_admin' } for the last active admin.
+// The active admins are locked in one order first, so two admins deactivating each
+// other at once cannot leave none. A deactivated person's sessions end inside the
+// transaction (Redis down means nothing changes) and again after it, so a login
+// that raced the write cannot survive either.
+async function setStaffActive(id, isActive, { actorId }) {
+  if (!isActive && id === actorId) return { error: 'self' };
+
+  const result = await db.transaction(async (trx) => {
+    const activeAdmins = await trx('staff_profiles as s')
+      .join('roles as r', 'r.id', 's.role_id')
+      .where({ 'r.name': 'admin', 's.is_active': true })
+      .orderBy('s.id')
+      .forUpdate('s')
+      .select('s.id');
+    const target = await trx('staff_profiles as s')
+      .join('roles as r', 'r.id', 's.role_id')
+      .where('s.id', id)
+      .forUpdate('s')
+      .first('s.id', 's.is_active', 'r.name as role');
+    if (!target) return null;
+
+    if (!isActive) {
+      if (target.role === 'admin' && target.is_active && activeAdmins.length <= 1) return { error: 'last_admin' };
+      await sessions.destroyAllForStaff(id);
+    }
+    await trx('staff_profiles').where({ id }).update({ is_active: isActive, updated_at: trx.fn.now() });
+    return { changed: target.is_active !== isActive };
+  });
+  if (!result || result.error) return result;
+
+  if (!isActive) await sessions.destroyAllForStaff(id);
+  return { staff: await getStaff(id), changed: result.changed };
+}
+
 // IT's staff list: search by name or email, optional status filter, paged.
 // Never selects the password hash. `total` counts every match, not just the page.
 async function listStaff({ q, status, page = 1, limit = STAFF_PAGE_SIZE }) {
@@ -317,6 +354,7 @@ module.exports = {
   listStaff,
   getStaff,
   updateStaff,
+  setStaffActive,
   STAFF_STATUSES,
   STAFF_PAGE_SIZE,
   findStaffById,

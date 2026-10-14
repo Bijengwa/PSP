@@ -237,8 +237,132 @@ function ContactForm({ staff, onSaved, onCancel }: EditFormProps) {
   )
 }
 
+type AccessProps = {
+  staff: StaffDetail
+  isSelf: boolean
+  onChanged: (staff: StaffDetail) => void
+}
+
+// Deactivate (after a confirmation) or reactivate. Deactivation signs the person
+// out everywhere at once; the account is kept. The server refuses the admin's own
+// account and the last active admin, and its message is shown here.
+function AccessCard({ staff, isSelf, onChanged }: AccessProps) {
+  const [confirming, setConfirming] = useState(false)
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const actionRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  // Where focus goes after the next render: the confirmation, or back to the action.
+  const focusTo = useRef<'confirm' | 'action' | null>(null)
+
+  useEffect(() => {
+    const target = focusTo.current
+    if (!target) return
+    focusTo.current = null
+    ;(target === 'confirm' ? cancelRef : actionRef).current?.focus()
+  })
+
+  async function setActive(isActive: boolean) {
+    if (working) return
+    setWorking(true)
+    setError(null)
+    const result = await apiRequest<{ staff: StaffDetail }>(`/api/office/staff/${staff.id}`, {
+      method: 'PATCH',
+      body: { isActive },
+    })
+    setWorking(false)
+
+    if (result.ok) {
+      setConfirming(false)
+      onChanged(result.data.staff)
+      focusTo.current = 'action'
+      return
+    }
+    // 401 and 503 are also handled by the auth provider (login / unavailable screen).
+    if (result.status === 403) setError('Only administrators can change who has access.')
+    else if (result.status === 404) setError('This person no longer exists.')
+    else if (result.status === 503) setError('The service is temporarily unavailable. Please try again shortly.')
+    else setError(result.message)
+  }
+
+  function cancel() {
+    setConfirming(false)
+    setError(null)
+    focusTo.current = 'action'
+  }
+
+  const firstName = staff.fullName.split(' ')[0]
+
+  return (
+    <section className="office-card" aria-labelledby="profile-access-heading">
+      <div className="office-profile-card-head">
+        <h2 id="profile-access-heading">Access</h2>
+        {!confirming &&
+          !isSelf &&
+          (staff.isActive ? (
+            <button
+              ref={actionRef}
+              type="button"
+              className="button button-danger-outline"
+              onClick={() => {
+                setError(null)
+                setConfirming(true)
+                focusTo.current = 'confirm'
+              }}
+            >
+              Deactivate
+            </button>
+          ) : (
+            <button
+              ref={actionRef}
+              type="button"
+              className="button button-primary"
+              onClick={() => setActive(true)}
+              disabled={working}
+            >
+              {working && <span className="spinner" aria-hidden="true" />}
+              {working ? 'Reactivating…' : 'Reactivate'}
+            </button>
+          ))}
+      </div>
+
+      <p className="office-card-sub">
+        {isSelf
+          ? 'This is your own account. Another admin can deactivate it if needed.'
+          : staff.isActive
+            ? `${firstName} can sign in. Deactivating signs them out on every device at once. Nothing is deleted.`
+            : `This account is deactivated, so ${firstName} cannot sign in. Reactivate it to give access back.`}
+      </p>
+
+      {confirming && (
+        <div className="office-confirm" role="group" aria-labelledby="profile-deactivate-question">
+          <p id="profile-deactivate-question" className="office-confirm-question">
+            Deactivate {staff.fullName}?
+          </p>
+          <p className="office-confirm-text">
+            They are signed out right away and cannot sign in until an admin reactivates the account.
+          </p>
+          <div className="office-reset-actions">
+            <button type="button" className="button button-danger" onClick={() => setActive(false)} disabled={working}>
+              {working && <span className="spinner" aria-hidden="true" />}
+              {working ? 'Deactivating…' : 'Deactivate account'}
+            </button>
+            <button ref={cancelRef} type="button" className="button button-secondary" onClick={cancel} disabled={working}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="office-error" role="alert" hidden={!error}>
+        {error}
+      </div>
+    </section>
+  )
+}
+
 // /office/staff/:id (admins): one person's profile. Name and phone can be
-// corrected here; email, role and status cannot.
+// corrected, and access deactivated or given back; email and role cannot change here.
 export default function StaffProfile() {
   const { id = '' } = useParams()
   const { state, refresh } = useAuth()
@@ -286,6 +410,15 @@ export default function StaffProfile() {
     closeForm()
     // The header and profile menu show the signed-in person's own name.
     if (staff.id === selfId) void refresh()
+  }
+
+  function statusChanged(staff: StaffDetail) {
+    setLoad({ status: 'ready', staff })
+    setNotice(
+      staff.isActive
+        ? `${staff.fullName} is active again and can sign in.`
+        : `${staff.fullName} is deactivated and has been signed out.`,
+    )
   }
 
   function retry() {
@@ -396,6 +529,8 @@ export default function StaffProfile() {
         />
         <p className="office-settings-hint office-profile-note">The email address is the sign-in name and cannot be changed.</p>
       </section>
+
+      <AccessCard staff={staff} isSelf={staff.id === selfId} onChanged={statusChanged} />
     </div>
   )
 }

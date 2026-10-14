@@ -29,6 +29,17 @@ const ROUTES = [
       await page.getByRole('button', { name: 'Save changes' }).click()
     },
   },
+  {
+    name: 'office-staff-profile-deactivate',
+    path: '/office/staff/st1',
+    ready: '.office-confirm',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Deactivate', exact: true }).click()
+      await page.locator('.office-confirm').scrollIntoViewIfNeeded()
+    },
+  },
+  // st2 is answered as an inactive account.
+  { name: 'office-staff-profile-inactive', path: '/office/staff/st2', ready: '.office-profile-head' },
   { name: 'office-my-profile', path: '/office/profile', ready: '.office-profile-head' },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
@@ -295,7 +306,10 @@ function answer(url, request) {
   if (one) return ok({ product: products.find((item) => item.id === one[1]) ?? products[0] })
   if (pathname === '/api/office/reset-requests') return ok({ requests: [], total: 0 })
   const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
-  if (staffProfile) return ok({ staff: { ...staffMember, id: staffProfile[1] } })
+  if (staffProfile) {
+    const inactive = staffProfile[1] === 'st2' ? { isActive: false, mustChangePassword: false } : {}
+    return ok({ staff: { ...staffMember, id: staffProfile[1], ...inactive } })
+  }
   return ok({})
 }
 
