@@ -10,6 +10,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+// The whole app loads its lazy pages first, which can take more than the default
+// second when the full suite runs in parallel.
+const LAZY_LOAD = { timeout: 5000 }
+
 const renderAt = (path: string) =>
   render(
     <MemoryRouter initialEntries={[path]}>
@@ -21,7 +25,7 @@ describe('shop 404 and page changes', () => {
   it('shows an unknown public address as the shop 404, inside the shop layout', async () => {
     renderAt('/no-such-page')
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' }, LAZY_LOAD)).toBeTruthy()
     await waitFor(() => expect(document.title).toBe('Page not found | PSP Engineering Group'))
     expect(screen.getByRole('link', { name: 'Skip to content' }).getAttribute('href')).toBe('#main')
     expect(screen.getByRole('banner')).toBeTruthy()
@@ -34,7 +38,7 @@ describe('shop 404 and page changes', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {}))) // the catalogue stays loading
     renderAt('/no-such-page')
 
-    const link = await screen.findByRole('link', { name: 'Browse products' })
+    const link = await screen.findByRole('link', { name: 'Browse products' }, LAZY_LOAD)
     link.focus()
     fireEvent.click(link)
 

@@ -2442,3 +2442,62 @@ a {
     padding: 12px;
   }
 }
+
+/* Orders queue (M7.2) */
+.office-order-number {
+  display: block;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Doubled class: .office-status (neutral: closed, unpaid) is defined further up. */
+.office-status.office-order-new {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.office-status.office-order-confirmed,
+.office-status.office-payment-paid {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.office-status.office-order-delivered {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--primary);
+  color: var(--primary);
+}
+
+.office-status.office-order-cancelled {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.office-orders-table .office-status {
+  white-space: nowrap;
+}
+
+.office-staff-table th.office-col-total,
+.office-staff-table td.office-col-total {
+  text-align: right;
+}
+
+.office-order-total {
+  display: block;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.office-order-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.office-order-card-head > span {
+  min-width: 0;
+}

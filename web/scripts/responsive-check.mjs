@@ -113,6 +113,17 @@ const ROUTES = [
   { name: 'office-customer-detail', path: '/office/customers/c2', ready: '.office-customer-address' },
   // c3 is answered with no contacts, addresses or notes.
   { name: 'office-customer-detail-empty', path: '/office/customers/c3', ready: '.office-profile-head' },
+  { name: 'office-orders', path: '/office/orders', ready: '.office-list-footer' },
+  {
+    name: 'office-orders-empty',
+    path: '/office/orders',
+    ready: '.office-customer-empty',
+    act: async (page) => {
+      await page.locator('.office-list-footer').waitFor()
+      await page.getByLabel('Source').selectOption('staff')
+      await page.getByLabel('Search by order number, name or phone').fill('no-such-order-with-a-long-search')
+    },
+  },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -345,6 +356,40 @@ const customers = [
   customer('c4', { type: 'company', companyName: 'Kilimanjaro Clinic', phone: '+254711000111', createdAt: '2026-10-02T08:00:00.000Z' }),
 ]
 
+// The orders queue: every status, both payment states and sources, a long name, a
+// quotation-only order and one with priced and quotation lines. The total spans two pages.
+const orderRow = (n, patch) => ({
+  id: `o${n}`,
+  orderNumber: `PSP-000${130 - n}`,
+  status: 'new',
+  paymentStatus: 'unpaid',
+  source: 'shop',
+  customerId: null,
+  guestName: 'Asha Mushi',
+  guestPhone: '+255712345678',
+  deliveryArea: 'Mikocheni, Dar es Salaam',
+  totalTzs: 4250000,
+  hasQuotationLines: false,
+  itemCount: 2,
+  createdAt: `2026-10-${String(14 - n).padStart(2, '0')}T08:30:00.000Z`,
+  ...patch,
+})
+
+const orders = [
+  orderRow(1, { hasQuotationLines: true, itemCount: 4 }),
+  orderRow(2, {
+    guestName: 'Bugando Medical Centre Procurement Unit, attention Dr. Neema Kweka-Lyimo',
+    guestPhone: '+255282500000',
+    deliveryArea: 'Bugando Hill, Mwanza',
+    totalTzs: 1250000000,
+    itemCount: 99,
+  }),
+  orderRow(3, { status: 'confirmed', paymentStatus: 'paid', source: 'staff', guestName: 'Juma Said', guestPhone: '+254711000111', deliveryArea: 'Arusha' }),
+  orderRow(4, { status: 'delivered', totalTzs: 0, hasQuotationLines: true, itemCount: 1, guestName: 'Grace Mollel' }),
+  orderRow(5, { status: 'closed', paymentStatus: 'paid', guestName: 'Kilimanjaro Clinic', totalTzs: 85000, itemCount: 1 }),
+  orderRow(6, { status: 'cancelled', guestName: 'Rehema Kisanga', totalTzs: 21000000 }),
+]
+
 const shopCategories = [
   { name: 'Imaging', slug: 'imaging', productCount: 14 },
   { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 6 },
@@ -480,6 +525,14 @@ function answer(url, request) {
         ],
       },
     })
+  }
+  if (pathname === '/api/office/orders') {
+    // The sidebar asks for new orders only, to show its badge.
+    if (searchParams.get('status') === 'new' && !searchParams.get('page')) return ok({ orders: [], total: 4, page: 1, pageSize: 25 })
+    const none = { all: 0, new: 0, confirmed: 0, delivered: 0, closed: 0, cancelled: 0 }
+    if (searchParams.get('q')) return ok({ orders: [], total: 0, page: 1, pageSize: 25, counts: none })
+    const counts = { all: 38, new: 4, confirmed: 9, delivered: 6, closed: 17, cancelled: 2 }
+    return ok({ orders, total: 38, page: 1, pageSize: 25, counts })
   }
   const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
   if (staffProfile) {

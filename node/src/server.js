@@ -63,9 +63,10 @@ app.get('/api/health', async (req, res) => {
 // Feature routers
 app.use('/api/auth', require('./auth/auth.routes'));
 app.use('/api/shop', require('./shop/shop.routes'));
-// Products and customers first: the office router below requires the admin role for everything under /api/office.
+// Products, customers and orders first: the office router below requires the admin role for everything under /api/office.
 app.use('/api/office/products', require('./products/products.routes'));
 app.use('/api/office/customers', require('./customers/customers.routes'));
+app.use('/api/office/orders', require('./orders/orders.routes'));
 app.use('/api/office', require('./auth/auth.routes').officeRouter);
 
 // ---------- 404 for unknown API routes ----------

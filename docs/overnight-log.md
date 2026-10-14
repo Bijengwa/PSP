@@ -1544,3 +1544,37 @@ M6.4 ticked; current step is **M7.1**. M7.1 was not started. Nothing committed.
 - Scope Guard: it warned about the order of "tick M7.1" and "set M7.2 as current" in `progress.md`. Both changes are intended: every check passed, so M7.1 is ticked and M7.2 is next in the overnight order.
 
 M7.1 ticked; current step is **M7.2**. M7.2 was not started. Nothing committed.
+
+## M7.2 Orders queue (2026-10-14, overnight): TICKED
+
+**Changed**
+- `node/src/orders/orders.service.js`: new `listOrders({ q, status, paymentStatus, source, page })`. It searches order number, guest name and phone (case-insensitive; `%` and `_` taken literally; a phone typed the local way, such as `0754 100 200`, matches `+255…`, using the customers module's `phoneDigits`). It filters by status, payment status and source, uses pages of 25 and lists newest first. It returns `total`, and `counts` per status tab. The counts follow the search, payment and source filters but not the status. Each row has id, number, status, payment status, source, customerId, guest name and phone, delivery area, `totalTzs` (a number), `hasQuotationLines`, `itemCount` (sum of quantities) and `createdAt`. Notes, email, address and items are left out (they belong to the M7.3 detail page).
+- New `node/src/orders/orders.routes.js` (a sibling in the approved `node/src/orders/`): `GET /api/office/orders` for any signed-in staff member (same rules as customers: `requireSameOrigin`, `requireAuth()`). Unknown or repeated `status`/`paymentStatus`/`source` values give 400. `node/src/server.js` mounts it at `/api/office/orders` before the admin-only office router.
+- `node/src/orders/orders.test.js`: adds the logger/Redis mocks used by `customers.test.js` and 8 API tests (session required; empty queue; shape, order, item count and numeric total; search by number, name and phone; filters and counts; 400s; paging; the badge query).
+- New `web/src/management/inApp/pages/OrdersList.tsx` at `/office/orders`, replacing the placeholder in `App.tsx`. It has status tabs with counts (All, New, Confirmed, Delivered, Closed, Cancelled), a search box, and Payment and Source selects. On desktop and tablet it is a table: Order (number in mono, date and time, "Shop order"/"Staff order"), Customer (name, phone formatted like Customers, area), Total (TZS with an item count; "+ items on request" or "Price on request" for quotation lines), and Status and Payment badges. At 640px and below it is a card list. It also has a loading skeleton, an error state with Try again, "No orders yet…", "No <status> orders." and "No orders match…" with Clear filters, and paging.
+- New `OrdersList.test.tsx` (7 tests).
+- `web/src/management/inApp/layout/Sidebar.tsx`: the reset-requests badge hook is now a general `useBadgeCount(path, enabled, event?)`. Orders shows the number of `new` orders (from `GET /api/office/orders?status=new` → `total`) to every signed-in staff member, with the accessible name "Orders, N new". `Sidebar.test.tsx`: the non-admin test now checks that reset requests are not asked for (orders now are), plus 2 tests for the Orders badge.
+- `web/src/index.css`: an "Orders queue (M7.2)" block using only existing variables. Status colours: new = warning, confirmed = primary, delivered = primary outline, closed = neutral, cancelled = danger. Paid = primary, unpaid = neutral.
+- `web/scripts/responsive-check.mjs`: order fixtures (every status, both payment states and sources, a very long name, a 1,250,000,000 total, quotation-only and mixed orders, 38 in total so the pager shows). It answers the badge query with 4. New routes: `office-orders`, and `office-orders-empty` (Source = Staff plus a long search that matches nothing).
+- `web/src/shop/NotFoundPage.test.tsx` (not an M7.2 file): its two first lookups now wait up to 5 s instead of 1 s. See Decisions.
+
+**Decisions**
+- M7.2 has no "Done when" line, so I used the M6.x bar: API and page tested, plus the responsive check in both themes.
+- The badge reuses the list endpoint (`?status=new`, read `total`) rather than adding a count endpoint, the same way as the reset-requests badge. It refreshes every minute. M7.3 can fire an "orders changed" event when it changes a status.
+- The queue is open to all signed-in staff (like Customers); the badge is shown to everyone.
+- Newest first, default tab "All orders". Filters are kept in component state, not the URL, like Customers and Products.
+- Order numbers are not links yet: the detail page is M7.3, which should make them links. There is no "New order" button (M7.4 is skipped tonight).
+- The item count is the sum of quantities. It is shown under the total; a separate Items column made the table 10px too wide at 768px.
+- Search covers number, name and phone only, as the plan says (not email).
+- NotFoundPage test: it renders the whole `App` and waits for lazy chunks. With one more test file, it timed out at the 1 s default in the parallel suite (it passed alone every time; StaffProfile timed out the same way once, on a cold run). I raised only that wait to 5 s, with a comment. After that the full suite passed 3 times in a row. No product code changed for this.
+
+**Verified**
+- `node` `npm test`: 9 suites, 299 tests passed (8 new).
+- `web` `npm test`: 15 files, 125 tests passed (passed 3 times in a row after the timeout fix). `npm run build` passed (inside the responsive check's tsc + vite build). `npm run lint` is clean.
+- `npm run check:responsive` passed for every route, including the two new ones, at 360, 768 and 1280px in light and dark. The first full run failed `office-orders` at 768px (778px of content in 768px). I merged the Items column into Total and re-ran, and it passed. I looked at `office-orders` at 360 light, 768 light and 1280 light and dark, and `office-orders-empty` at 360 dark. Long names wrap, totals line up on the right, the six status tabs wrap to two rows on a phone, the badge shows in the sidebar, and nothing scrolls sideways. Per the overnight policy, the tests, the responsive check and the screenshots stand in for a manual browser run.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. It is only the stop point of the overnight order.
+- Scope Guard: it warned about the order of "tick M7.2" and "set M7.3 as current" in `progress.md`. Both changes are intended: every check passed, so M7.2 is ticked and M7.3 is next in the overnight order.
+
+M7.2 ticked; current step is **M7.3**. M7.3 was not started. Nothing committed.

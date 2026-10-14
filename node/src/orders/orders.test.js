@@ -1,4 +1,64 @@
+const request = require('supertest');
+
+// Log lines go nowhere in this file.
+jest.mock('../logger', () => {
+  const actual = jest.requireActual('../logger');
+  return { ...actual, logger: actual.createLogger({ env: 'test', level: 'info', destination: { write: () => {} } }) };
+});
+
+// In-memory stand-in for the node-redis client, covering the commands the
+// session store uses.
+jest.mock('../redis', () => {
+  class FakeRedis {
+    constructor() {
+      this.data = new Map();
+    }
+    async get(key) {
+      return this.data.has(key) ? this.data.get(key) : null;
+    }
+    async set(key, value) {
+      this.data.set(key, value);
+      return 'OK';
+    }
+    async del(keys) {
+      let removed = 0;
+      for (const key of [].concat(keys)) if (this.data.delete(key)) removed += 1;
+      return removed;
+    }
+    async sAdd(key, member) {
+      if (!this.data.has(key)) this.data.set(key, new Set());
+      this.data.get(key).add(member);
+      return 1;
+    }
+    async sRem(key, member) {
+      return this.data.get(key)?.delete(member) ? 1 : 0;
+    }
+    async sMembers(key) {
+      return [...(this.data.get(key) ?? [])];
+    }
+    async expire() {
+      return 1;
+    }
+    multi() {
+      const queued = [];
+      const chain = {
+        exec: async () => Promise.all(queued.map(([command, args]) => this[command](...args))),
+      };
+      for (const command of ['set', 'sAdd', 'expire']) {
+        chain[command] = (...args) => {
+          queued.push([command, args]);
+          return chain;
+        };
+      }
+      return chain;
+    }
+  }
+  return { client: new FakeRedis(), connect() {}, disconnect: async () => {} };
+});
+
 const db = require('../db');
+const { app } = require('../server');
+const sessions = require('../auth/session.store');
 const {
   ORDER_STATUSES,
   STATUS_TRANSITIONS,
@@ -221,6 +281,184 @@ describe('orders table (M7.1 columns)', () => {
     const row = await db('orders').where({ id }).first();
     expect(row.customer_id).toBeNull();
     expect(row.guest_name).toBe('Asha Mushi');
+  });
+});
+
+describe('orders queue (GET /api/office/orders)', () => {
+  let staffCookie;
+  let productId;
+
+  beforeAll(async () => {
+    staffCookie = `psp_sid=${(await sessions.create({ staffId, ip: '::1', userAgent: 't' })).id}`;
+    const [row] = await db('products')
+      .insert({
+        name: 'Queue test monitor',
+        slug: 'queue-test-monitor',
+        sku: 'QUEUE-TEST-1',
+        category_id: 1,
+        price_tzs: 1000000,
+        is_published: true,
+        created_by: staffId,
+      })
+      .returning('id');
+    productId = row.id;
+  });
+
+  afterAll(async () => {
+    await db('order_items').del();
+    await db('products').where({ id: productId }).del();
+  });
+
+  const list = (query = '') => request(app).get(`/api/office/orders${query}`).set('Cookie', staffCookie);
+  const names = (res) => res.body.data.orders.map((o) => o.guestName);
+
+  // Five orders, oldest first: two new (one staff), one confirmed and paid, one delivered, one cancelled.
+  async function seed() {
+    const rows = [
+      { guest_name: 'Asha Mushi', guest_phone: '+255712345678' },
+      { guest_name: 'Juma Said', guest_phone: '+255754100200', status: 'confirmed', payment_status: 'paid', paid_at: db.fn.now() },
+      { guest_name: '50% Discount Person', guest_phone: '+255688000111', status: 'delivered' },
+      { guest_name: 'Neema Kweka', guest_phone: '+255713222333', source: 'staff', created_by: staffId },
+      {
+        guest_name: 'Grace Mollel',
+        guest_phone: '+254711000111',
+        status: 'cancelled',
+        cancel_reason: 'Ordered twice',
+        cancelled_at: db.fn.now(),
+      },
+    ];
+    const made = [];
+    for (const [n, row] of rows.entries()) {
+      made.push(await order({ ...row, created_at: new Date(Date.UTC(2026, 9, 1 + n)) }));
+    }
+    return made;
+  }
+
+  test('requires a session', async () => {
+    const res = await request(app).get('/api/office/orders');
+    expect(res.status).toBe(401);
+  });
+
+  test('a normal staff member can use it; empty queue with zero counts', async () => {
+    const res = await list();
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      orders: [],
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      counts: { all: 0, new: 0, confirmed: 0, delivered: 0, closed: 0, cancelled: 0 },
+    });
+  });
+
+  test('lists newest first in the queue shape, with the item count and total as numbers', async () => {
+    const [asha] = await seed();
+    await db('orders').where({ id: asha.id }).update({ notes: 'Call before delivery', has_quotation_lines: true });
+    await db('order_items').insert([
+      { order_id: asha.id, product_id: productId, product_name: 'Monitor', product_sku: 'M-1', unit_price_tzs: 500000, quantity: 2, line_total_tzs: 1000000 },
+      { order_id: asha.id, product_id: productId, product_name: 'CT scanner', product_sku: 'CT-1', quantity: 1, sort_order: 1 },
+    ]);
+
+    const res = await list();
+    expect(names(res)).toEqual(['Grace Mollel', 'Neema Kweka', '50% Discount Person', 'Juma Said', 'Asha Mushi']);
+    expect(res.body.data.counts).toEqual({ all: 5, new: 2, confirmed: 1, delivered: 1, closed: 0, cancelled: 1 });
+
+    const row = res.body.data.orders[4];
+    expect(Object.keys(row).sort()).toEqual([
+      'createdAt',
+      'customerId',
+      'deliveryArea',
+      'guestName',
+      'guestPhone',
+      'hasQuotationLines',
+      'id',
+      'itemCount',
+      'orderNumber',
+      'paymentStatus',
+      'source',
+      'status',
+      'totalTzs',
+    ]);
+    expect(row).toMatchObject({
+      id: asha.id,
+      orderNumber: asha.order_number,
+      status: 'new',
+      paymentStatus: 'unpaid',
+      source: 'shop',
+      customerId: null,
+      guestName: 'Asha Mushi',
+      guestPhone: '+255712345678',
+      deliveryArea: 'Kariakoo',
+      totalTzs: 1000000,
+      hasQuotationLines: true,
+      itemCount: 3,
+    });
+    expect(res.body.data.orders[0].itemCount).toBe(0);
+  });
+
+  test('search by order number, name and phone (any case, local phone form)', async () => {
+    const made = await seed();
+    const juma = made[1];
+    expect(names(await list(`?q=${juma.order_number}`))).toEqual(['Juma Said']);
+    expect(names(await list(`?q=${juma.order_number.slice(-6).toLowerCase()}`))).toEqual(['Juma Said']);
+    expect(names(await list(`?q=${juma.order_number.toLowerCase()}`))).toEqual(['Juma Said']);
+    expect(names(await list('?q=ASHA'))).toEqual(['Asha Mushi']);
+    expect(names(await list(`?q=${encodeURIComponent('0754 100 200')}`))).toEqual(['Juma Said']);
+    expect(names(await list('?q=%2B254711'))).toEqual(['Grace Mollel']);
+    expect(names(await list('?q=50%25'))).toEqual(['50% Discount Person']);
+    expect((await list('?q=_')).body.data.total).toBe(0);
+    expect((await list('?q=nobody')).body.data.total).toBe(0);
+  });
+
+  test('filters by status, payment status and source; counts follow everything but the status', async () => {
+    await seed();
+    let res = await list('?status=new');
+    expect(names(res)).toEqual(['Neema Kweka', 'Asha Mushi']);
+    expect(res.body.data.total).toBe(2);
+    expect(res.body.data.counts).toEqual({ all: 5, new: 2, confirmed: 1, delivered: 1, closed: 0, cancelled: 1 });
+
+    res = await list('?paymentStatus=paid');
+    expect(names(res)).toEqual(['Juma Said']);
+    expect(res.body.data.counts).toEqual({ all: 1, new: 0, confirmed: 1, delivered: 0, closed: 0, cancelled: 0 });
+
+    res = await list('?source=staff');
+    expect(names(res)).toEqual(['Neema Kweka']);
+
+    res = await list('?status=new&source=shop&paymentStatus=unpaid');
+    expect(names(res)).toEqual(['Asha Mushi']);
+    expect(res.body.data.counts).toMatchObject({ all: 3, new: 1, delivered: 1, cancelled: 1 });
+
+    res = await list('?status=closed&q=asha');
+    expect(res.body.data).toMatchObject({ orders: [], total: 0, counts: { all: 1, new: 1 } });
+  });
+
+  test('unknown filter values are a 400', async () => {
+    for (const query of ['?status=shipped', '?paymentStatus=partial', '?source=phone', '?status=new&status=closed']) {
+      const res = await list(query);
+      expect(res.status).toBe(400);
+    }
+    expect((await list('?status=shipped')).body.error.message).toMatch(/new, confirmed, delivered, closed, cancelled/);
+  });
+
+  test('pages of 25; bad page numbers fall back to 1', async () => {
+    for (let n = 0; n < 27; n += 1) {
+      await order({ guest_name: `Guest ${String(n).padStart(2, '0')}`, created_at: new Date(Date.UTC(2026, 0, 1, 0, n)) });
+    }
+    const first = await list();
+    expect(first.body.data).toMatchObject({ total: 27, page: 1, pageSize: 25 });
+    expect(first.body.data.orders).toHaveLength(25);
+    expect(first.body.data.orders[0].guestName).toBe('Guest 26');
+
+    const second = await list('?page=2');
+    expect(names(second)).toEqual(['Guest 01', 'Guest 00']);
+    expect((await list('?page=abc')).body.data.page).toBe(1);
+    expect((await list('?page=9')).body.data.orders).toEqual([]);
+  });
+
+  test('the sidebar badge count: new orders only', async () => {
+    await seed();
+    const res = await list('?status=new');
+    expect(res.body.data.total).toBe(2);
   });
 });
 

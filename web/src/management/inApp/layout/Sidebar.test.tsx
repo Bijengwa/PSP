@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { createRef } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -17,10 +17,12 @@ const people = {
 
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 })
 
-function stubApi(me: (typeof people)[keyof typeof people], pending = 0) {
-  const fetchMock = vi.fn(async (url: string) =>
-    url.endsWith('/api/auth/me') ? ok({ staff: me }) : ok({ requests: [], total: pending }),
-  )
+function stubApi(me: (typeof people)[keyof typeof people], pending = 0, newOrders = 0) {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith('/api/auth/me')) return ok({ staff: me })
+    if (url.includes('/api/office/orders')) return ok({ orders: [], total: newOrders })
+    return ok({ requests: [], total: pending })
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -63,7 +65,7 @@ describe('Sidebar IT group', () => {
     expect(within(nav).queryByRole('heading', { name: 'IT' })).toBeNull()
     for (const name of IT_LINKS) expect(within(nav).queryByRole('link', { name })).toBeNull()
     expect(within(nav).getByRole('link', { name: 'Products' })).not.toBeNull()
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/office/'))).toBe(false)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/office/reset-requests'))).toBe(false)
   })
 
   it('is shown to an admin, with Staff, Register Staff and Reset requests and the pending badge', async () => {
@@ -78,5 +80,31 @@ describe('Sidebar IT group', () => {
     expect(
       (await within(list).findByRole('link', { name: 'Reset requests, 3 pending' })).getAttribute('href'),
     ).toBe('/office/reset-requests')
+  })
+})
+
+describe('Sidebar Orders badge', () => {
+  it('shows the count of new orders to any signed-in staff member', async () => {
+    const fetchMock = stubApi(people.staff, 0, 4)
+    renderSidebar()
+    await screen.findByText('Signed in as staff')
+
+    const nav = screen.getByRole('navigation', { name: 'Office' })
+    const link = await within(nav).findByRole('link', { name: 'Orders, 4 new' })
+    expect(link.getAttribute('href')).toBe('/office/orders')
+    expect(within(link).getByText('4')).not.toBeNull()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/api/office/orders?status=new'))).toBe(true)
+  })
+
+  it('shows no badge when there are no new orders', async () => {
+    const fetchMock = stubApi(people.admin, 0, 0)
+    renderSidebar()
+    await screen.findByText('Signed in as admin')
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/office/orders'))).toBe(true),
+    )
+
+    const link = within(screen.getByRole('navigation', { name: 'Office' })).getByRole('link', { name: 'Orders' })
+    expect(link.querySelector('.office-nav-badge')).toBeNull()
   })
 })

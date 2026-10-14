@@ -1070,3 +1070,41 @@ The guard warnings are logged there too:
 - M7.4 was not touched.
 
 The `git status` call to review the diff needed approval and didn't run, so I checked the changed files directly instead.
+The responsive check is still running in the background, and I'll be notified when it finishes. I'll look at the screenshots after that. If the check passes, I'll tick M7.2, set M7.3 as current and write the log.
+
+The responsive check is running again with its log at `web/responsive-run.log`. I'll read it when it finishes.
+
+The responsive check is running; its first stage is tsc and the vite build. I'll check the results when it finishes.
+
+M7.2 Orders queue is built and ticked, and the current step is now **M7.3**. All checks pass. I haven't started M7.3 and nothing is committed.
+
+**Changes**
+- **API:** `GET /api/office/orders` lists orders newest first, 25 per page, for any signed-in staff member.
+  - It filters by status, payment status and source.
+  - Search covers order number, name and phone. A local phone like `0754 100 200` finds the stored `+255ΓÇª` number.
+  - It returns a count for each status tab. The counts follow the search and the other filters, but not the status itself.
+  - An unknown filter value gets a 400.
+  - The route is in a new sibling file, `node/src/orders/orders.routes.js`, mounted in `server.js`.
+- **Orders page** (`OrdersList.tsx`, replacing the placeholder):
+  - Status tabs with counts, a search box, and Payment and Source filters.
+  - A table on desktop and tablet, and cards at 640px and below.
+  - Coloured status and payment badges, and totals as `TZS 1,250,000`, with a note when some items are priced on request.
+  - Loading, error with Try again, empty and "no match" states, and paging.
+- **Sidebar badge:** Orders shows how many orders are `new`, for every signed-in staff member, refreshed every minute. The existing reset-requests badge now uses the same shared code.
+- **Tests and checks:** 8 new API tests, 7 page tests, 2 sidebar tests, and two Orders pages added to `check:responsive`.
+
+**Verification**
+- **node `npm test`:** 299 tests passed.
+- **web `npm test`:** 125 tests passed.
+- **Build and lint:** the build passed and lint is clean.
+- **`check:responsive`:** passed at 360, 768 and 1280px in light and dark. It first failed at 768px because the table was 10px too wide. I moved the item count under the total instead of in its own column, and it passed.
+- **Screenshots:** I looked at them in both themes.
+- **Manual browser run:** per your policy, the tests, the responsive check and the screenshots stand in for it.
+
+**Decisions** (recorded in `docs/overnight-log.md`)
+- The badge reuses the list endpoint instead of a new count endpoint, so it can be up to a minute behind after a change.
+- Order numbers aren't links yet, because the detail page is M7.3. There's no "New order" button, because M7.4 is skipped tonight.
+- Search covers number, name and phone only, as the plan says, not email.
+- **One change outside M7.2:** `web/src/shop/NotFoundPage.test.tsx` started timing out in the full web test suite once the new test file was added. It passed every time on its own. I raised its two first lookups from the default 1s wait to 5s. No app code changed, and the full suite then passed three times in a row.
+
+**Guard warnings:** the Progress Guard flagged M7.4, which I didn't touch; it's only where tonight's run stops. The Scope Guard warned about the order of ticking M7.2 and setting M7.3 as current, but both changes were intended.
