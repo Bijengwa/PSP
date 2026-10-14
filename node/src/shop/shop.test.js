@@ -271,3 +271,108 @@ describe('GET /api/shop/categories', () => {
     expect(res.body.data.categories).toEqual([]);
   });
 });
+
+describe('POST /api/shop/cart/prices', () => {
+  const prices = (body) => request(app).post('/api/shop/cart/prices').send(body);
+  const CART_KEYS = ['product', 'quantity'];
+
+  test('returns the current name, price, photo and stock from the database; needs no session', async () => {
+    const row = await product({ name: 'Bedside monitor', price_tzs: 4850000, quantity_in_stock: 3 });
+    await db('product_images').insert({ product_id: row.id, url: '/uploads/products/main.png', sort_order: 0, is_main: true });
+
+    const res = await prices([{ productId: row.id, quantity: 2 }]);
+    expect(res.status).toBe(200);
+    expect(res.headers['set-cookie']).toBeUndefined();
+    const [item] = res.body.data.items;
+    expect(Object.keys(item).sort()).toEqual(CART_KEYS);
+    expect(Object.keys(item.product).sort()).toEqual(SHOP_KEYS);
+    expect(item).toEqual({
+      quantity: 2,
+      product: {
+        id: row.id,
+        name: 'Bedside monitor',
+        slug: row.slug,
+        brand: 'Mindray',
+        category: { name: 'Imaging', slug: 'imaging' },
+        priceTzs: 4850000,
+        requestQuotation: false,
+        inStock: true,
+        imageUrl: '/uploads/products/main.png',
+      },
+    });
+    const body = JSON.stringify(res.body);
+    for (const secret of [row.sku, '777777', staffId, 'created_by', 'cost', 'quantity_in_stock']) {
+      expect(body).not.toContain(secret);
+    }
+  });
+
+  test('ignores any price, name or total sent by the client', async () => {
+    const row = await product({ name: 'Real name', price_tzs: 2750000 });
+    const res = await prices([
+      { productId: row.id, quantity: 1, priceTzs: 1, price_tzs: 1, name: 'Fake name', lineTotalTzs: 1, totalTzs: 1 },
+    ]);
+    expect(res.body.data.items[0].product).toMatchObject({ name: 'Real name', priceTzs: 2750000 });
+    expect(JSON.stringify(res.body)).not.toContain('Fake name');
+  });
+
+  test('drops unpublished, archived, unknown and malformed ids, keeping the cart order', async () => {
+    const second = await product({ name: 'Second' });
+    const draft = await product({ name: 'Draft', is_published: false });
+    const archived = await product({ name: 'Archived', is_published: false, is_archived: true });
+    const first = await product({ name: 'First' });
+
+    const res = await prices([
+      { productId: first.id, quantity: 1 },
+      { productId: draft.id, quantity: 1 },
+      { productId: archived.id, quantity: 1 },
+      { productId: '00000000-0000-4000-8000-000000000000', quantity: 1 },
+      { productId: 'not-a-uuid', quantity: 1 },
+      { productId: 42, quantity: 1 },
+      null,
+      { productId: second.id, quantity: 1 },
+    ]);
+    expect(res.status).toBe(200);
+    expect(res.body.data.items.map((item) => item.product.name)).toEqual(['First', 'Second']);
+    expect(JSON.stringify(res.body)).not.toMatch(/Draft|Archived/);
+  });
+
+  test('quotation products hide their price; out of stock is a boolean', async () => {
+    const quote = await product({ request_quotation: true, price_tzs: 5000000 });
+    const empty = await product({ quantity_in_stock: 0 });
+
+    const res = await prices([
+      { productId: quote.id, quantity: 1 },
+      { productId: empty.id, quantity: 1 },
+    ]);
+    const [quoteItem, emptyItem] = res.body.data.items;
+    expect(quoteItem.product).toMatchObject({ requestQuotation: true, priceTzs: null });
+    expect(emptyItem.product).toMatchObject({ inStock: false, priceTzs: 1000000 });
+    expect(JSON.stringify(res.body)).not.toContain('5000000');
+  });
+
+  test('merges duplicate lines and clamps quantities to 1–99', async () => {
+    const a = await product();
+    const b = await product();
+    const c = await product();
+
+    const res = await prices([
+      { productId: a.id, quantity: 60 },
+      { productId: b.id, quantity: 0 },
+      { productId: a.id.toUpperCase(), quantity: 60 },
+      { productId: c.id, quantity: 'lots' },
+    ]);
+    expect(res.body.data.items.map((item) => [item.product.id, item.quantity])).toEqual([
+      [a.id, 99],
+      [b.id, 1],
+      [c.id, 1],
+    ]);
+  });
+
+  test('an empty cart gives no items; anything but a list of up to 50 lines is refused', async () => {
+    expect((await prices([])).body.data.items).toEqual([]);
+    expect((await prices({ productId: 'x' })).status).toBe(400);
+    expect((await request(app).post('/api/shop/cart/prices')).status).toBe(400);
+    const tooMany = Array.from({ length: 51 }, () => ({ productId: '00000000-0000-4000-8000-000000000000', quantity: 1 }));
+    expect((await prices(tooMany)).status).toBe(400);
+  });
+});

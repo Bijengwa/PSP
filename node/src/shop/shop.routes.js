@@ -1,6 +1,13 @@
 const express = require('express');
 const { httpError } = require('../auth/auth.middleware');
-const { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts, getShopProduct } = require('./shop.service');
+const {
+  SHOP_PAGE_SIZE,
+  SHOP_SORTS,
+  listShopCategories,
+  listShopProducts,
+  getShopProduct,
+  getCartPrices,
+} = require('./shop.service');
 
 // Public shop API, mounted at /api/shop. Read-only and open to everyone: no
 // session, no Redis. Only live (published, not archived) products are returned.
@@ -38,6 +45,32 @@ router.get('/products/:slug', async (req, res) => {
   const found = slug.length <= 200 && SLUG_PATTERN.test(slug) ? await getShopProduct(slug) : null;
   if (!found) throw httpError(404, 'Product not found');
   res.json({ success: true, data: found });
+});
+
+const MAX_CART_LINES = 50;
+const MAX_QUANTITY = 99;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const clampQuantity = (value) => Math.min(MAX_QUANTITY, Math.max(1, Math.floor(Number(value)) || 1));
+
+// Current name, price, photo and availability for the cart page. Takes
+// [{ productId, quantity }]; any price, name or total the client sends is ignored.
+// Ids that are not UUIDs can never match, so they are left out like a draft would be.
+router.post('/cart/prices', async (req, res) => {
+  if (!Array.isArray(req.body) || req.body.length > MAX_CART_LINES) {
+    throw httpError(400, `Send a list of up to ${MAX_CART_LINES} cart lines`);
+  }
+
+  const lines = new Map();
+  for (const line of req.body) {
+    const productId = line?.productId;
+    if (typeof productId !== 'string' || !UUID_PATTERN.test(productId)) continue;
+    const id = productId.toLowerCase();
+    lines.set(id, clampQuantity((lines.get(id) ?? 0) + clampQuantity(line.quantity)));
+  }
+
+  const items = await getCartPrices([...lines].map(([productId, quantity]) => ({ productId, quantity })));
+  res.json({ success: true, data: { items } });
 });
 
 module.exports = router;

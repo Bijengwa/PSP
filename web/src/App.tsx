@@ -38,16 +38,7 @@ const ShopLayout = lazy(() => import('./shop/ShopLayout'))
 const ShopHome = lazy(() => import('./shop/ShopHome'))
 const Catalog = lazy(() => import('./shop/Catalog'))
 const ProductPage = lazy(() => import('./shop/ProductPage'))
-
-// Title-only placeholder until C4 (cart) is built.
-function ShopPlaceholder({ title }: { title: string }) {
-  return (
-    <div className="shop-placeholder">
-      <h1>{title}</h1>
-      <p>Coming soon.</p>
-    </div>
-  )
-}
+const CartPage = lazy(() => import('./shop/CartPage'))
 
 function NotFound() {
   return (
@@ -72,7 +63,7 @@ export default function App() {
         <Route path="/" element={<ShopHome />} />
         <Route path="/products" element={<Catalog />} />
         <Route path="/products/:slug" element={<ProductPage />} />
-        <Route path="/cart" element={<ShopPlaceholder title="Cart" />} />
+        <Route path="/cart" element={<CartPage />} />
       </Route>
 
       <Route path="/office" element={<OfficeRoot />}>

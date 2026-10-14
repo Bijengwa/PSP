@@ -25,6 +25,29 @@ const ROUTES = [
   { name: 'shop-product', path: '/products/shop-product-0', ready: '.shop-product-info h1' },
   { name: 'shop-product-out', path: '/products/shop-product-1', ready: '.shop-product-info h1' },
   { name: 'shop-product-missing', path: '/products/no-such-product', ready: '.shop-product-state' },
+  // `cart` is put in localStorage before the page loads.
+  {
+    name: 'shop-cart',
+    path: '/cart',
+    ready: '.shop-cart-line .shop-cart-line-name',
+    cart: [
+      { productId: 's1', quantity: 2 }, // long name, out of stock
+      { productId: 's0', quantity: 1 },
+      { productId: 's2', quantity: 1 }, // price on request
+      { productId: 's11', quantity: 99 }, // the biggest line total
+      { productId: 'gone', quantity: 1 }, // no longer in the catalogue
+    ],
+  },
+  {
+    name: 'shop-cart-ready',
+    path: '/cart',
+    ready: '.shop-cart-line .shop-cart-line-name',
+    cart: [
+      { productId: 's8', quantity: 3 },
+      { productId: 's4', quantity: 1 },
+    ],
+  },
+  { name: 'shop-cart-empty', path: '/cart', ready: '.shop-state', cart: [] },
 ]
 const WIDTHS = [
   { name: '360', width: 360, height: 800 },
@@ -162,8 +185,18 @@ function shopDetail(slug) {
   })
 }
 
-function answer(url) {
+// The cart: the fixture products among the posted lines; unknown ids are dropped like drafts.
+function cartPrices(lines) {
+  const items = (Array.isArray(lines) ? lines : []).flatMap((line) => {
+    const found = shopProducts.find((p) => p.id === line?.productId)
+    return found ? [{ product: found, quantity: line.quantity }] : []
+  })
+  return ok({ items })
+}
+
+function answer(url, request) {
   const { pathname, searchParams } = new URL(url)
+  if (pathname === '/api/shop/cart/prices') return cartPrices(request.postDataJSON())
   if (pathname === '/api/shop/categories') return ok({ categories: shopCategories })
   const detail = pathname.match(/^\/api\/shop\/products\/([^/]+)$/)
   if (detail) return shopDetail(decodeURIComponent(detail[1]))
@@ -257,7 +290,7 @@ try {
       })
       await context.addInitScript((value) => localStorage.setItem('psp-theme', value), theme)
       await context.route(`${ORIGIN}/api/**`, (route) => {
-        const body = answer(route.request().url())
+        const body = answer(route.request().url(), route.request())
         return route.fulfill({
           status: body.success === false ? 404 : 200,
           contentType: 'application/json',
@@ -268,6 +301,9 @@ try {
 
       for (const route of ROUTES) {
         const page = await context.newPage()
+        if (route.cart) {
+          await page.addInitScript((lines) => localStorage.setItem('psp-cart', JSON.stringify(lines)), route.cart)
+        }
         await page.goto(`${ORIGIN}${route.path}`, { waitUntil: 'networkidle' })
         page.on('pageerror', (error) => console.error(`page error on ${route.path}: ${error.message}`))
         try {

@@ -615,3 +615,37 @@ I built C3 (the product page), and every check passed, so C3 is ticked and C4 (C
 - **Progress Guard:** flagged that your prompt mentioned M5.6. Only C3 was done.
 - **Collision Guard:** flagged earlier edits by another session to the shop files. `git status` showed only this run's changes; those edits were the committed C2 work.
 - **Scope Guard:** said I ticked C3 after moving "Current step" to C4. I made both edits together, and C3's "Done when" checks had all passed first.
+C4 (Cart) is built and ticked, and every "Done when" check passed. `docs/progress.md` now shows C4 done and the current step set to **C5**. I didn't start C5 and didn't commit anything.
+
+**Which step:** your prompt described M5.6, but M5.6 through C3 were already ticked and `docs/progress.md` said C4, so I built only C4.
+
+**What changed**
+- **`web/src/shop/cart.ts`**: now handles every cart write: add (merges into an existing line), set quantity, remove and clear.
+  - Quantities stay between 1 and 99, and the cart holds at most 50 products (the limit the C5 checkout will use).
+  - Only product ids and quantities are saved in `localStorage`, so there's no personal data.
+  - Corrupted or hand-edited storage reads as an empty cart, or keeps just the valid lines. It's rewritten clean on the next change.
+  - If the browser blocks storage, the shopper gets a message instead of a crash.
+- **`POST /api/shop/cart/prices`** (in `node/src/shop/`): reads only the id and quantity of each line and ignores any price, name or total the browser sends. It returns current details from the database for published, non-archived products only. Drafts, archived products and unknown ids are left out.
+- **New `/cart` page** (`CartPage.tsx`):
+  - Each line has its photo, name, unit price, a quantity stepper, the line total and a remove button.
+  - Products that were removed from the catalogue or are out of stock are flagged, left out of the total, and block checkout until removed.
+  - Quotation products say "Price on request" and are also left out of the total.
+  - There's an order summary, a Checkout link to `/checkout`, and loading, error-with-retry and empty states.
+- **Product page:** "Add to cart" now saves the line and confirms "Added 2 ├ù ΓÇª to your cart." with a **View cart** link. The header badge updates.
+- **Responsive check:** now also covers a full cart with problem lines, a cart that's ready to check out, and an empty cart.
+
+**Checks**
+- `node` `npm test`: 160 tests passed, including 6 new ones for the prices endpoint.
+- `web` `npm test`: 59 passed, including 11 for `cart.ts` (add, merge, limits, remove, corrupted storage) and 7 for the cart page.
+- `npm run build` and `npm run lint`: clean.
+- `npm run check:responsive`: passes at 360, 768 and 1280px in light and dark, with no horizontal scroll.
+- I looked at the screenshots. On the first run, very large totals broke in the middle of the number on a phone and at 1280px. I fixed that, re-ran the check and looked again. It's now clean in both themes.
+
+**Guard warnings** (all logged in `docs/overnight-log.md`)
+- **Collision Guard:** it pointed at the earlier C3 session, whose work was already committed (f57f6c1). The working tree was clean when I started, so only C4 changes are in it.
+- **Scope Guard, `cart.test.ts`:** it flagged `localStorage.clear()` in test cleanup. I changed it to remove only the cart key.
+- **Scope Guard, `docs/progress.md`:** it was about the order of my two edits (I changed "Current step" before ticking the box). All checks had passed before either edit.
+
+**Before C6**
+- The Checkout link goes to the site's "page not found" until C6 builds `/checkout`.
+- "Price changed" only shows during a single visit, because no prices are stored in the browser.

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiRequest, apiUrl, type ApiResult } from '../api/client'
+import type { CartLine } from './cart'
 
 // Public catalogue API (C2). Only live products, only shop-safe fields.
 export type ShopCategory = { name: string; slug: string; productCount: number }
@@ -65,6 +66,18 @@ export type ShopProductAnswer = { product: ShopProductDetail; related: ShopProdu
 
 export function getProduct(slug: string, signal?: AbortSignal) {
   return apiRequest<ShopProductAnswer>(`/api/shop/products/${encodeURIComponent(slug)}`, { signal })
+}
+
+// The cart page (C4): current details for the live products among the cart lines.
+// Drafts, archived and unknown products are simply missing from the answer.
+export type CartPriceItem = { product: ShopProduct; quantity: number }
+
+export function getCartPrices(lines: CartLine[], signal?: AbortSignal) {
+  return apiRequest<{ items: CartPriceItem[] }>('/api/shop/cart/prices', {
+    method: 'POST',
+    body: lines.map(({ productId, quantity }) => ({ productId, quantity })),
+    signal,
+  })
 }
 
 const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })

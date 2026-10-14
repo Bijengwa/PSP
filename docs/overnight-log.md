@@ -1,5 +1,33 @@
 # Overnight Log
 
+## 2026-10-14 — C4 Cart: done, TICKED
+
+**Which step:** the prompt described M5.6, but M5.6 to C3 were already ticked. `docs/progress.md` said **C4**, so only C4 was built. Current step is now **C5**; C5 was not started. Nothing was committed.
+
+**Changed**
+- `web/src/shop/cart.ts`: now owns every cart write: `addToCart` (merges into the existing line), `setQuantity`, `removeFromCart`, `clearCart`. Quantities are clamped to 1–99. At most 50 products (the C5 checkout limit). `localStorage['psp-cart']` holds only `[{productId, quantity}]`. Corrupted or hand-edited storage reads as an empty cart, or as the valid lines only (merged and clamped), and is rewritten clean on the next write. Blocked storage gives `{ ok: false, reason: 'storage' }` and never throws. `useCart` / `useCartCount` use `useSyncExternalStore` and follow other tabs. "Price changed" works from a memory-only map of the last price this tab showed (never stored), so it shows only within one visit.
+- `node/src/shop/shop.routes.js` + `shop.service.js`: `POST /api/shop/cart/prices` takes `[{productId, quantity}]` (up to 50 lines, else 400). It reads only the id and quantity, ignores any price, name or total, merges duplicate ids and clamps quantity to 1–99. It returns `{ items: [{ product, quantity }] }` for live products only, with the same shop-safe fields as the catalogue, in cart order. Drafts, archived, unknown and non-UUID ids are left out. No session, no Redis.
+- New `web/src/shop/CartPage.tsx` at `/cart` (it replaces the placeholder in `App.tsx`). Each line shows photo, category, name (linked), stock / "Price on request" / "Price changed, was …" pills, quantity stepper, line total and unit price, and remove. Products removed from the catalogue and out-of-stock products are flagged, left out of the total, and block checkout (a disabled button with the reason) until removed. Quotation lines say "Price on request" and are left out of the total, with a note. The order summary has a "Checkout" link to `/checkout` (C6 builds that page) and "Continue shopping". The page also has: steps header (Cart / Your details / Confirmed, from 768px), skeleton, error with retry, empty state linking to `/products`, and a screen-reader status on remove. Changing a quantity or removing a line sends no new request.
+- `ProductPage.tsx`: "Add to cart" now stores the line and confirms "Added 2 × … to your cart." with a **View cart** link. It also explains a full cart, the 99 cap, or blocked storage. The header badge already reads the cart.
+- `api.ts` (`getCartPrices`), `Icons.tsx` (`IconTrash`), `shop.css` (cart section, mobile first), `scripts/responsive-check.mjs` (routes `shop-cart`, `shop-cart-ready`, `shop-cart-empty` with a cart put in localStorage, plus a fixture for the prices endpoint).
+- Tests: new `web/src/shop/cart.test.ts` (11) and `CartPage.test.tsx` (7); `ProductPage.test.tsx` updated; 6 new endpoint tests in `node/src/shop/shop.test.js`.
+
+**Verified**
+- `node` `npm test`: 6 suites, 160 tests passed (prices endpoint: drops unpublished/archived/unknown/malformed, ignores client price/name/total, hides quotation prices, merges and clamps, refuses non-lists and over 50 lines, no secrets in the answer).
+- `web` `npm test`: 7 files, 59 tests passed (cart.ts: add, merge, clamp, set, remove, clear, corrupted storage, bad lines, 50-line limit, blocked storage, change events, memory-only prices).
+- `web` `npm run build` and `npm run lint`: clean.
+- `npm run check:responsive`: every route passes at 360/768/1280 in light and dark, with no horizontal scroll. I looked at the cart screenshots. The first run showed very large line totals breaking inside the number at 360px and at 1280px. Fixed (the remove button moved to the line's top-right corner on smaller screens, no mid-number wrapping), then the check was run again and the screenshots checked again.
+- No personal data in storage: the cart holds ids and quantities only (tested).
+
+**Guard warnings**
+- Collision Guard on `node/src/shop/*`, `web/src/shop/*`, `App.tsx`, `responsive-check.mjs`, `docs/progress.md`: "edited by another session (2d6a7dfd)". That was the C3 session, whose work is committed in f57f6c1 (04:49). The tree was clean when this run began, and the diff holds only C4 changes.
+- Scope Guard on `cart.test.ts`: `localStorage.clear()` in test cleanup. Changed to `localStorage.removeItem('psp-cart')`. Nothing new is stored.
+- Scope Guard on `docs/progress.md`: about the order of the edits only (I moved "Current step" before ticking C4). All C4 "Done when" checks passed before either edit.
+
+**Notes for later steps**
+- `/checkout` does not exist yet, so the Checkout link lands on the site 404 until C6.
+- Product cards in the catalogue still only link to the product page (adding from a card was not in C4's scope).
+
 ## 2026-10-14 — C3 Product page: done, TICKED
 
 **Which step:** the prompt described M5.6, but M5.6 and C2 were already ticked. `docs/progress.md` said **C3**, so only C3 was built. Current step is now **C4**; C4 was not started.

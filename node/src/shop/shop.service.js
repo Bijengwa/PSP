@@ -133,4 +133,18 @@ async function getShopProduct(slug) {
   };
 }
 
-module.exports = { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts, getShopProduct };
+// Current details for the cart page (C4): the live products among `lines`, in the
+// cart's order, each with its quantity. Drafts, archived and unknown ids are left
+// out, so the page can flag them. Prices come only from the database.
+async function getCartPrices(lines) {
+  if (lines.length === 0) return [];
+  const rows = await liveQuery()
+    .whereIn('p.id', lines.map((line) => line.productId))
+    .select(...SHOP_COLUMNS);
+  const byId = new Map(rows.map((row) => [row.id, toShopProduct(row)]));
+  return lines
+    .filter((line) => byId.has(line.productId))
+    .map((line) => ({ product: byId.get(line.productId), quantity: line.quantity }));
+}
+
+module.exports = { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts, getShopProduct, getCartPrices };

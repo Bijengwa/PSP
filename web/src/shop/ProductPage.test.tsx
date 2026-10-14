@@ -2,10 +2,12 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ShopProduct, ShopProductDetail } from './api'
+import { CART_KEY, readCart } from './cart'
 import ProductPage from './ProductPage'
 
 afterEach(() => {
   cleanup()
+  localStorage.removeItem(CART_KEY)
   vi.unstubAllGlobals()
   document.head.querySelector('meta[name="description"]')?.remove()
 })
@@ -126,7 +128,7 @@ describe('ProductPage', () => {
     expect(main().alt).toBe('Bedside monitor, photo 1 of 3')
   })
 
-  it('quantity stepper stays within 1–99 and Add to cart confirms', async () => {
+  it('quantity stepper stays within 1–99 and Add to cart stores the line and confirms', async () => {
     stubApi(() => ok({ product: detail(), related: [] }))
     renderPage()
 
@@ -144,7 +146,14 @@ describe('ProductPage', () => {
     expect(quantity.value).toBe('1')
 
     fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
-    expect(screen.getByRole('status').textContent).toContain('1 × Bedside monitor noted')
+    expect(screen.getByRole('status').textContent).toContain('Added 1 × Bedside monitor to your cart.')
+    expect(screen.getByRole('link', { name: 'View cart' }).getAttribute('href')).toBe('/cart')
+    expect(readCart()).toEqual([{ productId: 'p1', quantity: 1 }])
+
+    fireEvent.change(quantity, { target: { value: '99' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
+    expect(screen.getByRole('status').textContent).toContain('holds 99 × Bedside monitor')
+    expect(readCart()).toEqual([{ productId: 'p1', quantity: 99 }])
   })
 
   it('out of stock disables Add to cart; quotation products show "Request quotation"', async () => {

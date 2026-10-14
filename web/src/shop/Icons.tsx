@@ -136,6 +136,11 @@ export const IconPlus = (p: P) => (
     <path d="M12 5v14M5 12h14" />
   </Icon>
 )
+export const IconTrash = (p: P) => (
+  <Icon {...p}>
+    <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+  </Icon>
+)
 export const IconShield = (p: P) => (
   <Icon {...p}>
     <path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z" />

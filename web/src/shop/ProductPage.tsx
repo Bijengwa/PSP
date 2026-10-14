@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { formatTzs, getProduct, imageSrc, type ShopProductAnswer, type ShopProductDetail } from './api'
+import { MAX_LINES, MAX_QUANTITY, addToCart, clampQuantity, rememberPrice } from './cart'
 import {
   IconAlert,
   IconCart,
@@ -19,7 +20,6 @@ import {
 import ProductCard from './ProductCard'
 
 const SITE = 'PSP Engineering Group'
-const MAX_QUANTITY = 99
 const SWIPE_PX = 40
 const META_LENGTH = 155
 
@@ -373,28 +373,42 @@ function Gallery({ images, name }: { images: string[]; name: string }) {
   )
 }
 
-const clampQuantity = (n: number) => Math.min(MAX_QUANTITY, Math.max(1, n))
+type Notice = { ok: boolean; text: string } | null
 
-// Quantity stepper and "Add to cart". The cart itself is C4: until it exists the
-// button only confirms, and nothing is stored.
+// Quantity stepper and "Add to cart". The cart module stores only the id and quantity.
 function AddToCart({ product }: { product: ShopProductDetail }) {
   const [draft, setDraft] = useState('1')
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState<Notice>(null)
   const quantity = clampQuantity(Number.parseInt(draft, 10) || 1)
   const out = !product.inStock
 
   function change(next: string) {
     setDraft(next)
-    setNotice('')
+    setNotice(null)
   }
 
   function submit(event: FormEvent) {
     event.preventDefault()
     if (out) return
     setDraft(String(quantity))
-    setNotice(
-      `${quantity} × ${product.name} noted. Online ordering opens soon; until then, contact us to place the order.`,
-    )
+    const result = addToCart(product.id, quantity)
+    if (!result.ok) {
+      setNotice({
+        ok: false,
+        text:
+          result.reason === 'full'
+            ? `Your cart is full (${MAX_LINES} products). Remove something to add this one.`
+            : 'Your browser did not let us save the cart. Allow site data for this shop and try again.',
+      })
+      return
+    }
+    rememberPrice(product.id, isQuote(product) ? null : product.priceTzs)
+    setNotice({
+      ok: true,
+      text: result.capped
+        ? `Your cart now holds ${result.quantity} × ${product.name}, the most for one product.`
+        : `Added ${quantity} × ${product.name} to your cart.`,
+    })
   }
 
   return (
@@ -443,12 +457,12 @@ function AddToCart({ product }: { product: ShopProductDetail }) {
           Out of stock at the moment. Contact us for the next delivery date.
         </p>
       )}
-      <p className="shop-buy-notice" role="status">
+      <p className={`shop-buy-notice${notice && !notice.ok ? ' is-error' : ''}`} role="status">
         {notice && (
           <>
-            <IconCheck size={18} />
+            {notice.ok ? <IconCheck size={18} /> : <IconAlert size={18} />}
             <span>
-              {notice} <Link to="/#contact">Contact PSP</Link>
+              {notice.text} {notice.ok && <Link to="/cart">View cart</Link>}
             </span>
           </>
         )}
