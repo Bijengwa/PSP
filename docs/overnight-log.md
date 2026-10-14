@@ -1419,3 +1419,34 @@ M3.1 ticked; current step is **M3.2**. M3.2 was not started.
 - `web/src/management/inApp/pages/StaffProfile.test.tsx` › "deactivates only after confirming, then offers Reactivate" failed once in about 7 full `npm test` runs. It was waiting for focus on Cancel, and `document.activeElement` was `<body>`. It passes alone and passed in every other run, including the final one. The cause was not found in reasonable time. It is not a timeout, because focus ends on `<body>` rather than arriving late. It may be a late `/api/auth/me` re-render in the test. Worth a look in an interactive session.
 
 M6.1 ticked; current step is **M6.2**. M6.2 was not started. Nothing committed.
+
+## M6.2 Customers list (2026-10-14, overnight): TICKED
+
+**Changed**
+- New `node/src/customers/customers.service.js`: `listCustomers({ q, type, page })`, newest first, 25 per page. Returns `{ customers, total, page, pageSize, counts: { all, individual, company } }`. The counts follow the search but not the type, so the tabs show what each one would hold. The public shape has no `notes` and no `created_by` (the detail page comes in M6.4).
+- New `node/src/customers/customers.routes.js`: `GET /api/office/customers?q=&type=&page=`, behind `requireSameOrigin` + `requireAuth()`. An unknown `type` returns 400.
+- `node/src/server.js`: mounted at `/api/office/customers`, before the admin-only `officeRouter`, like products.
+- `node/src/customers/customers.test.js`: API tests for the session requirement, use by normal staff, the empty list, the response shape (no notes), newest-first order, search by name, company, contact person, email and phone (both `+255…` and the local `0712 345 678` form), `%`/`_` matched literally, the type filter with counts, unknown type → 400, paging (25 per page, total, bad page numbers fall back to 1, a page past the end is empty), and the phone-digits helper.
+- New `web/src/management/inApp/pages/CustomersList.tsx` and `CustomersList.test.tsx` (6 tests: skeleton then table with counts, the type tab, debounced search and paging params, empty state with Clear search, the "No customers yet" state, the error with Try again, the phone card layout).
+- `web/src/App.tsx`: `/office/customers` now shows `CustomersList` instead of the placeholder.
+- `web/src/index.css`: a small "Customers (M6.2)" block (company avatar, Company badge, tabular phone, empty-state row). Colours come only from the existing variables.
+- `web/scripts/responsive-check.mjs`: customer fixtures (long company name and email, no contacts, a foreign phone, 27 in total) and routes `office-customers` and `office-customers-empty`.
+
+**Decisions**
+- M6.2 has no "Done when" line. I used the M5.2/M4.2 one: search, filter and paging are tested, and the responsive check passes.
+- Access: any signed-in staff member, the same as Products. Customers are sales work, not IT, and roles become permissions in H3–H5.
+- Search also matches `contact_person`, because for companies that is the name staff know. If the search looks like a phone number (digits, spaces, `+()-`, at least 3 digits), a leading `0` becomes `255`, so `0712 345` finds `+255712345…`. This matches how M6.1 stores phones.
+- Page design follows the Products list: type tabs with counts (All customers / Individuals / Companies), search as you type (300 ms debounce), a table on desktop and tablet, and cards at 640px and below. Individuals get an initials avatar and companies a building icon. Companies show their contact person and TIN under the name. Phones are shown as `+255 712 345 678`.
+- No "Add customer" button and no row links yet. The form (M6.3) and the detail page (M6.4) do not exist, so a button or link now would lead to a dead route.
+- Two empty states: "No customers yet." (nothing stored) and "No customers match “…”." with Clear search.
+
+**Verified**
+- `node` `npm test`: 8 suites, 242 tests passed.
+- `web` `npm test`: 12 files, 101 tests passed. `npm run build`: passed. `npm run lint`: clean.
+- `npm run check:responsive`: passed for every route, including the two new customer routes, at 360, 768 and 1280px in light and dark. One run failed on a Windows file-write error for an unrelated shop screenshot (`UNKNOWN: open …shop-checkout-errors-768-dark.png`, a transient file lock). The re-run passed. Checked the new screenshots by eye: no clipping, long names and emails wrap, and the badges have good contrast in both themes. Re-running the check also rewrote some older screenshots with tiny pixel differences.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. M7.4 was not touched. It is only the stop point of the overnight order.
+- Collision Guard: it said `customers.test.js` and `index.css` had been edited by another session 10–23 min earlier. `git status` showed no changes other than this step's, so those edits were the previous, finished run (M6.1 and earlier). Nothing was overwritten.
+
+M6.2 ticked; current step is **M6.3**. M6.3 was not started. Nothing committed.

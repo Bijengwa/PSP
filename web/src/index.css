@@ -2149,6 +2149,43 @@ a {
   justify-content: flex-end;
 }
 
+/* Customers (M6.2) */
+.office-avatar.office-avatar-company {
+  flex-shrink: 0;
+  border-radius: var(--radius);
+}
+
+.office-product-cell .office-avatar {
+  flex-shrink: 0;
+}
+
+.office-status.office-status-company {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.office-customer-phone {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.office-customer-contacts {
+  min-width: 0;
+}
+
+.office-customer-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.office-customer-empty .office-reset-empty {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 640px) {
   .office-tabs {
     padding: 0 16px;

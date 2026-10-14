@@ -1,8 +1,70 @@
+const request = require('supertest');
+
+// Log lines go nowhere in this file.
+jest.mock('../logger', () => {
+  const actual = jest.requireActual('../logger');
+  return { ...actual, logger: actual.createLogger({ env: 'test', level: 'info', destination: { write: () => {} } }) };
+});
+
+// In-memory stand-in for the node-redis client, covering the commands the
+// session store uses.
+jest.mock('../redis', () => {
+  class FakeRedis {
+    constructor() {
+      this.data = new Map();
+    }
+    async get(key) {
+      return this.data.has(key) ? this.data.get(key) : null;
+    }
+    async set(key, value) {
+      this.data.set(key, value);
+      return 'OK';
+    }
+    async del(keys) {
+      let removed = 0;
+      for (const key of [].concat(keys)) if (this.data.delete(key)) removed += 1;
+      return removed;
+    }
+    async sAdd(key, member) {
+      if (!this.data.has(key)) this.data.set(key, new Set());
+      this.data.get(key).add(member);
+      return 1;
+    }
+    async sRem(key, member) {
+      return this.data.get(key)?.delete(member) ? 1 : 0;
+    }
+    async sMembers(key) {
+      return [...(this.data.get(key) ?? [])];
+    }
+    async expire() {
+      return 1;
+    }
+    multi() {
+      const queued = [];
+      const chain = {
+        exec: async () => Promise.all(queued.map(([command, args]) => this[command](...args))),
+      };
+      for (const command of ['set', 'sAdd', 'expire']) {
+        chain[command] = (...args) => {
+          queued.push([command, args]);
+          return chain;
+        };
+      }
+      return chain;
+    }
+  }
+  return { client: new FakeRedis(), connect() {}, disconnect: async () => {} };
+});
+
 const db = require('../db');
+const { app } = require('../server');
+const sessions = require('../auth/session.store');
+const { phoneDigits } = require('./customers.service');
 
 const MIGRATION = '20261014200000_create_customers.js';
 
 let staffId;
+let staffCookie;
 
 // Inserts a customer straight into the table, an individual by default.
 async function customer(over = {}) {
@@ -26,6 +88,7 @@ beforeAll(async () => {
     .insert({ full_name: 'Sam Staff', email: 's@psp.test', password_hash: 'x', role_id: role.id, must_change_password: false })
     .returning('id');
   staffId = staff.id;
+  staffCookie = `psp_sid=${(await sessions.create({ staffId, ip: '::1', userAgent: 't' })).id}`;
 });
 
 beforeEach(async () => {
@@ -125,6 +188,159 @@ describe('customer_addresses table', () => {
     await address(id);
     await db('customers').where({ id }).del();
     expect(await db('customer_addresses').where({ customer_id: id }).first()).toBeUndefined();
+  });
+});
+
+describe('customers API (GET /api/office/customers)', () => {
+  const list = (query = '') => request(app).get(`/api/office/customers${query}`).set('Cookie', staffCookie);
+
+  // Three individuals and two companies, oldest first.
+  async function seed() {
+    const rows = [
+      { full_name: 'Asha Mushi', phone: '+255712345678', email: 'asha@example.com' },
+      { full_name: 'Juma Said', phone: '+255754100200', email: 'juma@mail.test' },
+      { full_name: '50% Discount Person' },
+      {
+        type: 'company',
+        full_name: null,
+        company_name: 'Bugando Medical Centre',
+        contact_person: 'Dr. Neema Kweka',
+        tin: '123-456-789',
+        phone: '+255282500000',
+        email: 'procurement@bugando.test',
+      },
+      { type: 'company', full_name: null, company_name: 'Kilimanjaro Clinic' },
+    ];
+    for (const [n, row] of rows.entries()) {
+      await customer({ ...row, created_at: new Date(Date.UTC(2026, 9, 1 + n)) });
+    }
+  }
+
+  const names = (res) => res.body.data.customers.map((c) => c.fullName ?? c.companyName);
+
+  test('requires a session', async () => {
+    const res = await request(app).get('/api/office/customers');
+    expect(res.status).toBe(401);
+  });
+
+  test('a normal staff member can use it; empty list with zero counts', async () => {
+    const res = await list();
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      customers: [],
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      counts: { all: 0, individual: 0, company: 0 },
+    });
+  });
+
+  test('lists newest first in the public shape, without notes or creator', async () => {
+    await seed();
+    await db('customers').where({ full_name: 'Asha Mushi' }).update({ notes: 'Prefers calls after 5pm' });
+    const res = await list();
+    expect(names(res)).toEqual([
+      'Kilimanjaro Clinic',
+      'Bugando Medical Centre',
+      '50% Discount Person',
+      'Juma Said',
+      'Asha Mushi',
+    ]);
+    expect(res.body.data.counts).toEqual({ all: 5, individual: 3, company: 2 });
+    const company = res.body.data.customers[1];
+    expect(Object.keys(company).sort()).toEqual([
+      'companyName',
+      'contactPerson',
+      'createdAt',
+      'email',
+      'fullName',
+      'id',
+      'phone',
+      'tin',
+      'type',
+      'updatedAt',
+    ]);
+    expect(company).toMatchObject({
+      type: 'company',
+      fullName: null,
+      companyName: 'Bugando Medical Centre',
+      contactPerson: 'Dr. Neema Kweka',
+      tin: '123-456-789',
+      phone: '+255282500000',
+      email: 'procurement@bugando.test',
+    });
+  });
+
+  test('search by name, company, contact person, email and phone (any case)', async () => {
+    await seed();
+    expect(names(await list('?q=asha'))).toEqual(['Asha Mushi']);
+    expect(names(await list('?q=BUGANDO'))).toEqual(['Bugando Medical Centre']);
+    expect(names(await list('?q=kweka'))).toEqual(['Bugando Medical Centre']);
+    expect(names(await list('?q=juma%40mail'))).toEqual(['Juma Said']);
+    expect(names(await list('?q=%2B255754'))).toEqual(['Juma Said']);
+    // Typed the local way, with spaces: 0712 345 678 is stored as +255712345678.
+    expect(names(await list(`?q=${encodeURIComponent('0712 345 678')}`))).toEqual(['Asha Mushi']);
+    expect(names(await list('?q=100200'))).toEqual(['Juma Said']);
+    expect((await list('?q=nobody')).body.data.total).toBe(0);
+  });
+
+  test('search treats % and _ literally', async () => {
+    await seed();
+    expect(names(await list('?q=50%25'))).toEqual(['50% Discount Person']);
+    expect((await list('?q=_')).body.data.total).toBe(0);
+  });
+
+  test('type filter; counts follow the search but not the type', async () => {
+    await seed();
+    let res = await list('?type=company');
+    expect(names(res)).toEqual(['Kilimanjaro Clinic', 'Bugando Medical Centre']);
+    expect(res.body.data.total).toBe(2);
+    expect(res.body.data.counts).toEqual({ all: 5, individual: 3, company: 2 });
+
+    res = await list('?type=individual&q=u');
+    expect(names(res)).toEqual(['50% Discount Person', 'Juma Said', 'Asha Mushi']);
+    expect(res.body.data.counts).toEqual({ all: 4, individual: 3, company: 1 });
+
+    res = await list('?type=individual&q=clinic');
+    expect(res.body.data).toMatchObject({ customers: [], total: 0, counts: { all: 1, individual: 0, company: 1 } });
+  });
+
+  test('an unknown type is a 400', async () => {
+    const res = await list('?type=reseller');
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/individual, company/);
+  });
+
+  test('pages of 25; total counts every match; bad page numbers fall back to 1', async () => {
+    await db('customers').insert(
+      Array.from({ length: 27 }, (_, n) => ({
+        type: 'individual',
+        full_name: `Customer ${String(n).padStart(2, '0')}`,
+        created_by: staffId,
+        created_at: new Date(Date.UTC(2026, 0, 1, 0, n)),
+      })),
+    );
+    const first = await list();
+    expect(first.body.data).toMatchObject({ total: 27, page: 1, pageSize: 25 });
+    expect(first.body.data.customers).toHaveLength(25);
+    expect(first.body.data.customers[0].fullName).toBe('Customer 26');
+
+    const second = await list('?page=2');
+    expect(names(second)).toEqual(['Customer 01', 'Customer 00']);
+    expect(second.body.data.page).toBe(2);
+
+    expect((await list('?page=abc')).body.data.page).toBe(1);
+    expect((await list('?page=-3')).body.data.page).toBe(1);
+    expect((await list('?page=9')).body.data.customers).toEqual([]);
+  });
+
+  test('phone search digits', () => {
+    expect(phoneDigits('0712 345')).toBe('255712345');
+    expect(phoneDigits('+255 (712) 345-678')).toBe('255712345678');
+    expect(phoneDigits('712')).toBe('712');
+    expect(phoneDigits('07')).toBeNull();
+    expect(phoneDigits('asha')).toBeNull();
+    expect(phoneDigits('flat 12')).toBeNull();
   });
 });
 

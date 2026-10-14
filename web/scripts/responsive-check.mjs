@@ -82,6 +82,16 @@ const ROUTES = [
   // st2 is answered as an inactive account.
   { name: 'office-staff-profile-inactive', path: '/office/staff/st2', ready: '.office-profile-head' },
   { name: 'office-my-profile', path: '/office/profile', ready: '.office-profile-head' },
+  { name: 'office-customers', path: '/office/customers', ready: '.office-list-footer' },
+  {
+    name: 'office-customers-empty',
+    path: '/office/customers',
+    ready: '.office-customer-empty',
+    act: async (page) => {
+      await page.locator('.office-list-footer').waitFor()
+      await page.getByLabel('Search by name, company, phone or email').fill('no-such-customer-with-a-long-search')
+    },
+  },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -283,6 +293,37 @@ const staffList = [
   },
 ]
 
+// Customers: an individual, a long-named company with TIN and contact person, one with
+// no contact details and one with a foreign phone. The total spans two pages.
+const customer = (id, patch) => ({
+  id,
+  type: 'individual',
+  fullName: null,
+  companyName: null,
+  tin: null,
+  contactPerson: null,
+  phone: null,
+  email: null,
+  createdAt: '2026-10-12T08:00:00.000Z',
+  updatedAt: '2026-10-12T08:00:00.000Z',
+  ...patch,
+})
+
+const customers = [
+  customer('c1', { fullName: 'Asha Mushi', phone: '+255712345678', email: 'asha.mushi@example.com' }),
+  customer('c2', {
+    type: 'company',
+    companyName: 'Bugando Medical Centre and University Teaching Hospital Procurement Unit',
+    tin: '123-456-789',
+    contactPerson: 'Dr. Neema Kweka-Lyimo',
+    phone: '+255282500000',
+    email: 'procurement.department@bugandomedicalcentre.example',
+    createdAt: '2026-10-11T08:00:00.000Z',
+  }),
+  customer('c3', { fullName: 'Juma Said', createdAt: '2026-10-09T08:00:00.000Z' }),
+  customer('c4', { type: 'company', companyName: 'Kilimanjaro Clinic', phone: '+254711000111', createdAt: '2026-10-02T08:00:00.000Z' }),
+]
+
 const shopCategories = [
   { name: 'Imaging', slug: 'imaging', productCount: 14 },
   { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 6 },
@@ -394,6 +435,11 @@ function answer(url, request) {
     })
   }
   if (pathname === '/api/office/staff') return ok({ staff: staffList, total: 31, page: 1, pageSize: 25 })
+  if (pathname === '/api/office/customers') {
+    const counts = { all: 27, individual: 15, company: 12 }
+    if (searchParams.get('q')) return ok({ customers: [], total: 0, page: 1, pageSize: 25, counts: { all: 0, individual: 0, company: 0 } })
+    return ok({ customers, total: 27, page: 1, pageSize: 25, counts })
+  }
   const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
   if (staffProfile) {
     const inactive = staffProfile[1] === 'st2' ? { isActive: false, mustChangePassword: false } : {}

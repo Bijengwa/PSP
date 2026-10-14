@@ -941,3 +941,31 @@ I finished M6.1 (the customer database tables). I ticked it in `docs/progress.md
 **Needs your attention:** one existing test, `StaffProfile.test.tsx` ΓÇ║ "deactivates only after confirming, then offers Reactivate", failed once in about 7 full web runs. It passed alone and in every other run, including the final one. In the failed run, focus ended up on the page body instead of the Cancel button, so it isn't just slow. I didn't find the cause and didn't change it. It's logged as an open issue.
 
 The collision guard said another session had edited `docs/progress.md` recently. I re-checked the file, and the only changes in it are my two lines.
+M6.2 (Customers list) is built and ticked in `docs/progress.md`, and the current step is now **M6.3**. I didn't start M6.3 and didn't commit anything.
+
+**What changed**
+- **API:** `GET /api/office/customers` lets any signed-in staff member search, filter by type and page through customers. Search covers name, company, contact person, email and phone. A phone typed the local way, like "0712 345", finds the stored "+255712ΓÇª". Results come 25 per page, newest first, with counts for each type tab. Notes and the creator are left out of the list. The new code is in `node/src/customers/customers.service.js` and `customers.routes.js`, mounted in `node/src/server.js`.
+- **Page:** `/office/customers` now shows the list instead of the title-only placeholder. It follows the Products list:
+  - tabs for All customers, Individuals and Companies, each with a count
+  - search as you type
+  - a table on desktop and tablet, cards on phones
+  - initials for people and a building icon for companies; companies also show their contact person and TIN
+  - loading, empty ("No customers yet", or no matches with a Clear search button) and error-with-retry states
+
+  The code is `CustomersList.tsx`, a route change in `App.tsx`, and a small block of styles in `index.css` that uses only the existing theme colours.
+- **Tests:** new API tests in `customers.test.js`, a new `CustomersList.test.tsx` with 6 tests, and two customer pages added to the responsive check.
+
+**Checks**
+- node `npm test`: 242 passed.
+- web `npm test`: 101 passed. `npm run build` passed and `npm run lint` is clean.
+- `npm run check:responsive` passed at 360, 768 and 1280px in light and dark. One run failed with a Windows error saving an unrelated shop screenshot; the re-run passed.
+- I looked at the new customer screenshots: long names and emails wrap cleanly and nothing scrolls sideways. Re-running the check also re-saved some older screenshots with tiny pixel differences.
+
+**Decisions** (also in `docs/overnight-log.md`)
+- M6.2 has no "Done when" line in the plan, so I used the one from the Products and Staff lists: search, filter and paging tested, plus the responsive check.
+- The page has no "Add customer" button and the rows don't link anywhere yet. The form (M6.3) and the detail page (M6.4) don't exist, so both would lead to dead pages.
+
+**Guard warnings**
+- **Progress Guard:** it flagged M7.4 because the prompt names it. I didn't touch it.
+- **Collision Guard:** it said another session edited `customers.test.js` and `index.css` earlier. `git status` showed only this step's changes, so that was the finished M6.1 run.
+- **Scope Guard:** it warned because I changed "Current step" before ticking M6.2. The end state is correct.
