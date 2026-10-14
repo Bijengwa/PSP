@@ -1,5 +1,49 @@
 # Overnight Log
 
+## 2026-10-14 — C5 Orders tables and checkout API: done, TICKED
+
+**Which step:** the prompt described M5.6, but M5.6 to C4 were already ticked. `docs/progress.md` said **C5**, so only C5 was built. Current step is now **C6**; C6 was not started. Nothing was committed. C5 is backend only (no UI), so the responsive check does not apply.
+
+**Changed**
+- New `node/migrations/20261014180000_create_orders.js` (up and down). It adds sequence `order_number_seq`, owned by `orders.order_number`. `orders` has: `order_number` unique, default `PSP-` plus 6 digits from the sequence; `customer_id` nullable with no foreign key; `guest_name`, `guest_phone`, `guest_email` (nullable), `delivery_area`, `delivery_address`, `notes`, `status` (default `new`), `payment_status` (default `unpaid`), `source`, `total_tzs`, `has_quotation_lines` and timestamps. Its checks: status in new/confirmed/delivered/closed/cancelled, payment unpaid/paid, source shop/staff, total ≥ 0. `order_items` holds `product_id` (FK to products), the copied `product_name`, `product_sku` and `unit_price_tzs` (null for quotation lines), plus `quantity`, `line_total_tzs` and `sort_order`. Its checks: quantity > 0, prices ≥ 0, and either both unit price and line total are null or neither is. No transition rules (M7.1).
+- `node/src/shop/shop.service.js`: `createShopOrder(guest, lines)`. Within one transaction it reads every line again from `products` (`FOR SHARE`) and refuses lines with a per-line code: `UNAVAILABLE` for unknown, draft or archived products, `OUT_OF_STOCK` for stock 0. Name, SKU and price are copied from the database. Quotation lines are saved with no price and left out of the total. Totals are computed with BigInt. Stock is not changed. Database errors are rethrown without the failing row (only code, table and constraint), so the 500 log holds no guest data.
+- `node/src/shop/shop.routes.js`: `POST /api/shop/orders` with body `{ name, phone, email?, area, address, notes?, items: [{productId, quantity}], website }`.
+  - Validation, with field errors (400 `VALIDATION_ERROR`, keys like `items.2.quantity`): name 2–100; Tanzanian phone (`0712…`, `712…`, `+255…`, `255…`, with spaces, dashes or brackets; mobile 6/7, landline 2) normalised to `+255XXXXXXXXX`; email optional and valid; area/city 2–100; street or landmark 2–200; notes up to 1000; 1–50 lines; quantity an integer 1–99; duplicate product ids refused.
+  - A filled `website` honeypot gives 400 `REJECTED` and nothing is saved.
+  - Refused lines give 409 `LINES_UNAVAILABLE` with `details.lines: [{index, productId, code}]`.
+  - Success gives 201 `{ orderNumber, totalTzs }` only. The only log line is the order number.
+- `node/src/auth/rate-limit.js`: `enforce` now counts whatever identities a scope lists, so login and forgot behave exactly as before. New scope `order`: 10 per IP and 5 per phone per hour. Phone keys are SHA-256 hashed, so Redis never holds the number. Over the limit gives 429 with `Retry-After`; Redis down gives 503.
+- `node/src/shop/shop.test.js`: the Redis stand-in is now a small fake with only `multi`/`incr`/`expire`/`ttl`. It stays dead for the read routes, so they still prove they never use Redis. There are 15 new tests, and the cleanup now also deletes orders.
+
+**Verified**
+- `node` `npm test`: 6 suites, 175 tests passed (160 before, plus 15 new). The new tests cover:
+  - Creating an order from database prices, with stock left alone.
+  - Sequential order numbers.
+  - A tampered price, name, SKU, total, status, payment status, source or customer_id has no effect.
+  - Quotation lines are saved without a price.
+  - Draft, archived, unknown and out-of-stock lines are refused per line and nothing is saved.
+  - Phone formats are normalised.
+  - Field errors are returned for invalid input.
+  - Email is optional and the line count is limited.
+  - The honeypot works.
+  - 429 with `Retry-After` per phone and per IP.
+  - 503 with no order when Redis is down.
+  - A forced failure on the `order_items` insert (temporary trigger) leaves no order row.
+  - Database errors carry no guest data.
+  - Migrating down removes both tables and the sequence, and migrating up again restores them.
+- I made the half-order test fail on purpose by running the inserts outside the transaction: it failed. Then I reverted.
+- `web` `npm test` (59 passed), `npm run build` and `npm run lint`: clean (web unchanged).
+
+**Guard warnings**
+- The Progress Guard said the prompt mentions M5.6 and M5.1, which are not current. That text in the prompt is only the tick rule for M5.6, which is already ticked. Only C5 was built.
+- The Collision Guard on `node/src/shop/shop.service.js`, `shop.routes.js` and `shop.test.js` said they were "edited by another session (3b0d92b1)". That was the C4 session, whose work is committed in 986513a (05:06). The tree was clean when this run began, and the diff holds only C5 changes. The same warning came up on `docs/progress.md` and `docs/overnight-log.md`, from the same committed C4 session.
+- The Scope Guard on `docs/progress.md` was about the order of the edits only: I moved "Current step" before ticking C5. Every C5 "Done when" check had passed before either edit.
+
+**Notes for later steps**
+- C6: quantities must be sent as JSON numbers (the string "2" is refused). Field-error keys for lines are `items.<index>.productId|quantity`. A 409 `LINES_UNAVAILABLE` should send the person back to the cart.
+- The per-IP limit still uses `req.ip` without `trust proxy` (known gap, H2). Behind a proxy, all shoppers would share one IP bucket of 10 orders an hour.
+- No same-origin check on `POST /api/shop/orders`. The body must be JSON, which a cross-site form cannot send without a CORS preflight, and CORS allows only the web origin. H2 can review this.
+
 ## 2026-10-14 — C4 Cart: done, TICKED
 
 **Which step:** the prompt described M5.6, but M5.6 to C3 were already ticked. `docs/progress.md` said **C4**, so only C4 was built. Current step is now **C5**; C5 was not started. Nothing was committed.

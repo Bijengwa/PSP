@@ -649,3 +649,42 @@ C4 (Cart) is built and ticked, and every "Done when" check passed. `docs/progres
 **Before C6**
 - The Checkout link goes to the site's "page not found" until C6 builds `/checkout`.
 - "Price changed" only shows during a single visit, because no prices are stored in the browser.
+C5 (orders tables and the checkout API) is built and ticked, and the current step is now C6. I didn't start C6 and didn't commit anything. C5 is backend only, so the responsive check doesn't apply.
+
+**What changed**
+- **New migration** `node/migrations/20261014180000_create_orders.js` (up and down):
+  - An `orders` table whose numbers (`PSP-000123`) come from a Postgres sequence.
+  - `customer_id` can be empty and has no foreign key yet.
+  - The guest's details, delivery area and street/landmark, and notes are copied into the order.
+  - `status` starts at `new` and `payment_status` at `unpaid`; `source`, `total_tzs` and `has_quotation_lines` are also stored.
+  - An `order_items` table copies each product's name, SKU and unit price. Quotation lines have no price and no line total.
+  - The database itself rejects unknown status values, quantities of zero or less, and negative amounts.
+- **`POST /api/shop/orders`** in `node/src/shop/shop.routes.js` and `shop.service.js`:
+  - **Checks:** every field is checked, and Tanzanian phone numbers are converted to `+255ΓÇª`.
+  - **Spam trap:** a hidden form field (a honeypot) that real people leave empty. Filled in, the order is refused.
+  - **Prices:** only product ids and quantities are taken from the request. Every line is read again from the database inside one transaction.
+  - **Refused lines:** each gets a code, `UNAVAILABLE` (unknown, draft or archived) or `OUT_OF_STOCK`. Stock is not decreased.
+  - **Response:** the order number and total only. The only thing logged is the order number. Database errors are stripped of the failing row so no guest data reaches the log.
+- **Rate limiting** (`node/src/auth/rate-limit.js`): the limiter can now count any identity, not only email. Orders are limited to 10 per IP and 5 per phone per hour. Phone numbers are hashed before going into Redis. If Redis is down, ordering fails with 503. Login and forgot-password limits behave exactly as before.
+- **Tests** (`node/src/shop/shop.test.js`): 15 new tests. The Redis stand-in still refuses the read-only shop routes, so the test that they never use Redis still holds.
+
+**What was verified**
+- `node` `npm test`: 175 tests pass. They cover every C5 "Done when" item:
+  - A tampered price, name or total has no effect.
+  - Draft, archived and out-of-stock products are refused.
+  - Bad input gets an error per field.
+  - Going over the limit gets 429 with `Retry-After`.
+  - A failure half-way leaves no half-saved order.
+  - Migrating down removes the tables and the sequence, and migrating up restores them.
+- I also removed the transaction on purpose: the half-order test failed, then I put it back.
+- `web` `npm test` (59 pass), `npm run build` and `npm run lint` are all clean. The web code didn't change.
+
+**Guard warnings** (also recorded in `docs/overnight-log.md`)
+- **Collision Guard:** it flagged the shop files and the docs as edited by another session. That was the C4 run, which is already committed (986513a). The working tree held only my C5 changes.
+- **Scope Guard:** it noted I moved "Current step" before ticking C5. That's only the order of two edits; every check had passed first.
+- **Progress Guard:** it noted the prompt mentions M5.6. That's only the tick rule, and M5.6 was already ticked.
+
+**Open points** (written in the log for C6 and H2)
+- The checkout page must send quantities as numbers; the string `"2"` is refused.
+- Without the proxy setting (`trust proxy`, planned for H2), everyone behind a reverse proxy would share one limit of 10 orders an hour per IP.
+- The order endpoint has no same-origin check. It relies on the body having to be JSON and on CORS allowing only the web app's origin. H2 should review this.

@@ -1,7 +1,7 @@
 const db = require('../db');
 const { onlyLive } = require('../products/products.service');
 
-// Public catalogue (C2). Every query here goes through `onlyLive`, and only the
+// Public catalogue (C2) and guest orders (C5). Every query here goes through `onlyLive`, and only the
 // columns below are ever selected: no SKU, cost, stock numbers, created_by or
 // draft/archived rows can reach the shop.
 const SHOP_PAGE_SIZE = 12;
@@ -147,4 +147,84 @@ async function getCartPrices(lines) {
     .map((line) => ({ product: byId.get(line.productId), quantity: line.quantity }));
 }
 
-module.exports = { SHOP_PAGE_SIZE, SHOP_SORTS, listShopCategories, listShopProducts, getShopProduct, getCartPrices };
+// Database errors can carry the failing row (the guest's name and phone) in their
+// `detail`. Only the error code, table and constraint are kept, so nothing personal
+// reaches the log.
+function withoutRowData(err) {
+  return Object.assign(new Error('Could not save the order'), {
+    code: err.code,
+    table: err.table,
+    constraint: err.constraint,
+  });
+}
+
+// Places a guest order from the shop (C5). `guest` holds the validated, normalised
+// contact and delivery details; `lines` are unique { productId, quantity }. Every
+// line is read again from the database inside one transaction (the rows are locked
+// against edits until it commits), so names and prices only ever come from there.
+// Returns { problems } with a code per refused line (UNAVAILABLE for unknown, draft
+// or archived products, OUT_OF_STOCK), or { order } with its number and total.
+// Quotation lines are saved without a price and left out of the total. Stock is not
+// decreased: staff do that when they confirm the order.
+async function createShopOrder(guest, lines) {
+  try {
+    return await db.transaction(async (trx) => {
+      const rows = await trx('products')
+        .whereIn('id', lines.map((line) => line.productId))
+        .forShare()
+        .select('id', 'name', 'sku', 'price_tzs', 'request_quotation', 'quantity_in_stock', 'is_published', 'is_archived');
+      const byId = new Map(rows.map((row) => [row.id, row]));
+
+      const problems = [];
+      lines.forEach((line, index) => {
+        const row = byId.get(line.productId);
+        if (!row || !row.is_published || row.is_archived) {
+          problems.push({ index, productId: line.productId, code: 'UNAVAILABLE' });
+        } else if (row.quantity_in_stock <= 0) {
+          problems.push({ index, productId: line.productId, code: 'OUT_OF_STOCK' });
+        }
+      });
+      if (problems.length) return { problems };
+
+      // BigInt: 50 lines of large prices can pass Number's safe range.
+      const items = lines.map((line, index) => {
+        const row = byId.get(line.productId);
+        const unit = row.request_quotation || row.price_tzs === null ? null : BigInt(row.price_tzs);
+        return {
+          product_id: row.id,
+          product_name: row.name,
+          product_sku: row.sku,
+          unit_price_tzs: unit === null ? null : String(unit),
+          quantity: line.quantity,
+          line_total_tzs: unit === null ? null : String(unit * BigInt(line.quantity)),
+          sort_order: index,
+        };
+      });
+      const total = items.reduce((sum, item) => sum + BigInt(item.line_total_tzs ?? 0), 0n);
+
+      const [order] = await trx('orders')
+        .insert({
+          ...guest,
+          source: 'shop',
+          total_tzs: String(total),
+          has_quotation_lines: items.some((item) => item.unit_price_tzs === null),
+        })
+        .returning(['id', 'order_number', 'total_tzs']);
+      await trx('order_items').insert(items.map((item) => ({ ...item, order_id: order.id })));
+
+      return { order: { orderNumber: order.order_number, totalTzs: Number(order.total_tzs) } };
+    });
+  } catch (err) {
+    throw withoutRowData(err);
+  }
+}
+
+module.exports = {
+  SHOP_PAGE_SIZE,
+  SHOP_SORTS,
+  listShopCategories,
+  listShopProducts,
+  getShopProduct,
+  getCartPrices,
+  createShopOrder,
+};
