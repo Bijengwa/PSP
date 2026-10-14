@@ -14,6 +14,8 @@ function pageTitle(pathname: string) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
   if (/^\/office\/products\/[^/]+$/.test(path) && !PAGE_TITLES[path]) return 'Edit Product'
   if (/^\/office\/staff\/[^/]+$/.test(path) && !PAGE_TITLES[path]) return 'Staff Profile'
+  if (path === '/office/customers/new') return 'Add Customer'
+  if (/^\/office\/customers\/[^/]+\/edit$/.test(path)) return 'Edit Customer'
   if (path === '/office/profile') return 'My Profile'
   return PAGE_TITLES[path] ?? 'Not found'
 }

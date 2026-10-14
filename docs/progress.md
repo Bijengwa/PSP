@@ -5,7 +5,7 @@ UI steps also need the responsive check (360px, 768px, desktop) before ticking.
 Replanned: 2026-10-07. Re-ordered 2026-10-14 (shop first): M5.6 → C2 → C3 → C4 → C5 → C6 → C7, then back to M4.1.
 M4.1–M4.3 ticked on 2026-10-14 at the user's instruction after a code check (see `docs/overnight-log.md` for the checks still open).
 Overnight order after M4.8: M6.1 → M6.2 → M6.3 → M6.4 → M7.1 → M7.2 → M7.3 → M7.5, then Current step is set to M7.4 (needs the user) and the run stops.
-Current step: **M6.3**
+Current step: **M6.4**
 
 ## M1 — Management Shell
 
@@ -65,7 +65,7 @@ Current step: **M6.3**
 
 - [x] M6.1 Customer data model
 - [x] M6.2 Customers list
-- [ ] M6.3 Add/edit customer
+- [x] M6.3 Add/edit customer
 - [ ] M6.4 Customer detail
 
 ## M7 — Orders

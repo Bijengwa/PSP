@@ -93,9 +93,99 @@ async function listCustomers({ q, type, page = 1, limit = CUSTOMER_PAGE_SIZE }) 
   };
 }
 
+const ADDRESS_COLUMNS = ['id', 'label', 'area', 'address', 'is_default'];
+
+function toAddress(row) {
+  return { id: row.id, label: row.label, area: row.area, address: row.address, isDefault: row.is_default };
+}
+
+// One customer with notes and addresses (default first), or null.
+async function findCustomer(id, trx = db) {
+  const row = await trx('customers').where({ id }).first([...CUSTOMER_COLUMNS, 'notes']);
+  if (!row) return null;
+  const addresses = await trx('customer_addresses')
+    .where({ customer_id: id })
+    .orderBy([{ column: 'is_default', order: 'desc' }, { column: 'created_at' }, { column: 'id' }])
+    .select(ADDRESS_COLUMNS);
+  return { ...toPublicCustomer(row), notes: row.notes, addresses: addresses.map(toAddress) };
+}
+
+function toRow(values) {
+  return {
+    type: values.type,
+    full_name: values.fullName,
+    company_name: values.companyName,
+    tin: values.tin,
+    contact_person: values.contactPerson,
+    phone: values.phone,
+    email: values.email,
+    notes: values.notes,
+  };
+}
+
+// Replaces the customer's addresses with `addresses` (already validated, at most one default).
+async function replaceAddresses(trx, customerId, addresses) {
+  await trx('customer_addresses').where({ customer_id: customerId }).del();
+  if (addresses.length === 0) return;
+  await trx('customer_addresses').insert(
+    addresses.map((a) => ({
+      customer_id: customerId,
+      label: a.label,
+      area: a.area,
+      address: a.address,
+      is_default: a.isDefault,
+    })),
+  );
+}
+
+async function createCustomer({ values, addresses, createdBy }) {
+  return db.transaction(async (trx) => {
+    const [{ id }] = await trx('customers')
+      .insert({ ...toRow(values), created_by: createdBy })
+      .returning('id');
+    await replaceAddresses(trx, id, addresses);
+    return findCustomer(id, trx);
+  });
+}
+
+// `addresses` undefined leaves them as they are. Returns null when the customer is gone.
+async function updateCustomer(id, values, addresses) {
+  return db.transaction(async (trx) => {
+    const updated = await trx('customers')
+      .where({ id })
+      .update({ ...toRow(values), updated_at: trx.fn.now() });
+    if (!updated) return null;
+    if (addresses) await replaceAddresses(trx, id, addresses);
+    return findCustomer(id, trx);
+  });
+}
+
+// Customers who already have this phone or email (stored forms), newest first, for the
+// form's duplicate warning. Duplicates are allowed; this only tells staff about them.
+async function findDuplicates({ phone, email, excludeId, limit = 5 }) {
+  if (!phone && !email) return [];
+  const query = db('customers').where((b) => {
+    if (phone) b.orWhere({ phone });
+    if (email) b.orWhere({ email });
+  });
+  if (excludeId) query.whereNot({ id: excludeId });
+  const rows = await query
+    .orderBy([{ column: 'created_at', order: 'desc' }, { column: 'id' }])
+    .limit(limit)
+    .select(CUSTOMER_COLUMNS);
+  return rows.map((row) => ({
+    ...toPublicCustomer(row),
+    matchedOn: [...(phone && row.phone === phone ? ['phone'] : []), ...(email && row.email === email ? ['email'] : [])],
+  }));
+}
+
 module.exports = {
   CUSTOMER_TYPES,
   CUSTOMER_PAGE_SIZE,
   listCustomers,
   phoneDigits,
+  findCustomer,
+  createCustomer,
+  updateCustomer,
+  findDuplicates,
 };

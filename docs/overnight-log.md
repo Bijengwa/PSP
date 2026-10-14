@@ -1450,3 +1450,37 @@ M6.1 ticked; current step is **M6.2**. M6.2 was not started. Nothing committed.
 - Collision Guard: it said `customers.test.js` and `index.css` had been edited by another session 10–23 min earlier. `git status` showed no changes other than this step's, so those edits were the previous, finished run (M6.1 and earlier). Nothing was overwritten.
 
 M6.2 ticked; current step is **M6.3**. M6.3 was not started. Nothing committed.
+
+## M6.3 Add/edit customer (2026-10-14, overnight): TICKED
+
+**Changed**
+- `node/src/customers/customers.service.js`: `findCustomer` (with notes and addresses, default first), `createCustomer` and `updateCustomer` (one transaction each, addresses replaced as a set), `findDuplicates` (by stored phone/email, newest first, at most 5, says which field matched).
+- `node/src/customers/customers.routes.js`: `POST /api/office/customers`, `GET /:id`, `PATCH /:id`, and `GET /duplicates?phone=&email=&exclude=`. Same guards as the list (`requireSameOrigin` + `requireAuth()`). Validation gives per-field errors (`VALIDATION_ERROR`, address errors keyed `addresses.<row>.<field>`). Logs only ids (`customer.created` / `customer.updated`).
+- `node/src/customers/customers.test.js`: 14 new API tests (session/origin, create individual and company, normalisation, field errors with nothing stored, duplicates allowed, GET and 404s, partial PATCH, type switch, `/duplicates` matching, exclude, invalid input and session).
+- New `web/src/management/inApp/pages/CustomerForm.tsx` (Add at `/office/customers/new`, Edit at `/office/customers/:id/edit`) and `CustomerForm.test.tsx` (9 tests).
+- `CustomersList.tsx`: "Add customer" button, names link to the edit form, the success notice after adding; `phoneText`/`displayName` exported for the form. One new list test.
+- `web/src/App.tsx` (two routes), `layout/Header.tsx` (titles "Add Customer" / "Edit Customer"), `index.css` ("Customer form (M6.3)" block, existing variables only).
+- `web/scripts/responsive-check.mjs`: routes `office-customer-new`, `office-customer-new-checks` (company fields, duplicate warning, field errors), `office-customer-edit`; fixtures for `GET /api/office/customers/:id` and `/duplicates`.
+
+**Decisions**
+- M6.3 has no "Done when" line. Used the M5.3 one: invalid input gives clear field errors, a new customer appears in the list, plus the tests and the responsive check.
+- Edit route is `/office/customers/:id/edit`, so M6.4 can own `/office/customers/:id` for the detail page. Until M6.4, list names link to the edit form.
+- Duplicate warning: the form asks `GET /duplicates` 400 ms after the phone/email changes, only for values the server would accept, leaving out the customer being edited. It lists the matches ("same phone", "same email", "same phone and email") with a link to each. The link opens in a **new tab** so nothing typed is lost. It never blocks saving. If the check fails, no warning shows and saving still works.
+- Addresses are edited in this form (label optional, area, street/landmark, one default; up to 10). Otherwise the M6.4 detail page would show addresses nobody can add. Blank rows are dropped. With addresses but no default, the first becomes the default. More than one default is refused.
+- Phones: Tanzanian forms are stored as `+255…` (same rule as checkout, so M7.5 matching works). Other countries are accepted with `+` or `00` and 8–15 digits, stored as `+<digits>` (the M6.2 fixtures already had a Kenyan number). The rule is copied into the customers module rather than exported from `shop.routes.js`, so the shop is not touched.
+- TIN: optional, digits and dashes only, spaces removed, up to 20.
+- Type rules match the M6.1 constraints: an individual keeps only the full name; a company keeps company name, contact person and TIN, and its full name is stored as null. Switching type in the form keeps the hidden values in the browser (switching back restores them), but only the fields for the chosen type are saved.
+- PATCH merges the sent fields over the stored customer and then checks the whole record. Addresses change only when `addresses` is sent.
+- After adding: back to the list with "<name> was added." After editing: the edit page reloads with "Changes saved." This is the same pattern as Products.
+- Notes: up to 2000 characters, with a live counter, shown to staff only.
+
+**Verified**
+- `node` `npm test`: 8 suites, 255 tests passed.
+- `web` `npm test`: 13 files, 111 tests passed. `npm run build`: passed. `npm run lint`: clean.
+- `npm run check:responsive`: passed for every route, including the three new ones, at 360, 768 and 1280px in light and dark. I looked at the screenshots. The first pass showed the Notes textarea only two lines tall (`.field-input`'s fixed height won), so I fixed that and re-ran the check, which passed. In the final screenshots, long company names and emails wrap or truncate cleanly, the duplicate warning reads well in both themes, and nothing scrolls sideways at 360px. Per the overnight policy, the automated tests plus the responsive check and screenshots stand in for a manual browser run.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. M7.4 was not touched. It is only the stop point of the overnight order.
+- Collision Guard: it said `CustomersList.tsx` was edited by another session 25 min earlier. `git status` showed only this step's changes, so that was the finished M6.2 run (already committed). Nothing was overwritten.
+
+M6.3 ticked; current step is **M6.4**. M6.4 was not started. Nothing committed.

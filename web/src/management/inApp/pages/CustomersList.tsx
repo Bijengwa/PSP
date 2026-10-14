@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
 import '../../auth/auth.css'
 import { initials } from '../layout/ProfileMenu'
@@ -25,6 +26,8 @@ type TypeTab = '' | CustomerType
 type ListState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: CustomersPage }
 
 const SEARCH_DEBOUNCE_MS = 300
+const NOTICE_MS = 5000
+const CUSTOMERS_PATH = '/office/customers'
 
 const TABS: { key: TypeTab; label: string; count: keyof Counts }[] = [
   { key: '', label: 'All customers', count: 'all' },
@@ -51,12 +54,14 @@ function errorText(result: Extract<ApiResult<unknown>, { ok: false }>) {
 }
 
 // "+255712345678" is shown as "+255 712 345 678"; anything else as stored.
-function phoneText(phone: string) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function phoneText(phone: string) {
   const match = phone.match(/^\+255(\d{3})(\d{3})(\d{3})$/)
   return match ? `+255 ${match[1]} ${match[2]} ${match[3]}` : phone
 }
 
-function displayName(customer: Customer) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function displayName(customer: Customer) {
   return (customer.type === 'company' ? customer.companyName : customer.fullName) ?? ''
 }
 
@@ -93,6 +98,16 @@ const BuildingIcon = () => (
     <path d="M8 8h3M8 12h3M8 16h3M3 21h18" />
   </Svg>
 )
+const PlusIcon = () => (
+  <Svg>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+)
+const CloseIcon = () => (
+  <Svg size={16}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </Svg>
+)
 
 function Avatar({ customer }: { customer: Customer }) {
   return customer.type === 'company' ? (
@@ -111,7 +126,9 @@ function NameCell({ customer }: { customer: Customer }) {
     <span className="office-product-cell">
       <Avatar customer={customer} />
       <span>
-        <span className="office-staff-name">{displayName(customer)}</span>
+        <Link className="office-staff-name office-staff-link" to={`${CUSTOMERS_PATH}/${customer.id}/edit`}>
+          {displayName(customer)}
+        </Link>
         {customer.type === 'company' && customer.contactPerson && (
           <span className="office-staff-meta">Contact: {customer.contactPerson}</span>
         )}
@@ -138,9 +155,31 @@ function Contacts({ customer }: { customer: Customer }) {
 }
 
 // /office/customers: the customer directory. Type tabs with counts, search by name,
-// company, phone or email, paged. Adding and opening customers come in M6.3/M6.4.
+// company, phone or email, paged. A name opens the edit form (the detail page is M6.4).
 export default function CustomersList() {
   const compact = useSyncExternalStore(subscribeToCompact, () => window.matchMedia(COMPACT_QUERY).matches)
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  // The success message from the form that just saved. It goes away on its own, can be
+  // closed, and is dropped from the history entry so a reload does not bring it back.
+  const [notice, setNotice] = useState<string | null>(
+    () => (location.state as { notice?: string } | null)?.notice ?? null,
+  )
+
+  useEffect(() => {
+    if ((location.state as { notice?: string } | null)?.notice) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+    // Runs once, for the state this visit arrived with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
 
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
@@ -208,7 +247,27 @@ export default function CustomersList() {
           <h1 className="office-title">Customers</h1>
           <p className="office-lead">The people and companies PSP sells to</p>
         </div>
+        <div className="office-product-actions">
+          <Link className="button button-primary" to={`${CUSTOMERS_PATH}/new`}>
+            <PlusIcon />
+            Add customer
+          </Link>
+        </div>
       </div>
+
+      {notice && (
+        <div className="office-notice" role="status">
+          <span>{notice}</span>
+          <button
+            type="button"
+            className="office-notice-close"
+            aria-label="Dismiss message"
+            onClick={() => setNotice(null)}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      )}
 
       <section className="office-list-card" aria-label="Customers">
         <div className="office-tabs" role="group" aria-label="Customer type">

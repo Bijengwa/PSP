@@ -21,6 +21,10 @@ const AddProduct = lazy(() => import('./management/inApp/pages/ProductForm'))
 const EditProduct = lazy(() => import('./management/inApp/pages/ProductForm').then((m) => ({ default: m.EditProduct })))
 const ProductsList = lazy(() => import('./management/inApp/pages/ProductsList'))
 const CustomersList = lazy(() => import('./management/inApp/pages/CustomersList'))
+const AddCustomer = lazy(() => import('./management/inApp/pages/CustomerForm'))
+const EditCustomer = lazy(() =>
+  import('./management/inApp/pages/CustomerForm').then((m) => ({ default: m.EditCustomer })),
+)
 const PlaceholderPage = lazy(() => import('./management/inApp/pages/PlaceholderPage'))
 const OfficeNotFound = lazy(() => import('./management/inApp/pages/OfficeNotFound'))
 
@@ -81,6 +85,8 @@ export default function App() {
             <Route path="inventory" element={<PlaceholderPage title="Inventory" />} />
             <Route path="orders" element={<PlaceholderPage title="Orders" />} />
             <Route path="customers" element={<CustomersList />} />
+            <Route path="customers/new" element={<AddCustomer />} />
+            <Route path="customers/:id/edit" element={<EditCustomer />} />
             <Route path="staff" element={<StaffList />} />
             <Route path="staff/new" element={<RegisterStaff />} />
             <Route path="staff/:id" element={<StaffProfile />} />

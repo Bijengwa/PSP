@@ -93,6 +93,24 @@ describe('CustomersList', () => {
     expect(screen.getByText('Showing 2 of 2 customers')).not.toBeNull()
   })
 
+  it('links to Add customer and to each customer, and shows the notice from the form', async () => {
+    stubWidth(false)
+    stubApi(() => page([asha, bugando]))
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/office/customers', state: { notice: 'Asha Mushi was added.' } }]}>
+        <CustomersList />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('status').textContent).toContain('Asha Mushi was added.')
+    expect(screen.getByRole('link', { name: 'Add customer' }).getAttribute('href')).toBe('/office/customers/new')
+    expect((await screen.findByRole('link', { name: 'Asha Mushi' })).getAttribute('href')).toBe('/office/customers/c1/edit')
+    expect(screen.getByRole('link', { name: 'Bugando Medical Centre' }).getAttribute('href')).toBe('/office/customers/c2/edit')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss message' }))
+    expect(screen.queryByText('Asha Mushi was added.')).toBeNull()
+  })
+
   it('filters by type and searches after a pause, back on page 1', async () => {
     stubWidth(false)
     const fetchMock = stubApi((url) => {

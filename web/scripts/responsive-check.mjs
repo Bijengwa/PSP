@@ -92,6 +92,24 @@ const ROUTES = [
       await page.getByLabel('Search by name, company, phone or email').fill('no-such-customer-with-a-long-search')
     },
   },
+  { name: 'office-customer-new', path: '/office/customers/new', ready: '.office-role-option' },
+  {
+    // Company fields, a duplicate phone warning and field errors on a failed save.
+    name: 'office-customer-new-checks',
+    path: '/office/customers/new',
+    ready: '.office-duplicate',
+    act: async (page) => {
+      await page.getByRole('radio', { name: /Company/ }).check()
+      await page.getByLabel(/Phone/).fill('0712 345 678')
+      await page.getByLabel(/TIN/).fill('TIN-ABC')
+      await page.getByRole('button', { name: /Add address/ }).click()
+      await page.getByLabel('Area or city').fill('M')
+      await page.getByRole('button', { name: 'Save customer' }).click()
+      await page.locator('.office-duplicate').waitFor()
+      await page.evaluate(() => window.scrollTo(0, 0))
+    },
+  },
+  { name: 'office-customer-edit', path: '/office/customers/c2/edit', ready: '.office-address' },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -439,6 +457,25 @@ function answer(url, request) {
     const counts = { all: 27, individual: 15, company: 12 }
     if (searchParams.get('q')) return ok({ customers: [], total: 0, page: 1, pageSize: 25, counts: { all: 0, individual: 0, company: 0 } })
     return ok({ customers, total: 27, page: 1, pageSize: 25, counts })
+  }
+  // A typed phone matches the long-named company; the customer being edited is left out.
+  if (pathname === '/api/office/customers/duplicates') {
+    const match = searchParams.get('phone') && !searchParams.get('exclude')
+    return ok({ matches: match ? [{ ...customers[1], matchedOn: ['phone', 'email'] }] : [] })
+  }
+  const customerOne = pathname.match(/^\/api\/office\/customers\/([^/]+)$/)
+  if (customerOne) {
+    const found = customers.find((item) => item.id === customerOne[1]) ?? customers[1]
+    return ok({
+      customer: {
+        ...found,
+        notes: 'Orders through the procurement unit. Invoices go to the finance office; pays by bank transfer within 30 days.',
+        addresses: [
+          { id: 'a1', label: 'Main hospital', area: 'Bugando Hill, Mwanza', address: 'Wurzburg Road, Plot 1, opposite the main gate', isDefault: true },
+          { id: 'a2', label: '', area: 'Nyamagana, Mwanza', address: 'Medical stores, Block C', isDefault: false },
+        ],
+      },
+    })
   }
   const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
   if (staffProfile) {

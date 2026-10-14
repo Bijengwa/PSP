@@ -969,3 +969,34 @@ M6.2 (Customers list) is built and ticked in `docs/progress.md`, and the current
 - **Progress Guard:** it flagged M7.4 because the prompt names it. I didn't touch it.
 - **Collision Guard:** it said another session edited `customers.test.js` and `index.css` earlier. `git status` showed only this step's changes, so that was the finished M6.1 run.
 - **Scope Guard:** it warned because I changed "Current step" before ticking M6.2. The end state is correct.
+M6.3 (Add/edit customer) is built and every check passes. I ticked it in `docs/progress.md` and set the current step to **M6.4**. M6.4 is not started and nothing is committed.
+
+**What staff can do now**
+- **Add a customer** at `/office/customers/new`, from a new "Add customer" button on the Customers page.
+- **Edit a customer** at `/office/customers/:id/edit`. Customer names in the list open this form until the M6.4 detail page exists.
+- **Choose the type.** Company name, contact person and TIN only appear when the type is Company. Only the fields for the chosen type are saved.
+- **See possible duplicates.** Shortly after a phone or email is typed, a warning lists other customers with the same details, each with a link. The link opens in a new tab so nothing typed is lost. The warning never stops a save.
+- **Fix mistakes easily.** Each error shows under its field, focus moves to the first one, and the Save button shows progress and can't be pressed twice. Nothing typed is lost when the server refuses a save.
+- **After saving:** adding a customer returns to the list with "<name> was added."; editing reloads the form with "Changes saved." This works the same way as Products.
+
+The server side adds create, view and update for a customer, plus a duplicate lookup. All of them need a signed-in staff member and the same-origin check. The logs record only ids, never personal details.
+
+**Checks**
+- `node`: `npm test` passed, 255 tests (14 new).
+- `web`: `npm test` passed, 111 tests (10 new); `npm run build` passed; `npm run lint` is clean.
+- `npm run check:responsive` passed at 360, 768 and 1280px in light and dark, including three new pages: the empty form, the form showing errors and a duplicate warning, and the edit page.
+- I looked at the screenshots. On the first run the Notes box was only two lines tall, so I fixed it and re-ran the check, which passed. As the overnight rules allow, these checks stand in for a manual browser run.
+
+**Decisions where the plan was silent** (all recorded in `docs/overnight-log.md`):
+- **No "Done when" line for M6.3:** I used the Add Product step's line instead (clear field errors, and a new customer shows up in the list).
+- **Addresses:** they are edited in this form (up to 10, one default). Otherwise the M6.4 detail page would show addresses nobody could add.
+- **Edit address:** the form lives at `/office/customers/:id/edit`, so `/office/customers/:id` stays free for the M6.4 detail page.
+- **Phones:** Tanzanian numbers are stored as +255ΓÇª, the same way checkout stores them, so shop orders can be matched later. Numbers from other countries are accepted if they start with `+`. I copied the phone rule into the customers code rather than changing the shop's code.
+- **TIN:** optional, digits and dashes only.
+
+**Guard warnings**
+- **Progress Guard** pointed out that the prompt mentions M7.4. I didn't touch M7.4.
+- **Collision Guard** said `CustomersList.tsx` had been edited by another session. That was the earlier M6.2 run, which is already committed; `git status` showed only this step's changes.
+- **Scope Guard** said I should tick the box before moving "Current step". I made both changes together, after every check had passed.
+
+Re-running the responsive check also rewrote about 20 older screenshots with tiny pixel differences. The same thing happened in M6.2.
