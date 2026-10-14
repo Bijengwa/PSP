@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router'
 import { apiRequest } from '../../../api/client'
 import { CHANGE_PASSWORD_PATH, useAuth } from '../../auth/AuthProvider'
 import '../../auth/auth.css'
+import { passwordRules } from '../../auth/login'
 import { initials } from '../layout/ProfileMenu'
+import { RESET_REQUESTS_CHANGED } from '../layout/Sidebar'
 
 type StaffDetail = {
   id: string
@@ -431,6 +433,173 @@ function RoleCard({ staff, isSelf, onChanged }: RoleProps) {
   )
 }
 
+type PasswordProps = {
+  staff: StaffDetail
+  isSelf: boolean
+  onReset: (resolvedRequests: number) => void
+}
+
+// IT sets a temporary password and hands it over in person. The person is signed
+// out everywhere and must choose their own at next sign-in; their pending reset
+// requests are resolved. The password is cleared from the form once it is saved.
+function PasswordCard({ staff, isSelf, onReset }: PasswordProps) {
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState<{ message: string; reasons: string[] } | null>(null)
+  const actionRef = useRef<HTMLButtonElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  // Where focus goes after the next render: the input, or back to the action.
+  const focusTo = useRef<'input' | 'action' | null>(null)
+
+  useEffect(() => {
+    const target = focusTo.current
+    if (!target || (target === 'input' && working)) return
+    focusTo.current = null
+    ;(target === 'input' ? inputRef : actionRef).current?.focus()
+  })
+
+  const rules = passwordRules(password, null, { email: staff.email, fullName: staff.fullName })
+
+  function start() {
+    setPassword('')
+    setError(null)
+    setOpen(true)
+    focusTo.current = 'input'
+  }
+
+  function close() {
+    setOpen(false)
+    setPassword('')
+    setError(null)
+    focusTo.current = 'action'
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (working) return
+    if (!password || rules.some((rule) => !rule.met)) {
+      setError({ message: 'The temporary password does not meet the rules below.', reasons: [] })
+      focusTo.current = 'input'
+      return
+    }
+
+    setWorking(true)
+    setError(null)
+    const result = await apiRequest<{ resolvedRequests: number }>(`/api/office/staff/${staff.id}/reset-password`, {
+      method: 'POST',
+      body: { temporaryPassword: password },
+    })
+    setWorking(false)
+
+    if (result.ok) {
+      close()
+      onReset(result.data.resolvedRequests)
+      return
+    }
+    // 401 and 503 are also handled by the auth provider (login / unavailable screen).
+    const reasons = Array.isArray(result.details) ? result.details.filter((d): d is string => typeof d === 'string') : []
+    let message = result.message
+    if (result.status === 403) message = 'Only administrators can reset passwords.'
+    else if (result.status === 404) message = 'This person no longer exists.'
+    else if (result.status === 503) message = 'The service is temporarily unavailable. Please try again shortly.'
+    setError({ message, reasons })
+    focusTo.current = 'input'
+  }
+
+  const firstName = staff.fullName.split(' ')[0]
+  const describedBy = ['profile-password-hint', 'profile-password-rules', ...(error ? ['profile-password-error'] : [])]
+
+  return (
+    <section className="office-card" aria-labelledby="profile-password-heading">
+      <div className="office-profile-card-head">
+        <h2 id="profile-password-heading">Password</h2>
+        {!open && !isSelf && (
+          <button ref={actionRef} type="button" className="button button-secondary" onClick={start}>
+            Reset password
+          </button>
+        )}
+      </div>
+
+      <p className="office-card-sub">
+        {isSelf ? (
+          <>
+            This is your own account. Use <Link to={CHANGE_PASSWORD_PATH}>Change password</Link> instead.
+          </>
+        ) : staff.mustChangePassword ? (
+          `${firstName} has a temporary password and must choose their own at next sign-in.`
+        ) : (
+          `${firstName} chose their own password. If they forget it, set a temporary one and give it to them in person.`
+        )}
+      </p>
+
+      {open && (
+        <form className="office-profile-form" onSubmit={handleSubmit} noValidate aria-busy={working}>
+          <div className="field">
+            <label className="field-label" htmlFor="profile-temporary-password">
+              Temporary password
+            </label>
+            <input
+              ref={inputRef}
+              id="profile-temporary-password"
+              className="field-input"
+              type="password"
+              name="temporaryPassword"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={working}
+              maxLength={1024}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={describedBy.join(' ')}
+              required
+            />
+            <p id="profile-password-hint" className="office-settings-hint">
+              Give it to {firstName} in person. It is not shown again.
+            </p>
+          </div>
+
+          <ul id="profile-password-rules" className="password-rules" aria-label="Password rules">
+            {rules.map((rule) => (
+              <li key={rule.label} className={rule.met ? 'password-rule is-met' : 'password-rule'}>
+                <span className="password-rule-mark" aria-hidden="true" />
+                {rule.label}
+                <span className="visually-hidden">{rule.met ? ', met' : ', not met'}</span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="office-role-note">
+            {staff.fullName} is signed out right away on every device and must choose a new password at next sign-in.
+            Their pending reset requests are marked as resolved.
+          </p>
+
+          <div id="profile-password-error" className="office-error" role="alert" hidden={!error}>
+            {error?.message}
+            {error && error.reasons.length > 0 && (
+              <ul className="auth-error-list">
+                {error.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="office-reset-actions">
+            <button type="submit" className="button button-primary" disabled={working || !password}>
+              {working && <span className="spinner" aria-hidden="true" />}
+              {working ? 'Saving…' : 'Set temporary password'}
+            </button>
+            <button type="button" className="button button-secondary" onClick={close} disabled={working}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
+
 type AccessProps = {
   staff: StaffDetail
   isSelf: boolean
@@ -620,6 +789,21 @@ export default function StaffProfile() {
     setNotice(`${staff.fullName} is now ${roleLabel(staff.role)} and has been signed out.`)
   }
 
+  function passwordReset(resolvedRequests: number) {
+    if (load.status !== 'ready') return
+    const { staff } = load
+    setLoad({ status: 'ready', staff: { ...staff, mustChangePassword: true } })
+    const resolved =
+      resolvedRequests === 1
+        ? ' 1 pending reset request was resolved.'
+        : resolvedRequests > 1
+          ? ` ${resolvedRequests} pending reset requests were resolved.`
+          : ''
+    setNotice(`Temporary password set for ${staff.fullName}. They have been signed out.${resolved}`)
+    // The sidebar badge counts pending requests.
+    if (resolvedRequests > 0) window.dispatchEvent(new Event(RESET_REQUESTS_CHANGED))
+  }
+
   function retry() {
     setLoad({ status: 'loading' })
     setAttempt((n) => n + 1)
@@ -730,6 +914,7 @@ export default function StaffProfile() {
       </section>
 
       <RoleCard staff={staff} isSelf={staff.id === selfId} onChanged={roleChanged} />
+      <PasswordCard staff={staff} isSelf={staff.id === selfId} onReset={passwordReset} />
       <AccessCard staff={staff} isSelf={staff.id === selfId} onChanged={statusChanged} />
     </div>
   )

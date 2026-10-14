@@ -119,6 +119,7 @@ export const RESET_REQUESTS_PATH = '/office/reset-requests'
 // The reset-requests page fires this after a reset or dismissal, so the badge
 // updates without waiting for its next refresh.
 export const RESET_REQUESTS_CHANGED = 'psp:reset-requests-changed'
+const ORDERS_PATH = '/office/orders'
 const BADGE_REFRESH_MS = 60 * 1000
 
 // Sidebar navigation, grouped as in docs/management-plan.md §2.
@@ -145,7 +146,7 @@ export const NAV_GROUPS: {
   {
     label: 'Sales',
     items: [
-      { label: 'Orders', to: '/office/orders', icon: 'orders' },
+      { label: 'Orders', to: ORDERS_PATH, icon: 'orders' },
       { label: 'Customers', to: '/office/customers', icon: 'customers' },
     ],
   },
@@ -196,9 +197,9 @@ function MenuIcon() {
   )
 }
 
-// Pending forgot-password requests, for the sidebar badge. Admins only; it
-// refreshes every minute and whenever the reset-requests page changes the queue.
-function usePendingResetCount(enabled: boolean) {
+// A sidebar badge count: the `total` of a list endpoint. It refreshes every minute
+// and, when given, whenever `changedEvent` fires.
+function useBadgeCount(path: string, enabled: boolean, changedEvent?: string) {
   const [count, setCount] = useState(0)
 
   useEffect(() => {
@@ -207,7 +208,7 @@ function usePendingResetCount(enabled: boolean) {
     function load() {
       controller?.abort()
       controller = new AbortController()
-      apiRequest<{ total: number }>('/api/office/reset-requests?status=pending', { signal: controller.signal }).then(
+      apiRequest<{ total: number }>(path, { signal: controller.signal }).then(
         (result) => {
           if (result.ok) setCount(result.data.total)
         },
@@ -216,13 +217,13 @@ function usePendingResetCount(enabled: boolean) {
     }
     load()
     const timer = window.setInterval(load, BADGE_REFRESH_MS)
-    window.addEventListener(RESET_REQUESTS_CHANGED, load)
+    if (changedEvent) window.addEventListener(changedEvent, load)
     return () => {
       controller?.abort()
       window.clearInterval(timer)
-      window.removeEventListener(RESET_REQUESTS_CHANGED, load)
+      if (changedEvent) window.removeEventListener(changedEvent, load)
     }
-  }, [enabled])
+  }, [path, enabled, changedEvent])
 
   return enabled ? count : 0
 }
@@ -255,7 +256,13 @@ export default function Sidebar({
 }: SidebarProps) {
   const { state } = useAuth()
   const isAdmin = state.status === 'authenticated' && state.staff.role === 'admin'
-  const pendingResets = usePendingResetCount(isAdmin)
+  // Pending forgot-password requests (admins only) and new orders (everyone signed in).
+  const pendingResets = useBadgeCount('/api/office/reset-requests?status=pending', isAdmin, RESET_REQUESTS_CHANGED)
+  const newOrders = useBadgeCount('/api/office/orders?status=new', state.status === 'authenticated')
+  const badges: Record<string, { count: number; label: string }> = {
+    [RESET_REQUESTS_PATH]: { count: pendingResets, label: 'pending' },
+    [ORDERS_PATH]: { count: newOrders, label: 'new' },
+  }
   // Staff do not see admin-only items or groups (the server still checks every call);
   // a group left with no items is dropped, heading included.
   const visibleGroups = NAV_GROUPS.filter((group) => isAdmin || !group.adminOnly)
@@ -308,7 +315,7 @@ export default function Sidebar({
               </h2>
               <ul className="office-nav-list" aria-labelledby={`office-nav-${group.label}`}>
                 {group.items.map((item) => {
-                  const badge = item.to === RESET_REQUESTS_PATH ? pendingResets : 0
+                  const badge = badges[item.to]?.count ?? 0
                   return (
                     <li key={item.to}>
                       {/* `end` keeps Products from staying active on /office/products/new. */}
@@ -316,7 +323,7 @@ export default function Sidebar({
                         to={item.to}
                         end
                         className="office-nav-link"
-                        aria-label={badge > 0 ? `${item.label}, ${badge} pending` : undefined}
+                        aria-label={badge > 0 ? `${item.label}, ${badge} ${badges[item.to].label}` : undefined}
                         title={collapsed ? item.label : undefined}
                         onClick={onClose}
                       >

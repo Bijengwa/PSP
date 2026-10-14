@@ -404,6 +404,290 @@ describe('PATCH /api/office/staff/:id { isActive }', () => {
   });
 });
 
+// Earlier tests in this file share the login rate-limit counters (they never expire here).
+function clearLoginLimits() {
+  for (const key of redis.client.data.keys()) if (key.startsWith('psp:rl:')) redis.client.data.delete(key);
+}
+
+const post = (url, body, cookie) => {
+  const req = request(app).post(url).set('Origin', ORIGIN);
+  return (cookie ? req.set('Cookie', cookie) : req).send(body);
+};
+const cookieOf = (res) => res.headers['set-cookie'].find((c) => c.startsWith('psp_sid=')).split(';')[0];
+const signIn = (email, password) => post('/api/auth/login', { email, password });
+const office = (cookie) => request(app).get('/api/office/products').set('Cookie', cookie);
+
+// The fields IT sees about a person, in the list and on the profile. Nothing else.
+const STAFF_KEYS = ['createdAt', 'email', 'fullName', 'id', 'isActive', 'lastLoginAt', 'mustChangePassword', 'phone', 'role'];
+
+describe('GET /api/office/staff', () => {
+  const PAGE_SIZE = 25;
+  let pagerIds;
+
+  // 27 people sharing "Pager" in their name, so a search isolates them; two are inactive.
+  beforeAll(async () => {
+    const hash = await hashPassword('Correct-Horse-42!');
+    const rows = await db('staff_profiles')
+      .insert(
+        Array.from({ length: 27 }, (_, i) => ({
+          full_name: `Pager ${String(i + 1).padStart(2, '0')}`,
+          email: `pager${i + 1}@list.test`,
+          phone_number: '+255 700 000 200',
+          password_hash: hash,
+          role_id: roleIds.staff,
+          must_change_password: false,
+          is_active: i < 25,
+        })),
+      )
+      .returning('id');
+    pagerIds = rows.map((row) => row.id);
+  });
+
+  const list = (query) => as(adminCookie).get(`/api/office/staff${query}`);
+
+  test('pages through the matches in name order, with the total of every match', async () => {
+    const first = await list('?q=Pager');
+    expect(first.status).toBe(200);
+    expect(first.body.data).toMatchObject({ total: 27, page: 1, pageSize: PAGE_SIZE });
+    expect(first.body.data.staff).toHaveLength(PAGE_SIZE);
+    expect(first.body.data.staff[0].fullName).toBe('Pager 01');
+
+    const second = await list('?q=Pager&page=2');
+    expect(second.body.data).toMatchObject({ total: 27, page: 2 });
+    expect(second.body.data.staff.map((s) => s.fullName)).toEqual(['Pager 26', 'Pager 27']);
+
+    const ids = [...first.body.data.staff, ...second.body.data.staff].map((s) => s.id);
+    expect(new Set(ids).size).toBe(27);
+    expect(ids.sort()).toEqual([...pagerIds].sort());
+
+    const past = await list('?q=Pager&page=3');
+    expect(past.body.data).toMatchObject({ total: 27, page: 3, staff: [] });
+  });
+
+  test('a missing or bad page number gives the first page', async () => {
+    for (const page of ['0', '-2', 'abc']) {
+      const res = await list(`?q=Pager&page=${page}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.page).toBe(1);
+      expect(res.body.data.staff[0].fullName).toBe('Pager 01');
+    }
+  });
+
+  test('searches name and email, ignoring case', async () => {
+    const byName = await list('?q=pAGER 07');
+    expect(byName.body.data.staff.map((s) => s.fullName)).toEqual(['Pager 07']);
+
+    const byEmail = await list('?q=PAGER12@LIST');
+    expect(byEmail.body.data.staff.map((s) => s.email)).toEqual(['pager12@list.test']);
+
+    const none = await list('?q=nobody-here');
+    expect(none.body.data).toMatchObject({ total: 0, staff: [] });
+  });
+
+  test('a typed % or _ is matched literally', async () => {
+    expect((await list('?q=%25')).body.data.total).toBe(0);
+    expect((await list('?q=Pager_0')).body.data.total).toBe(0);
+  });
+
+  test('filters by status, together with the search', async () => {
+    const active = await list('?q=Pager&status=active');
+    expect(active.body.data.total).toBe(25);
+    expect(active.body.data.staff.every((s) => s.isActive)).toBe(true);
+
+    const inactive = await list('?q=Pager&status=inactive');
+    expect(inactive.body.data.total).toBe(2);
+    expect(inactive.body.data.staff.map((s) => s.fullName)).toEqual(['Pager 26', 'Pager 27']);
+    expect(inactive.body.data.staff.every((s) => !s.isActive)).toBe(true);
+
+    const all = await list('?q=Pager');
+    expect(all.body.data.total).toBe(27);
+  });
+
+  test('an unknown status is refused', async () => {
+    const res = await list('?status=deleted');
+    expect(res.status).toBe(400);
+  });
+
+  test('responses carry no password fields', async () => {
+    const res = await list('');
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff.length).toBeGreaterThan(0);
+    for (const member of res.body.data.staff) expect(Object.keys(member).sort()).toEqual(STAFF_KEYS);
+    expect(JSON.stringify(res.body)).not.toMatch(/password_?hash|argon2|Correct-Horse/i);
+  });
+
+  test('only a signed-in admin gets the list', async () => {
+    expect((await as(staffCookie).get('/api/office/staff')).status).toBe(403);
+    expect((await request(app).get('/api/office/staff')).status).toBe(401);
+  });
+});
+
+describe('POST /api/office/staff', () => {
+  const register = (body, cookie = adminCookie) => post('/api/office/staff', body, cookie);
+  const valid = (patch = {}) => ({
+    fullName: 'Zawadi Register',
+    email: 'zawadi@psp.test',
+    phone: '+255 700 000 400',
+    role: 'staff',
+    temporaryPassword: 'Amber-Lantern-73!',
+    ...patch,
+  });
+
+  beforeAll(clearLoginLimits);
+
+  test('a duplicate email is refused clearly, whatever its case, and nothing is added', async () => {
+    const first = await register(valid());
+    expect(first.status).toBe(201);
+
+    for (const email of ['zawadi@psp.test', '  ZAWADI@psp.TEST ']) {
+      const again = await register(valid({ email, fullName: 'Someone Else' }));
+      expect(again.status).toBe(409);
+      expect(again.body.error).toMatchObject({
+        code: 'EMAIL_TAKEN',
+        message: 'Someone is already registered with this email.',
+        details: { email: 'This email is already registered.' },
+      });
+    }
+    // An existing seeded person counts too.
+    expect((await register(valid({ email: 'S@psp.test' }))).status).toBe(409);
+
+    const rows = await db('staff_profiles').where({ email: 'zawadi@psp.test' }).select('full_name');
+    expect(rows).toEqual([{ full_name: 'Zawadi Register' }]);
+  });
+
+  test('a new person is forced to choose their own password at first sign-in', async () => {
+    const res = await register(
+      valid({ fullName: 'Baraka First', email: '  Baraka.First@PSP.test ', temporaryPassword: 'Cobalt-River-38!' }),
+    );
+    expect(res.status).toBe(201);
+    const { staff } = res.body.data;
+    expect(staff).toMatchObject({ email: 'baraka.first@psp.test', isActive: true, mustChangePassword: true });
+    expect(JSON.stringify(res.body)).not.toMatch(/Cobalt-River|password_?hash|argon2/i);
+
+    const row = await db('staff_profiles').where({ id: staff.id }).first('must_change_password', 'created_by', 'password_hash');
+    expect(row.must_change_password).toBe(true);
+    expect(row.created_by).toBe(adminId);
+    expect(row.password_hash).toMatch(/^\$argon2/);
+
+    // First sign-in with the temporary password: held at the password change.
+    const first = await signIn('baraka.first@psp.test', 'Cobalt-River-38!');
+    expect(first.status).toBe(200);
+    expect(first.body.data.staff.mustChangePassword).toBe(true);
+    let cookie = cookieOf(first);
+    expect((await me(cookie)).body.data.staff.mustChangePassword).toBe(true);
+    const held = await office(cookie);
+    expect(held.status).toBe(403);
+    expect(held.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    // They choose their own; the office opens and the flag is cleared.
+    const changed = await post(
+      '/api/auth/change-password',
+      { currentPassword: 'Cobalt-River-38!', newPassword: 'Velvet-Summit-62?' },
+      cookie,
+    );
+    expect(changed.status).toBe(200);
+    cookie = cookieOf(changed);
+    expect((await office(cookie)).status).toBe(200);
+    expect((await db('staff_profiles').where({ id: staff.id }).first('must_change_password')).must_change_password).toBe(false);
+
+    // The temporary password no longer works.
+    expect((await signIn('baraka.first@psp.test', 'Cobalt-River-38!')).status).toBe(401);
+  });
+
+  test('only a signed-in admin from the app origin can register', async () => {
+    const body = valid({ email: 'blocked@psp.test' });
+    expect((await register(body, staffCookie)).status).toBe(403);
+    expect((await request(app).post('/api/office/staff').set('Origin', ORIGIN).send(body)).status).toBe(401);
+    const foreign = await request(app)
+      .post('/api/office/staff')
+      .set('Cookie', adminCookie)
+      .set('Origin', 'https://evil.example')
+      .send(body);
+    expect(foreign.status).toBe(403);
+    expect(await db('staff_profiles').where({ email: 'blocked@psp.test' }).first('id')).toBeUndefined();
+  });
+});
+
+describe('M4 end-to-end circle', () => {
+  beforeAll(clearLoginLimits);
+
+  test('register → temporary login → forced change → forgot → IT reset → deactivate → refused', async () => {
+    // IT registers a person with a temporary password.
+    const registered = await post(
+      '/api/office/staff',
+      {
+        fullName: 'Neema Circle',
+        email: 'Neema.Circle@psp.test',
+        phone: '+255 700 000 300',
+        role: 'staff',
+        temporaryPassword: 'Tidal-Harbour-51!',
+      },
+      adminCookie,
+    );
+    expect(registered.status).toBe(201);
+    const id = registered.body.data.staff.id;
+    const email = 'neema.circle@psp.test';
+
+    // The person signs in with it and is held at the password change.
+    const first = await signIn(email, 'Tidal-Harbour-51!');
+    expect(first.status).toBe(200);
+    expect(first.body.data.staff.mustChangePassword).toBe(true);
+    let cookie = cookieOf(first);
+    const held = await office(cookie);
+    expect(held.status).toBe(403);
+    expect(held.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    // They choose their own password and work in the office.
+    const changed = await post(
+      '/api/auth/change-password',
+      { currentPassword: 'Tidal-Harbour-51!', newPassword: 'Quiet-Meadow-84?' },
+      cookie,
+    );
+    expect(changed.status).toBe(200);
+    cookie = cookieOf(changed);
+    expect((await office(cookie)).status).toBe(200);
+    expect((await as(cookie).get('/api/office/staff')).status).toBe(403);
+
+    // They forget it; IT sees the request in the queue.
+    expect((await post('/api/auth/forgot-password', { email })).status).toBe(200);
+    const queue = await as(adminCookie).get('/api/office/reset-requests?status=pending');
+    expect(queue.body.data.requests.filter((r) => r.staff?.id === id)).toHaveLength(1);
+
+    // IT resets it from the profile: the person is signed out and the request is resolved.
+    const reset = await post(`/api/office/staff/${id}/reset-password`, { temporaryPassword: 'Copper-Kettle-26#' }, adminCookie);
+    expect(reset.status).toBe(200);
+    expect(reset.body.data.resolvedRequests).toBe(1);
+    expect(JSON.stringify(reset.body)).not.toMatch(/Copper-Kettle|password_?hash|argon2/i);
+    expect((await me(cookie)).status).toBe(401);
+    const after = await as(adminCookie).get('/api/office/reset-requests?status=pending');
+    expect(after.body.data.requests.filter((r) => r.staff?.id === id)).toHaveLength(0);
+    const row = await db('staff_profiles').where({ id }).first('password_hash', 'must_change_password');
+    expect(row.must_change_password).toBe(true);
+    expect(row.password_hash).toMatch(/^\$argon2/);
+    expect(row.password_hash).not.toContain('Copper-Kettle');
+
+    // The old password no longer works; the new temporary one forces a change again.
+    expect((await signIn(email, 'Quiet-Meadow-84?')).status).toBe(401);
+    const again = await signIn(email, 'Copper-Kettle-26#');
+    expect(again.status).toBe(200);
+    expect(again.body.data.staff.mustChangePassword).toBe(true);
+    cookie = cookieOf(again);
+    const changedAgain = await post(
+      '/api/auth/change-password',
+      { currentPassword: 'Copper-Kettle-26#', newPassword: 'Silver-Orchard-19%' },
+      cookie,
+    );
+    cookie = cookieOf(changedAgain);
+    expect((await office(cookie)).status).toBe(200);
+
+    // IT deactivates the person, who is refused on the very next request and cannot sign in.
+    const deactivated = await as(adminCookie).patch(`/api/office/staff/${id}`, { isActive: false });
+    expect(deactivated.status).toBe(200);
+    expect((await office(cookie)).status).toBe(401);
+    expect((await signIn(email, 'Silver-Orchard-19%')).status).toBe(401);
+  });
+});
+
 describe('GET /api/office/roles', () => {
   test('lists the existing roles, for admins only', async () => {
     const res = await as(adminCookie).get('/api/office/roles');

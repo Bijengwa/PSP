@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ShopProduct, ShopProductDetail } from './api'
@@ -91,7 +91,8 @@ describe('ProductPage', () => {
 
     expect(screen.getByRole('link', { name: 'Pulse oximeter' }).getAttribute('href')).toBe('/products/pulse-oximeter')
 
-    expect(document.title).toBe('Bedside monitor | PSP Engineering Group')
+    // PageMeta sets these in an effect, which can land after the heading under load.
+    await waitFor(() => expect(document.title).toBe('Bedside monitor | PSP Engineering Group'))
     expect(document.head.querySelector('meta[name="description"]')?.getAttribute('content')).toBe(
       'Monitors ECG, SpO2 and blood pressure. With a battery for transport.',
     )
@@ -174,7 +175,7 @@ describe('ProductPage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Product not found' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Browse all products' }).getAttribute('href')).toBe('/products')
-    expect(document.title).toBe('Product not found | PSP Engineering Group')
+    await waitFor(() => expect(document.title).toBe('Product not found | PSP Engineering Group'))
   })
 
   it('shows an error with a retry that loads again', async () => {

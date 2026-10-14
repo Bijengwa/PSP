@@ -18,6 +18,27 @@ const ROUTES = [
   { name: 'office-products', path: '/office/products', ready: '.office-product-head' },
   { name: 'office-products-new', path: '/office/products/new', ready: '.office-product-head' },
   { name: 'office-products-edit', path: '/office/products/p1', ready: '.office-product-head' },
+  { name: 'office-staff', path: '/office/staff', ready: '.office-staff-paging' },
+  {
+    name: 'office-staff-reset',
+    path: '/office/staff',
+    ready: '.password-rule.is-met',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Reset password' }).first().click()
+      await page.getByLabel('Temporary password').fill('harbour7')
+    },
+  },
+  { name: 'office-staff-new', path: '/office/staff/new', ready: '.office-register-form' },
+  {
+    name: 'office-staff-new-errors',
+    path: '/office/staff/new',
+    ready: '.office-register-form .field-error',
+    act: async (page) => {
+      await page.getByLabel('Email').fill('not-an-email')
+      await page.getByLabel('Temporary password').fill('harbour7')
+      await page.getByRole('button', { name: 'Register staff' }).click()
+    },
+  },
   { name: 'office-staff-profile', path: '/office/staff/st1', ready: '.office-profile-head' },
   {
     name: 'office-staff-profile-edit',
@@ -48,9 +69,61 @@ const ROUTES = [
       await page.locator('.office-role-form').scrollIntoViewIfNeeded()
     },
   },
+  {
+    name: 'office-staff-profile-password',
+    path: '/office/staff/st1',
+    ready: '.password-rule.is-met',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Reset password' }).click()
+      await page.getByLabel('Temporary password').fill('harbour7')
+      await page.getByLabel('Temporary password').scrollIntoViewIfNeeded()
+    },
+  },
   // st2 is answered as an inactive account.
   { name: 'office-staff-profile-inactive', path: '/office/staff/st2', ready: '.office-profile-head' },
   { name: 'office-my-profile', path: '/office/profile', ready: '.office-profile-head' },
+  { name: 'office-customers', path: '/office/customers', ready: '.office-list-footer' },
+  {
+    name: 'office-customers-empty',
+    path: '/office/customers',
+    ready: '.office-customer-empty',
+    act: async (page) => {
+      await page.locator('.office-list-footer').waitFor()
+      await page.getByLabel('Search by name, company, phone or email').fill('no-such-customer-with-a-long-search')
+    },
+  },
+  { name: 'office-customer-new', path: '/office/customers/new', ready: '.office-role-option' },
+  {
+    // Company fields, a duplicate phone warning and field errors on a failed save.
+    name: 'office-customer-new-checks',
+    path: '/office/customers/new',
+    ready: '.office-duplicate',
+    act: async (page) => {
+      await page.getByRole('radio', { name: /Company/ }).check()
+      await page.getByLabel(/Phone/).fill('0712 345 678')
+      await page.getByLabel(/TIN/).fill('TIN-ABC')
+      await page.getByRole('button', { name: /Add address/ }).click()
+      await page.getByLabel('Area or city').fill('M')
+      await page.getByRole('button', { name: 'Save customer' }).click()
+      await page.locator('.office-duplicate').waitFor()
+      await page.evaluate(() => window.scrollTo(0, 0))
+    },
+  },
+  { name: 'office-customer-edit', path: '/office/customers/c2/edit', ready: '.office-address' },
+  { name: 'office-customer-detail', path: '/office/customers/c2', ready: '.office-customer-address' },
+  // c3 is answered with no contacts, addresses or notes.
+  { name: 'office-customer-detail-empty', path: '/office/customers/c3', ready: '.office-profile-head' },
+  { name: 'office-orders', path: '/office/orders', ready: '.office-list-footer' },
+  {
+    name: 'office-orders-empty',
+    path: '/office/orders',
+    ready: '.office-customer-empty',
+    act: async (page) => {
+      await page.locator('.office-list-footer').waitFor()
+      await page.getByLabel('Source').selectOption('staff')
+      await page.getByLabel('Search by order number, name or phone').fill('no-such-order-with-a-long-search')
+    },
+  },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -213,6 +286,110 @@ const staffMember = {
   createdAt: '2026-10-01T08:00:00.000Z',
 }
 
+// The staff list: the signed-in admin, the long-named person, an inactive one and one
+// who never signed in. The total spans two pages so the pager shows.
+const staffList = [
+  staffMember,
+  {
+    id: 's1',
+    fullName: 'Amina Mushi',
+    email: 'amina@psp.example',
+    phone: '+255 754 100 200',
+    role: 'admin',
+    isActive: true,
+    mustChangePassword: false,
+    lastLoginAt: '2026-10-14T06:10:00.000Z',
+    createdAt: '2026-09-01T08:00:00.000Z',
+  },
+  {
+    id: 'st2',
+    fullName: 'Juma Said',
+    email: 'juma.said@psp.example',
+    phone: '+255 713 222 333',
+    role: 'staff',
+    isActive: false,
+    mustChangePassword: false,
+    lastLoginAt: '2026-09-20T14:30:00.000Z',
+    createdAt: '2026-09-02T08:00:00.000Z',
+  },
+  {
+    id: 'st3',
+    fullName: 'Grace Mollel',
+    email: 'grace.mollel@psp.example',
+    phone: null,
+    role: 'staff',
+    isActive: true,
+    mustChangePassword: false,
+    lastLoginAt: null,
+    createdAt: '2026-10-10T08:00:00.000Z',
+  },
+]
+
+// Customers: an individual, a long-named company with TIN and contact person, one with
+// no contact details and one with a foreign phone. The total spans two pages.
+const customer = (id, patch) => ({
+  id,
+  type: 'individual',
+  fullName: null,
+  companyName: null,
+  tin: null,
+  contactPerson: null,
+  phone: null,
+  email: null,
+  createdAt: '2026-10-12T08:00:00.000Z',
+  updatedAt: '2026-10-12T08:00:00.000Z',
+  ...patch,
+})
+
+const customers = [
+  customer('c1', { fullName: 'Asha Mushi', phone: '+255712345678', email: 'asha.mushi@example.com' }),
+  customer('c2', {
+    type: 'company',
+    companyName: 'Bugando Medical Centre and University Teaching Hospital Procurement Unit',
+    tin: '123-456-789',
+    contactPerson: 'Dr. Neema Kweka-Lyimo',
+    phone: '+255282500000',
+    email: 'procurement.department@bugandomedicalcentre.example',
+    createdAt: '2026-10-11T08:00:00.000Z',
+  }),
+  customer('c3', { fullName: 'Juma Said', createdAt: '2026-10-09T08:00:00.000Z' }),
+  customer('c4', { type: 'company', companyName: 'Kilimanjaro Clinic', phone: '+254711000111', createdAt: '2026-10-02T08:00:00.000Z' }),
+]
+
+// The orders queue: every status, both payment states and sources, a long name, a
+// quotation-only order and one with priced and quotation lines. The total spans two pages.
+const orderRow = (n, patch) => ({
+  id: `o${n}`,
+  orderNumber: `PSP-000${130 - n}`,
+  status: 'new',
+  paymentStatus: 'unpaid',
+  source: 'shop',
+  customerId: null,
+  guestName: 'Asha Mushi',
+  guestPhone: '+255712345678',
+  deliveryArea: 'Mikocheni, Dar es Salaam',
+  totalTzs: 4250000,
+  hasQuotationLines: false,
+  itemCount: 2,
+  createdAt: `2026-10-${String(14 - n).padStart(2, '0')}T08:30:00.000Z`,
+  ...patch,
+})
+
+const orders = [
+  orderRow(1, { hasQuotationLines: true, itemCount: 4 }),
+  orderRow(2, {
+    guestName: 'Bugando Medical Centre Procurement Unit, attention Dr. Neema Kweka-Lyimo',
+    guestPhone: '+255282500000',
+    deliveryArea: 'Bugando Hill, Mwanza',
+    totalTzs: 1250000000,
+    itemCount: 99,
+  }),
+  orderRow(3, { status: 'confirmed', paymentStatus: 'paid', source: 'staff', guestName: 'Juma Said', guestPhone: '+254711000111', deliveryArea: 'Arusha' }),
+  orderRow(4, { status: 'delivered', totalTzs: 0, hasQuotationLines: true, itemCount: 1, guestName: 'Grace Mollel' }),
+  orderRow(5, { status: 'closed', paymentStatus: 'paid', guestName: 'Kilimanjaro Clinic', totalTzs: 85000, itemCount: 1 }),
+  orderRow(6, { status: 'cancelled', guestName: 'Rehema Kisanga', totalTzs: 21000000 }),
+]
+
 const shopCategories = [
   { name: 'Imaging', slug: 'imaging', productCount: 14 },
   { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 6 },
@@ -322,6 +499,40 @@ function answer(url, request) {
         { name: 'staff', description: 'Normal office employee' },
       ],
     })
+  }
+  if (pathname === '/api/office/staff') return ok({ staff: staffList, total: 31, page: 1, pageSize: 25 })
+  if (pathname === '/api/office/customers') {
+    const counts = { all: 27, individual: 15, company: 12 }
+    if (searchParams.get('q')) return ok({ customers: [], total: 0, page: 1, pageSize: 25, counts: { all: 0, individual: 0, company: 0 } })
+    return ok({ customers, total: 27, page: 1, pageSize: 25, counts })
+  }
+  // A typed phone matches the long-named company; the customer being edited is left out.
+  if (pathname === '/api/office/customers/duplicates') {
+    const match = searchParams.get('phone') && !searchParams.get('exclude')
+    return ok({ matches: match ? [{ ...customers[1], matchedOn: ['phone', 'email'] }] : [] })
+  }
+  const customerOne = pathname.match(/^\/api\/office\/customers\/([^/]+)$/)
+  if (customerOne) {
+    const found = customers.find((item) => item.id === customerOne[1]) ?? customers[1]
+    if (found.id === 'c3') return ok({ customer: { ...found, notes: '', addresses: [] } })
+    return ok({
+      customer: {
+        ...found,
+        notes: 'Orders through the procurement unit. Invoices go to the finance office; pays by bank transfer within 30 days.',
+        addresses: [
+          { id: 'a1', label: 'Main hospital', area: 'Bugando Hill, Mwanza', address: 'Wurzburg Road, Plot 1, opposite the main gate', isDefault: true },
+          { id: 'a2', label: '', area: 'Nyamagana, Mwanza', address: 'Medical stores, Block C', isDefault: false },
+        ],
+      },
+    })
+  }
+  if (pathname === '/api/office/orders') {
+    // The sidebar asks for new orders only, to show its badge.
+    if (searchParams.get('status') === 'new' && !searchParams.get('page')) return ok({ orders: [], total: 4, page: 1, pageSize: 25 })
+    const none = { all: 0, new: 0, confirmed: 0, delivered: 0, closed: 0, cancelled: 0 }
+    if (searchParams.get('q')) return ok({ orders: [], total: 0, page: 1, pageSize: 25, counts: none })
+    const counts = { all: 38, new: 4, confirmed: 9, delivered: 6, closed: 17, cancelled: 2 }
+    return ok({ orders, total: 38, page: 1, pageSize: 25, counts })
   }
   const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
   if (staffProfile) {

@@ -1,3 +1,123 @@
+## M4.8 M4 checks and end-to-end circle (2026-10-14): done, TICKED
+
+Only M4.8 was worked on. Current step is now **M6.1** (the next step in the overnight order); it was not started. Nothing was committed. This closes the open items listed under "M4 code check" below.
+
+**Changed**
+- `node/src/auth/staff.test.js`: 11 new tests.
+  - **`GET /api/office/staff`** (27 seeded "Pager" people, 2 of them inactive):
+    - paging: 25 + 2 in name order; `total` counts every match; no person appears twice; page 3 is empty;
+    - a missing or bad page number (`0`, `-2`, `abc`) gives page 1;
+    - search by name and by email, ignoring case; no match gives an empty list;
+    - a typed `%` or `_` is matched literally;
+    - the status filter, with and without the search; an unknown status gives 400;
+    - **no password fields:** every person has exactly the 9 listed keys, and the body has no hash, argon2 string or password;
+    - non-admin 403, no session 401.
+  - **`POST /api/office/staff`**:
+    - **duplicate email:** 409 `EMAIL_TAKEN` with "Someone is already registered with this email." and `details.email`, whatever the case or spacing. A seeded person's email counts too. No second row is added;
+    - **forced change on first login:** the email is stored lowercased, `must_change_password = true`, `created_by` = the admin, and the hash is argon2. The response has no password. First sign-in: `/me` says a change is pending and the office answers 403 `PASSWORD_CHANGE_REQUIRED`. After the change the office answers 200, the flag is cleared, and the temporary password is refused;
+    - non-admin 403, no session 401, another origin 403, and nothing is stored.
+  - The login rate-limit reset and the `post`/`signIn`/`office`/`cookieOf` helpers moved from the circle test to file level (`clearLoginLimits()`), so the new tests share them. The circle test itself is unchanged.
+- New `web/src/management/inApp/layout/Sidebar.test.tsx` (2 tests, a path approved for M4):
+  - a signed-in non-admin sees no IT heading and no Staff, Register Staff or Reset requests links, and no `/api/office/` call is made (so the badge is never requested);
+  - an admin sees the IT list with the three links (right hrefs) and "Reset requests, 3 pending".
+- `web/scripts/responsive-check.mjs`:
+  - a `/api/office/staff` fixture with 4 people (the long name, the signed-in admin, an inactive person, someone who never signed in; one with no phone). Its total is 31, so the pager shows;
+  - 4 routes: `office-staff`, `office-staff-reset` (inline reset form open), `office-staff-new`, and `office-staff-new-errors` (empty and invalid fields submitted). The staff profile routes were already there (M4.4–M4.7).
+- `web/src/index.css` (existing staff list rules only): the screenshots showed the Search button always dropping below the search box, at every width. The box was sized as a percentage of its own wrapping flex parent. Now the box and button stay on one row (`flex: 1 1 280px`, max 440px), and table action buttons do not wrap ("Reset password" broke over two lines at 768px).
+
+**Verified**
+- `node` `npm test`: 7 suites, 221 tests passed (210 before).
+- `web` `npm test`: 11 files, 95 tests passed (93 before). `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed, 30 routes × 3 widths × 2 themes, no sideways scroll. It was run twice: once before the CSS fix, and once after it with the "passed" summary line read.
+- The M4 circle (register → temporary login → forced change → forgot → IT reset → deactivate → refused on the next request) is the M4.7 backend test in `staff.test.js`. It passes in this run.
+- Screenshots I looked at: `office-staff-360-light`, `-360-dark` (after the fix), `-768-light` (after the fix), `-1280-dark`, `office-staff-reset-768-light`, `office-staff-new-errors-360-dark`, `office-staff-new-1280-light`. All are readable in both themes; the phone view is a card list.
+- Not done: a mutation check (registering with `must_change_password: false` to show that the forced-change test fails). The shell command needed approval.
+
+**Decisions**
+- The step's "Done when" asks only for automated checks, so no manual run or sign-off was needed.
+- The circle test from M4.7 already does exactly what M4.8 describes. It is reused rather than written a second time.
+- "A staff profile page" in the responsive check is covered by the existing `office-staff-profile*` routes.
+- Small CSS fix to the Staff list toolbar and table buttons (see Changed). It is a layout fix found by the responsive check, not a new feature.
+
+**Notes**
+- At 768px the long fixture email breaks mid-word in the table's Name column (`…pspengineering.exa / mple`). It is readable, and there is no sideways scroll. Left as is.
+- The Staff list shows status as plain text, while the profile uses coloured badges. Left as is: changing it would be new UI work, not a check.
+- The check re-saved the existing screenshots (pixel differences only).
+
+**Guard warnings**
+- **Scope Guard:** on `staff.test.js`, "adds an API route for Products". It does not. The tests only *call* the existing `GET /api/office/products` (M5, done) to show that the person can work in the office. This is the same false positive as in M4.7.
+- Every file touched is on the approved M4 list (`staff.test.js`, `Sidebar.test.tsx`, `responsive-check.mjs`, the existing `index.css`). The only new files are `Sidebar.test.tsx` and the screenshots.
+
+## M4.7 Reset password from the profile (2026-10-14): TICKED at the user's instruction
+
+The user chose to accept the automated tests (including the M4 end-to-end circle test) instead of the manual browser run. M4.7 is ticked; current step is **M4.8**.
+
+## M4.7 Reset password from the profile (2026-10-14): implemented, NOT ticked (manual browser run still open)
+
+Only M4.7 was worked on. `docs/progress.md` is unchanged: current step stays **M4.7**. M4.8 was not started. Nothing was committed.
+
+**Why not ticked:** "Done when" asks for the M4 circle as one backend test (done, passes) **plus a manual run in the browser**. Nobody was awake to do that run, and I did not drive the real stack myself: it would write test staff into your dev database. **To unblock:** do the run below (or tell me the automated tests are enough, or let me use a throwaway database), then the next run can tick M4.7.
+
+Manual run to do (about 5 minutes, with `node` and `web` dev servers running):
+1. As an admin, Register Staff with a temporary password.
+2. In a private window, sign in as that person: you land on Change password; choose a new one; the office opens.
+3. Sign out, use "Forgot password" for that email; the Reset requests badge goes up.
+4. As admin, open the person's profile → Password → Reset password, type a temporary password, Set. The notice says they were signed out and 1 request was resolved; the badge goes down; the status badge shows "Password change pending".
+5. In the private window, the next click goes to login. Sign in with the new temporary password; you are forced to change it again.
+6. As admin, Access → Deactivate. In the private window, the next click goes to login, and sign-in is refused.
+
+**Changed**
+- `web/src/management/inApp/pages/StaffProfile.tsx`: a new **Password** card between Role and Access.
+  - It reuses the M2.4 endpoint `POST /api/office/staff/:id/reset-password`. No backend code changed.
+  - The card text says whether the person has a temporary password or their own.
+  - **Reset password** opens an inline form:
+    - a visible "Temporary password" label and a password input; focus goes to it;
+    - a hint ("Give it to <name> in person. It is not shown again.") and the shared live rule list (`passwordRules`). The hint, the rules and any error are tied to the input with `aria-describedby`;
+    - a note that the person is signed out everywhere, must choose a new password, and that their pending reset requests are resolved.
+  - A password that breaks the rules is caught before sending. Server refusals (`WEAK_PASSWORD` reasons, 403/404/503) show in an alert, keep what was typed, and move focus back to the input.
+  - **Set temporary password** shows a spinner and is disabled while sending. Cancel sends nothing.
+  - On success:
+    - the typed password is cleared from state and the form closes;
+    - the status badge becomes "Password change pending";
+    - the status line says "Temporary password set for <name>. They have been signed out." plus "N pending reset request(s) were resolved." when N > 0;
+    - the sidebar reset-request badge is refreshed (`RESET_REQUESTS_CHANGED`);
+    - focus returns to Reset password.
+  - On your own profile there is no button, only a link to Change password.
+  - No CSS changes: the card reuses the existing profile form, rule list and note styles (full-width 44px buttons on phones come from the existing `.office-profile-form` rule).
+- `web/src/management/inApp/pages/StaffProfile.test.tsx`: 5 new tests:
+  - reset (POST body, focus, announcement with the resolved count, badge, password gone from the page, sidebar event);
+  - a weak password is caught before sending;
+  - server reasons are shown and the typed value is kept;
+  - Cancel sends nothing;
+  - your own profile shows only the Change password link.
+- `node/src/auth/staff.test.js`: new **"M4 end-to-end circle"** test, one test through the real routes:
+  - IT registers a person; they log in with the temporary password; the office answers 403 `PASSWORD_CHANGE_REQUIRED`;
+  - they change it and the office answers 200 (IT endpoints stay 403);
+  - forgot password puts a request in IT's queue;
+  - IT reset gives `resolvedRequests: 1`; the person's session gets 401 at once; the queue no longer has the request; the row holds an argon2 hash with `must_change_password = true`; the response contains no password or hash;
+  - the old password is refused; the new temporary one signs in and forces a change again;
+  - IT deactivates; the next request gets 401 and sign-in is refused.
+  - The test clears the fake Redis login-rate counters first, because earlier tests in the file share them.
+- `web/scripts/responsive-check.mjs`: new route `office-staff-profile-password` (form open, a partly valid password typed so the rules show both states).
+
+**Verified**
+- `node` `npm test`: 7 suites, 210 tests passed (209 before).
+- `web` `npm test`: 10 files, 93 tests passed (88 before). `npm run lint`: clean. `npm run build`: clean.
+- `npm run check:responsive`: passed on the first run, 26 routes × 3 widths × 2 themes, no sideways scroll.
+- Screenshots I looked at: `office-staff-profile-password-360-light`, `-360-dark`, `-1280-dark`. All are readable in both themes; the long name wraps, the rules show met and unmet by shape, and the phone buttons are 44px.
+- Not done: a mutation check (removing the session revocation in `resetStaffPassword` to show the circle test fails). The shell command needed approval.
+
+**Notes**
+- The Staff list keeps its own inline Reset password action (M2.4/M4.2); it was not touched.
+- The circle test overlaps with M4.8's "M4 circle as one backend test". M4.7's Done-when asks for it, so it lives here; M4.8 can reuse it.
+- The check re-saved some existing screenshots (pixel differences only).
+
+**Guard warnings**
+- **Progress Guard:** said the prompt mentions M5.6. That text is only the rule for when to run `check:responsive`; M5.6 was ticked long ago.
+- **Scope Guard:** on `staff.test.js`, "adds an API route for Products". It does not. The circle test only *calls* the existing `GET /api/office/products` (M5, done) to prove the person "works in the office". No route was added.
+- **Collision Guard:** fired on `StaffProfile.tsx`, `StaffProfile.test.tsx`, `staff.test.js` and `responsive-check.mjs`. The other session (331401a4) was the M4.6 run, already committed in a281792. `git diff --stat` after my first edit showed only my own change, so nothing was overwritten.
+- Every file touched is on the approved M4 list. No new files except screenshots.
+
 ## M4.6 Role assignment (2026-10-14): done, TICKED
 
 Only M4.6 was worked on. Current step is now **M4.7**; it was not started. Nothing was committed.
@@ -1267,3 +1387,194 @@ M3.1 ticked; current step is **M3.2**. M3.2 was not started.
 **Not done, so the step stays M4.1 in progress.md**
 - The 360px / 768px / desktop check was not run: no browser is available in this session. Please check the sidebar as admin and as non-admin at those widths.
 - No frontend test for "non-admin does not see the IT group". It needs a new file (e.g. `web/src/management/inApp/layout/Sidebar.test.tsx`). Please approve that path (or tell me to add it to an existing test file), then the next run can add it.
+
+## M6.1 Customer data model (2026-10-14, overnight): TICKED
+
+**Changed**
+- New `node/migrations/20261014200000_create_customers.js` (up and down):
+  - `customers`: `id` (uuid), `type` (`individual`/`company`), `full_name`, `company_name`, `tin`, `contact_person`, `phone`, `email`, `notes` (default `''`), `created_by` (FK `staff_profiles`), timestamps. Indexes on `phone`, `email` and `(type, created_at)`.
+  - Check constraints: type values; an individual needs `full_name`, a company needs `company_name`; `company_name`/`tin`/`contact_person` only on companies; `email = lower(email)`.
+  - `customer_addresses`: `id`, `customer_id` (FK, cascade delete), `label` (default `''`), `area`, `address`, `is_default`, timestamps. Index on `customer_id`; partial unique index allows one default address per customer.
+- New `node/src/customers/customers.test.js`: column defaults, every check constraint, the FK to staff, the phone/email indexes, address default/cascade rules, and migrate down then up again.
+- `web/src/shop/ProductPage.test.tsx` (test only, not part of M6.1): the two `document.title` assertions now use `waitFor`. `PageMeta` sets the title in an effect, and under a loaded full-suite run the assertion sometimes ran first (seen failing once). This is the same pattern `NotFoundPage.test.tsx` already uses. No app code changed.
+
+**Decisions**
+- Field approval: §4 records "the M6.1 fields exactly as written in this plan are **approved**", which stands in for "the user approved the fields before code".
+- Phone and email are stored in the same form as `orders.guest_phone`/`guest_email` (`+255…` and lowercase, from the checkout's `normalizePhone`). That makes guest-order matching (M7.5) a plain indexed equality. The DB enforces lowercase email. Phone normalisation will be enforced by the API in M6.3.
+- Phone and email are **not unique**: M6.3 asks for a duplicate *warning*, so duplicates must be storable. Neither is required (a walk-in may give neither).
+- `full_name` is nullable for companies, and `contact_person` names the person to talk to there. Column lengths follow `orders` (name 100, phone 20, email 254, area 100, address 200); `company_name` is 150 and `tin` is 20 (TZ TINs are 9 digits, often written with dashes).
+- Addresses use `area` + `address`, the same split as the checkout's delivery fields, so a shop order's address can be copied into a customer later. An optional `label` names an address (e.g. "Head office"), and `is_default` marks one per customer.
+- No foreign key from `orders.customer_id` yet. Adding it changes `orders`, which belongs to M7 (`<timestamp>_extend_orders.js`). The C5 migration comment already points there.
+- No responsive check: M6.1 has no UI and adds no page.
+
+**Verified**
+- `node` `npm test`: 8 suites, 233 tests passed (includes the new customers suite and migrate down/up).
+- `web` `npm test`: 11 files, 95 tests passed. `npm run build`: passed. `npm run lint`: clean.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. M7.4 was not touched. It is only named as the stop point of the overnight order.
+- Scope Guard: `node/src/customers/` is a new folder. It is explicitly approved in `docs/management-plan.md` §4 (M6/M7 track), so the run continued.
+
+**Open issue for the user (flaky test, not changed)**
+- `web/src/management/inApp/pages/StaffProfile.test.tsx` › "deactivates only after confirming, then offers Reactivate" failed once in about 7 full `npm test` runs. It was waiting for focus on Cancel, and `document.activeElement` was `<body>`. It passes alone and passed in every other run, including the final one. The cause was not found in reasonable time. It is not a timeout, because focus ends on `<body>` rather than arriving late. It may be a late `/api/auth/me` re-render in the test. Worth a look in an interactive session.
+
+M6.1 ticked; current step is **M6.2**. M6.2 was not started. Nothing committed.
+
+## M6.2 Customers list (2026-10-14, overnight): TICKED
+
+**Changed**
+- New `node/src/customers/customers.service.js`: `listCustomers({ q, type, page })`, newest first, 25 per page. Returns `{ customers, total, page, pageSize, counts: { all, individual, company } }`. The counts follow the search but not the type, so the tabs show what each one would hold. The public shape has no `notes` and no `created_by` (the detail page comes in M6.4).
+- New `node/src/customers/customers.routes.js`: `GET /api/office/customers?q=&type=&page=`, behind `requireSameOrigin` + `requireAuth()`. An unknown `type` returns 400.
+- `node/src/server.js`: mounted at `/api/office/customers`, before the admin-only `officeRouter`, like products.
+- `node/src/customers/customers.test.js`: API tests for the session requirement, use by normal staff, the empty list, the response shape (no notes), newest-first order, search by name, company, contact person, email and phone (both `+255…` and the local `0712 345 678` form), `%`/`_` matched literally, the type filter with counts, unknown type → 400, paging (25 per page, total, bad page numbers fall back to 1, a page past the end is empty), and the phone-digits helper.
+- New `web/src/management/inApp/pages/CustomersList.tsx` and `CustomersList.test.tsx` (6 tests: skeleton then table with counts, the type tab, debounced search and paging params, empty state with Clear search, the "No customers yet" state, the error with Try again, the phone card layout).
+- `web/src/App.tsx`: `/office/customers` now shows `CustomersList` instead of the placeholder.
+- `web/src/index.css`: a small "Customers (M6.2)" block (company avatar, Company badge, tabular phone, empty-state row). Colours come only from the existing variables.
+- `web/scripts/responsive-check.mjs`: customer fixtures (long company name and email, no contacts, a foreign phone, 27 in total) and routes `office-customers` and `office-customers-empty`.
+
+**Decisions**
+- M6.2 has no "Done when" line. I used the M5.2/M4.2 one: search, filter and paging are tested, and the responsive check passes.
+- Access: any signed-in staff member, the same as Products. Customers are sales work, not IT, and roles become permissions in H3–H5.
+- Search also matches `contact_person`, because for companies that is the name staff know. If the search looks like a phone number (digits, spaces, `+()-`, at least 3 digits), a leading `0` becomes `255`, so `0712 345` finds `+255712345…`. This matches how M6.1 stores phones.
+- Page design follows the Products list: type tabs with counts (All customers / Individuals / Companies), search as you type (300 ms debounce), a table on desktop and tablet, and cards at 640px and below. Individuals get an initials avatar and companies a building icon. Companies show their contact person and TIN under the name. Phones are shown as `+255 712 345 678`.
+- No "Add customer" button and no row links yet. The form (M6.3) and the detail page (M6.4) do not exist, so a button or link now would lead to a dead route.
+- Two empty states: "No customers yet." (nothing stored) and "No customers match “…”." with Clear search.
+
+**Verified**
+- `node` `npm test`: 8 suites, 242 tests passed.
+- `web` `npm test`: 12 files, 101 tests passed. `npm run build`: passed. `npm run lint`: clean.
+- `npm run check:responsive`: passed for every route, including the two new customer routes, at 360, 768 and 1280px in light and dark. One run failed on a Windows file-write error for an unrelated shop screenshot (`UNKNOWN: open …shop-checkout-errors-768-dark.png`, a transient file lock). The re-run passed. Checked the new screenshots by eye: no clipping, long names and emails wrap, and the badges have good contrast in both themes. Re-running the check also rewrote some older screenshots with tiny pixel differences.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. M7.4 was not touched. It is only the stop point of the overnight order.
+- Collision Guard: it said `customers.test.js` and `index.css` had been edited by another session 10–23 min earlier. `git status` showed no changes other than this step's, so those edits were the previous, finished run (M6.1 and earlier). Nothing was overwritten.
+
+M6.2 ticked; current step is **M6.3**. M6.3 was not started. Nothing committed.
+
+## M6.3 Add/edit customer (2026-10-14, overnight): TICKED
+
+**Changed**
+- `node/src/customers/customers.service.js`: `findCustomer` (with notes and addresses, default first), `createCustomer` and `updateCustomer` (one transaction each, addresses replaced as a set), `findDuplicates` (by stored phone/email, newest first, at most 5, says which field matched).
+- `node/src/customers/customers.routes.js`: `POST /api/office/customers`, `GET /:id`, `PATCH /:id`, and `GET /duplicates?phone=&email=&exclude=`. Same guards as the list (`requireSameOrigin` + `requireAuth()`). Validation gives per-field errors (`VALIDATION_ERROR`, address errors keyed `addresses.<row>.<field>`). Logs only ids (`customer.created` / `customer.updated`).
+- `node/src/customers/customers.test.js`: 14 new API tests (session/origin, create individual and company, normalisation, field errors with nothing stored, duplicates allowed, GET and 404s, partial PATCH, type switch, `/duplicates` matching, exclude, invalid input and session).
+- New `web/src/management/inApp/pages/CustomerForm.tsx` (Add at `/office/customers/new`, Edit at `/office/customers/:id/edit`) and `CustomerForm.test.tsx` (9 tests).
+- `CustomersList.tsx`: "Add customer" button, names link to the edit form, the success notice after adding; `phoneText`/`displayName` exported for the form. One new list test.
+- `web/src/App.tsx` (two routes), `layout/Header.tsx` (titles "Add Customer" / "Edit Customer"), `index.css` ("Customer form (M6.3)" block, existing variables only).
+- `web/scripts/responsive-check.mjs`: routes `office-customer-new`, `office-customer-new-checks` (company fields, duplicate warning, field errors), `office-customer-edit`; fixtures for `GET /api/office/customers/:id` and `/duplicates`.
+
+**Decisions**
+- M6.3 has no "Done when" line. Used the M5.3 one: invalid input gives clear field errors, a new customer appears in the list, plus the tests and the responsive check.
+- Edit route is `/office/customers/:id/edit`, so M6.4 can own `/office/customers/:id` for the detail page. Until M6.4, list names link to the edit form.
+- Duplicate warning: the form asks `GET /duplicates` 400 ms after the phone/email changes, only for values the server would accept, leaving out the customer being edited. It lists the matches ("same phone", "same email", "same phone and email") with a link to each. The link opens in a **new tab** so nothing typed is lost. It never blocks saving. If the check fails, no warning shows and saving still works.
+- Addresses are edited in this form (label optional, area, street/landmark, one default; up to 10). Otherwise the M6.4 detail page would show addresses nobody can add. Blank rows are dropped. With addresses but no default, the first becomes the default. More than one default is refused.
+- Phones: Tanzanian forms are stored as `+255…` (same rule as checkout, so M7.5 matching works). Other countries are accepted with `+` or `00` and 8–15 digits, stored as `+<digits>` (the M6.2 fixtures already had a Kenyan number). The rule is copied into the customers module rather than exported from `shop.routes.js`, so the shop is not touched.
+- TIN: optional, digits and dashes only, spaces removed, up to 20.
+- Type rules match the M6.1 constraints: an individual keeps only the full name; a company keeps company name, contact person and TIN, and its full name is stored as null. Switching type in the form keeps the hidden values in the browser (switching back restores them), but only the fields for the chosen type are saved.
+- PATCH merges the sent fields over the stored customer and then checks the whole record. Addresses change only when `addresses` is sent.
+- After adding: back to the list with "<name> was added." After editing: the edit page reloads with "Changes saved." This is the same pattern as Products.
+- Notes: up to 2000 characters, with a live counter, shown to staff only.
+
+**Verified**
+- `node` `npm test`: 8 suites, 255 tests passed.
+- `web` `npm test`: 13 files, 111 tests passed. `npm run build`: passed. `npm run lint`: clean.
+- `npm run check:responsive`: passed for every route, including the three new ones, at 360, 768 and 1280px in light and dark. I looked at the screenshots. The first pass showed the Notes textarea only two lines tall (`.field-input`'s fixed height won), so I fixed that and re-ran the check, which passed. In the final screenshots, long company names and emails wrap or truncate cleanly, the duplicate warning reads well in both themes, and nothing scrolls sideways at 360px. Per the overnight policy, the automated tests plus the responsive check and screenshots stand in for a manual browser run.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. M7.4 was not touched. It is only the stop point of the overnight order.
+- Collision Guard: it said `CustomersList.tsx` was edited by another session 25 min earlier. `git status` showed only this step's changes, so that was the finished M6.2 run (already committed). Nothing was overwritten.
+
+M6.3 ticked; current step is **M6.4**. M6.4 was not started. Nothing committed.
+
+## M6.4 Customer detail (2026-10-14, overnight): TICKED
+
+**Changed**
+- New `web/src/management/inApp/pages/CustomerDetail.tsx` at `/office/customers/:id`. It has a back link, a header (large avatar: initials for a person, a building for a company; the name as the h1; the contact person; a type badge), and an "Edit customer" button. Then these cards: **Contact** (contact person and TIN for companies; phone as a `tel:` link shown as `+255 712 345 678`; email as a `mailto:` link; "Not set" when empty), **Addresses** (default first with a "Default" badge; an address with no label is titled by its area; "No addresses yet. Add one" links to the edit form), **Orders** (only the line "Orders linked to this customer will be listed here." M7.5 fills it), **Notes** (line breaks kept, or "No notes."), and **Record** (date added, date last changed). It also has a loading skeleton, a "Customer not found" page for a 404, and an error message with Try again.
+- New `CustomerDetail.test.tsx` (5 tests): company details, links and addresses, an individual with nothing filled in, the "Changes saved." notice and its dismiss button, 404, and the error with retry.
+- `web/src/App.tsx`: route `customers/:id`. `layout/Header.tsx`: the title "Customer".
+- `CustomersList.tsx`: names now link to the detail page instead of the edit form. Its test was updated.
+- `CustomerForm.tsx`: saving an edit now goes to the detail page with "Changes saved.". Cancel on the edit form goes back to the detail page. Links in the duplicate warning open the detail page (still in a new tab). The notice plumbing that only the edit form used was removed. `CustomerForm.test.tsx` was updated to match.
+- `web/src/index.css`: a "Customer detail (M6.4)" block that uses only existing variables. On phones it gives 44px touch targets for the buttons, the back link and the phone/email links. It also narrows the label column in the side cards.
+- `web/scripts/responsive-check.mjs`: new routes `office-customer-detail` (the long-named company, two addresses, notes) and `office-customer-detail-empty` (c3, now answered with no addresses or notes).
+- No backend change. `GET /api/office/customers/:id` from M6.3 already returns contacts, notes and addresses (default first) and is covered by tests.
+
+**Decisions**
+- M6.4 has no "Done when" line, so I used the M5.x/M6.x bar: the page is tested and the responsive check passes in both themes.
+- Detail page layout: the Products edit grid. The main column holds Contact, Addresses and Orders. The side column holds Notes and Record. Below 960px it becomes one column.
+- The Orders section is kept and shows one honest line. It has no counts or fake data. Linking orders to customers is M7.5.
+- Saving an edit now returns to the detail page instead of reloading the form, because the detail page is now the customer's home. Adding a customer still goes back to the list with "<name> was added." (the M6.3 Done-when behaviour).
+- No delete, as with products and staff. Nothing in the plan asks for it.
+
+**Verified**
+- `node` `npm test`: 8 suites, 255 tests passed.
+- `web` `npm test`: 14 files, 116 tests passed. `npm run build` passed. `npm run lint` is clean.
+- `npm run check:responsive` passed for every route, including the two new ones, at 360, 768 and 1280px in light and dark. I checked `office-customer-detail` at 360 light, 768 light and 1280 dark, and `office-customer-detail-empty` at 360 dark. Long company names and emails wrap, the Default badge and the type badge are readable in both themes, and nothing scrolls sideways. Per the overnight policy, the tests, the responsive check and the screenshots stand in for a manual browser run.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. It is only the stop point of the overnight order.
+- Collision Guard: it reported that several files (index.css, App.tsx, Header.tsx, CustomersList.tsx, CustomerForm.tsx, their tests, responsive-check.mjs, progress.md) were edited by another session 16–30 min earlier. `git status` was clean at the start of this run, so those edits were the finished and committed M6.3 run. Nothing was overwritten.
+- Scope Guard: it warned about the order of "tick M6.4" and "set M7.1 as current" in `progress.md`. Both changes are intended: every check passed, M6.4 is ticked, and M7.1 is next in the overnight order.
+
+M6.4 ticked; current step is **M7.1**. M7.1 was not started. Nothing committed.
+
+## M7.1 Order data model (2026-10-14, overnight): TICKED
+
+**Changed**
+- New migration `node/migrations/20261014220000_extend_orders.js` (the approved `<timestamp>_extend_orders.js`). It does not recreate the C5 tables. It adds the foreign key `orders.customer_id` → `customers` (on delete set null), `created_by` (→ `staff_profiles`, nullable), `cancel_reason` (up to 500), and `confirmed_at`, `delivered_at`, `closed_at`, `cancelled_at`, `paid_at`. Three checks: a shop order has no `created_by` and a staff order must have one; `status = 'cancelled'` exactly when there is a cancel reason and time; `payment_status = 'paid'` exactly when `paid_at` is set. Down removes all of it and keeps the orders.
+- New `node/src/orders/orders.service.js`: the life cycle as a table (`new` → `confirmed` → `delivered` → `closed`, `cancelled` from `new`/`confirmed`; `closed` and `cancelled` are final), `canChangeStatus`, `changeOrderStatus(id, to, { reason })` and `markOrderPaid(id)`. Each is one conditional `UPDATE … WHERE status IN (allowed from-statuses)`, so two staff acting at once cannot both move the same order. Results follow the products service: `{ order }`, `null` when the order does not exist, or `{ error }` (`invalid_status`, `reason_required`, `invalid_transition` with `from`, `already_paid`, `cancelled`). The status's time column is stamped on every move.
+- New `node/src/orders/orders.test.js` (36 tests): every allowed move works and stamps its time. Every refused move (all other from/to pairs) returns `invalid_transition` and leaves the row byte-for-byte unchanged. Moving back to `new` or to an unknown status is refused. Cancelling needs a reason (empty, blank, non-text or too long is refused; the reason is stored trimmed). A missing order gives null. Two confirms at once: only one wins. A full life cycle ends closed and stays closed. Mark paid works once, in every status but cancelled. The DB checks and the customer foreign key work. Migrate down/up keeps existing orders.
+- `node/src/shop/shop.test.js` and `node/src/customers/customers.test.js`: their migrate down/up tests now roll back `extend_orders` first, because it alters `orders` and points it at `customers`. Without that, the down fails on the foreign key, or `latest` brings `orders` back without the M7.1 columns. No other change.
+- No routes, no web changes. `/api/office/orders` and the Orders page are M7.2/M7.3.
+
+**Decisions**
+- The plan says M7.1 adds "status transition rules, staff-order fields" only. Fields chosen: `created_by` for staff orders (M7.4), `cancel_reason` (M7.3 "cancel with a reason"), one time column per status plus `paid_at`. They go in now because `extend_orders` is the only approved orders migration for M7.
+- The rules are enforced in the service (as the plan says: "on the server"), not with a DB trigger. The DB checks only keep each row consistent with its own status. M7.3 routes must go through `changeOrderStatus`/`markOrderPaid`.
+- `customer_id` foreign key is `on delete set null`. Customers are never deleted (no delete exists), and if one ever is, the order keeps its guest snapshot.
+- Mark paid is refused on a cancelled order and allowed in every other status. The plan only says payment goes `unpaid` → `paid`. It never goes back.
+- A cancel reason is 1–500 characters after trimming. A reason sent with any other move is ignored.
+
+**Verified**
+- `node` `npm test`: 9 suites, 291 tests passed (36 new).
+- `web` `npm test`: 14 files, 116 tests passed. `npm run build` passed. `npm run lint` is clean. No web files changed.
+- `npm run check:responsive` was not run: M7.1 has no UI and changes no web file.
+- Done when ("invalid status jumps are refused (tested)"): covered by the refused-pairs and back-to-new tests above.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. It is only the stop point of the overnight order.
+- Scope Guard: it warned that `node/src/orders/` is a new folder. It is on the approved list in plan §4 (M6/M7 track), so I went ahead.
+- Scope Guard: it warned about the order of "tick M7.1" and "set M7.2 as current" in `progress.md`. Both changes are intended: every check passed, so M7.1 is ticked and M7.2 is next in the overnight order.
+
+M7.1 ticked; current step is **M7.2**. M7.2 was not started. Nothing committed.
+
+## M7.2 Orders queue (2026-10-14, overnight): TICKED
+
+**Changed**
+- `node/src/orders/orders.service.js`: new `listOrders({ q, status, paymentStatus, source, page })`. It searches order number, guest name and phone (case-insensitive; `%` and `_` taken literally; a phone typed the local way, such as `0754 100 200`, matches `+255…`, using the customers module's `phoneDigits`). It filters by status, payment status and source, uses pages of 25 and lists newest first. It returns `total`, and `counts` per status tab. The counts follow the search, payment and source filters but not the status. Each row has id, number, status, payment status, source, customerId, guest name and phone, delivery area, `totalTzs` (a number), `hasQuotationLines`, `itemCount` (sum of quantities) and `createdAt`. Notes, email, address and items are left out (they belong to the M7.3 detail page).
+- New `node/src/orders/orders.routes.js` (a sibling in the approved `node/src/orders/`): `GET /api/office/orders` for any signed-in staff member (same rules as customers: `requireSameOrigin`, `requireAuth()`). Unknown or repeated `status`/`paymentStatus`/`source` values give 400. `node/src/server.js` mounts it at `/api/office/orders` before the admin-only office router.
+- `node/src/orders/orders.test.js`: adds the logger/Redis mocks used by `customers.test.js` and 8 API tests (session required; empty queue; shape, order, item count and numeric total; search by number, name and phone; filters and counts; 400s; paging; the badge query).
+- New `web/src/management/inApp/pages/OrdersList.tsx` at `/office/orders`, replacing the placeholder in `App.tsx`. It has status tabs with counts (All, New, Confirmed, Delivered, Closed, Cancelled), a search box, and Payment and Source selects. On desktop and tablet it is a table: Order (number in mono, date and time, "Shop order"/"Staff order"), Customer (name, phone formatted like Customers, area), Total (TZS with an item count; "+ items on request" or "Price on request" for quotation lines), and Status and Payment badges. At 640px and below it is a card list. It also has a loading skeleton, an error state with Try again, "No orders yet…", "No <status> orders." and "No orders match…" with Clear filters, and paging.
+- New `OrdersList.test.tsx` (7 tests).
+- `web/src/management/inApp/layout/Sidebar.tsx`: the reset-requests badge hook is now a general `useBadgeCount(path, enabled, event?)`. Orders shows the number of `new` orders (from `GET /api/office/orders?status=new` → `total`) to every signed-in staff member, with the accessible name "Orders, N new". `Sidebar.test.tsx`: the non-admin test now checks that reset requests are not asked for (orders now are), plus 2 tests for the Orders badge.
+- `web/src/index.css`: an "Orders queue (M7.2)" block using only existing variables. Status colours: new = warning, confirmed = primary, delivered = primary outline, closed = neutral, cancelled = danger. Paid = primary, unpaid = neutral.
+- `web/scripts/responsive-check.mjs`: order fixtures (every status, both payment states and sources, a very long name, a 1,250,000,000 total, quotation-only and mixed orders, 38 in total so the pager shows). It answers the badge query with 4. New routes: `office-orders`, and `office-orders-empty` (Source = Staff plus a long search that matches nothing).
+- `web/src/shop/NotFoundPage.test.tsx` (not an M7.2 file): its two first lookups now wait up to 5 s instead of 1 s. See Decisions.
+
+**Decisions**
+- M7.2 has no "Done when" line, so I used the M6.x bar: API and page tested, plus the responsive check in both themes.
+- The badge reuses the list endpoint (`?status=new`, read `total`) rather than adding a count endpoint, the same way as the reset-requests badge. It refreshes every minute. M7.3 can fire an "orders changed" event when it changes a status.
+- The queue is open to all signed-in staff (like Customers); the badge is shown to everyone.
+- Newest first, default tab "All orders". Filters are kept in component state, not the URL, like Customers and Products.
+- Order numbers are not links yet: the detail page is M7.3, which should make them links. There is no "New order" button (M7.4 is skipped tonight).
+- The item count is the sum of quantities. It is shown under the total; a separate Items column made the table 10px too wide at 768px.
+- Search covers number, name and phone only, as the plan says (not email).
+- NotFoundPage test: it renders the whole `App` and waits for lazy chunks. With one more test file, it timed out at the 1 s default in the parallel suite (it passed alone every time; StaffProfile timed out the same way once, on a cold run). I raised only that wait to 5 s, with a comment. After that the full suite passed 3 times in a row. No product code changed for this.
+
+**Verified**
+- `node` `npm test`: 9 suites, 299 tests passed (8 new).
+- `web` `npm test`: 15 files, 125 tests passed (passed 3 times in a row after the timeout fix). `npm run build` passed (inside the responsive check's tsc + vite build). `npm run lint` is clean.
+- `npm run check:responsive` passed for every route, including the two new ones, at 360, 768 and 1280px in light and dark. The first full run failed `office-orders` at 768px (778px of content in 768px). I merged the Items column into Total and re-ran, and it passed. I looked at `office-orders` at 360 light, 768 light and 1280 light and dark, and `office-orders-empty` at 360 dark. Long names wrap, totals line up on the right, the six status tabs wrap to two rows on a phone, the badge shows in the sidebar, and nothing scrolls sideways. Per the overnight policy, the tests, the responsive check and the screenshots stand in for a manual browser run.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. It is only the stop point of the overnight order.
+- Scope Guard: it warned about the order of "tick M7.2" and "set M7.3 as current" in `progress.md`. Both changes are intended: every check passed, so M7.2 is ticked and M7.3 is next in the overnight order.
+
+M7.2 ticked; current step is **M7.3**. M7.3 was not started. Nothing committed.
