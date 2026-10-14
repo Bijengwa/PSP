@@ -1515,3 +1515,32 @@ M6.3 ticked; current step is **M6.4**. M6.4 was not started. Nothing committed.
 - Scope Guard: it warned about the order of "tick M6.4" and "set M7.1 as current" in `progress.md`. Both changes are intended: every check passed, M6.4 is ticked, and M7.1 is next in the overnight order.
 
 M6.4 ticked; current step is **M7.1**. M7.1 was not started. Nothing committed.
+
+## M7.1 Order data model (2026-10-14, overnight): TICKED
+
+**Changed**
+- New migration `node/migrations/20261014220000_extend_orders.js` (the approved `<timestamp>_extend_orders.js`). It does not recreate the C5 tables. It adds the foreign key `orders.customer_id` → `customers` (on delete set null), `created_by` (→ `staff_profiles`, nullable), `cancel_reason` (up to 500), and `confirmed_at`, `delivered_at`, `closed_at`, `cancelled_at`, `paid_at`. Three checks: a shop order has no `created_by` and a staff order must have one; `status = 'cancelled'` exactly when there is a cancel reason and time; `payment_status = 'paid'` exactly when `paid_at` is set. Down removes all of it and keeps the orders.
+- New `node/src/orders/orders.service.js`: the life cycle as a table (`new` → `confirmed` → `delivered` → `closed`, `cancelled` from `new`/`confirmed`; `closed` and `cancelled` are final), `canChangeStatus`, `changeOrderStatus(id, to, { reason })` and `markOrderPaid(id)`. Each is one conditional `UPDATE … WHERE status IN (allowed from-statuses)`, so two staff acting at once cannot both move the same order. Results follow the products service: `{ order }`, `null` when the order does not exist, or `{ error }` (`invalid_status`, `reason_required`, `invalid_transition` with `from`, `already_paid`, `cancelled`). The status's time column is stamped on every move.
+- New `node/src/orders/orders.test.js` (36 tests): every allowed move works and stamps its time. Every refused move (all other from/to pairs) returns `invalid_transition` and leaves the row byte-for-byte unchanged. Moving back to `new` or to an unknown status is refused. Cancelling needs a reason (empty, blank, non-text or too long is refused; the reason is stored trimmed). A missing order gives null. Two confirms at once: only one wins. A full life cycle ends closed and stays closed. Mark paid works once, in every status but cancelled. The DB checks and the customer foreign key work. Migrate down/up keeps existing orders.
+- `node/src/shop/shop.test.js` and `node/src/customers/customers.test.js`: their migrate down/up tests now roll back `extend_orders` first, because it alters `orders` and points it at `customers`. Without that, the down fails on the foreign key, or `latest` brings `orders` back without the M7.1 columns. No other change.
+- No routes, no web changes. `/api/office/orders` and the Orders page are M7.2/M7.3.
+
+**Decisions**
+- The plan says M7.1 adds "status transition rules, staff-order fields" only. Fields chosen: `created_by` for staff orders (M7.4), `cancel_reason` (M7.3 "cancel with a reason"), one time column per status plus `paid_at`. They go in now because `extend_orders` is the only approved orders migration for M7.
+- The rules are enforced in the service (as the plan says: "on the server"), not with a DB trigger. The DB checks only keep each row consistent with its own status. M7.3 routes must go through `changeOrderStatus`/`markOrderPaid`.
+- `customer_id` foreign key is `on delete set null`. Customers are never deleted (no delete exists), and if one ever is, the order keeps its guest snapshot.
+- Mark paid is refused on a cancelled order and allowed in every other status. The plan only says payment goes `unpaid` → `paid`. It never goes back.
+- A cancel reason is 1–500 characters after trimming. A reason sent with any other move is ignored.
+
+**Verified**
+- `node` `npm test`: 9 suites, 291 tests passed (36 new).
+- `web` `npm test`: 14 files, 116 tests passed. `npm run build` passed. `npm run lint` is clean. No web files changed.
+- `npm run check:responsive` was not run: M7.1 has no UI and changes no web file.
+- Done when ("invalid status jumps are refused (tested)"): covered by the refused-pairs and back-to-new tests above.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. It is only the stop point of the overnight order.
+- Scope Guard: it warned that `node/src/orders/` is a new folder. It is on the approved list in plan §4 (M6/M7 track), so I went ahead.
+- Scope Guard: it warned about the order of "tick M7.1" and "set M7.2 as current" in `progress.md`. Both changes are intended: every check passed, so M7.1 is ticked and M7.2 is next in the overnight order.
+
+M7.1 ticked; current step is **M7.2**. M7.2 was not started. Nothing committed.

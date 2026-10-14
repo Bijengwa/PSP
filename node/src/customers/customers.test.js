@@ -590,6 +590,8 @@ describe('create_customers migration', () => {
     const [, pending] = await db.migrate.list();
     expect(pending).toEqual([]);
 
+    // extend_orders (M7.1) points orders at customers, so it goes first.
+    await db.migrate.down({ name: '20261014220000_extend_orders.js' });
     await db.migrate.down({ name: MIGRATION });
     expect(await tables()).toEqual([]);
 

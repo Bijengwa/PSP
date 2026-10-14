@@ -1036,3 +1036,37 @@ M6.4 (Customer detail) is finished and ticked in `docs/progress.md`, and the cur
 The Collision Guard said another session had recently edited these files. The working tree was clean when I started, so those edits were the earlier M6.3 run, already committed, and nothing was overwritten.
 You've hit your session limit ┬╖ resets 9:30pm (Africa/Kampala)
 You've hit your session limit ┬╖ resets 9:30pm (Africa/Kampala)
+M7.1 (order data model) is finished and ticked, and every check passes. The current step is now **M7.2**, which I haven't started. Nothing is committed.
+
+**What changed**
+- **New migration `node/migrations/20261014220000_extend_orders.js`.** It keeps the C5 `orders` and `order_items` tables and only adds:
+  - a foreign key from `orders.customer_id` to `customers`; if a customer is ever deleted, the order keeps its guest details;
+  - `created_by`, the staff member who entered a staff order;
+  - `cancel_reason`;
+  - a time column for each status: `confirmed_at`, `delivered_at`, `closed_at`, `cancelled_at` and `paid_at`.
+
+  Three database checks keep each order consistent with its own status: a staff order must name who entered it and a shop order must not; a cancelled order must have a reason and a time; a paid order must have a paid time. Rolling the migration back removes all of this and keeps existing orders.
+- **New `node/src/orders/orders.service.js`.** It enforces the order life cycle (new ΓåÆ confirmed ΓåÆ delivered ΓåÆ closed, or cancelled from new/confirmed) and "unpaid ΓåÆ paid" for payment. Each change is a single database update that checks the current status, so two staff members can't move the same order at once. Cancelling needs a reason. A cancelled order can't be marked paid.
+- **New `node/src/orders/orders.test.js`, 36 tests.** Every allowed status change is tested, and so is every refused one, which must leave the order unchanged. That covers this step's "Done when": invalid status jumps are refused and tested. The tests also cover cancel reasons, marking paid, two staff confirming at once, the database checks, the customer link and rolling back the migration.
+- **`shop.test.js` and `customers.test.js`:** their migration rollback tests now undo the new migration first, because it changes the tables they roll back.
+- There are no routes and no web changes yet. `/api/office/orders` and the Orders page belong to M7.2 and M7.3.
+
+**Checks**
+- **node `npm test`:** 291 tests passed.
+- **web `npm test`:** 116 tests passed.
+- **web `npm run build`:** passed.
+- **web `npm run lint`:** clean.
+- **`npm run check:responsive`:** not run, because this step has no UI and changes no web files.
+
+The plan was silent on some details, so I chose them myself. Each choice is recorded as a Decision in `docs/overnight-log.md`:
+- which extra fields to add;
+- enforcing the status rules in server code, not a database trigger;
+- refusing payment on cancelled orders;
+- capping the cancel reason at 500 characters.
+
+The guard warnings are logged there too:
+- The new `node/src/orders/` folder is on the plan's approved list.
+- Ticking M7.1 and moving to M7.2 was intended.
+- M7.4 was not touched.
+
+The `git status` call to review the diff needed approval and didn't run, so I checked the changed files directly instead.

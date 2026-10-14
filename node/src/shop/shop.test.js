@@ -771,6 +771,8 @@ describe('create_orders migration', () => {
     const [, pending] = await db.migrate.list();
     expect(pending).toEqual([]);
 
+    // extend_orders (M7.1) alters these tables, so it goes first.
+    await db.migrate.down({ name: '20261014220000_extend_orders.js' });
     await db.migrate.down({ name: '20261014180000_create_orders.js' });
     expect(await tables()).toEqual([]);
     expect(await sequence()).toBeNull();
