@@ -2501,3 +2501,324 @@ a {
 .office-order-card-head > span {
   min-width: 0;
 }
+
+/* Order detail (M7.3) */
+.office-order-title {
+  font-family: var(--mono);
+  font-size: 24px;
+}
+
+.office-order-title:focus {
+  outline: none;
+}
+
+.office-order-title:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.office-order-identity {
+  flex: 1 1 280px;
+}
+
+.office-order-actions {
+  flex-wrap: wrap;
+}
+
+.office-order-confirm {
+  margin-top: 16px;
+}
+
+.office-order-confirm .field {
+  margin-bottom: 12px;
+}
+
+/* .field-input has a fixed height; the reason needs room for a sentence or two. */
+.office-order-confirm textarea.field-input {
+  min-height: 88px;
+}
+
+.office-order-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.office-order-items th,
+.office-order-items td {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.office-order-items th:first-child,
+.office-order-items td:first-child {
+  padding-left: 0;
+}
+
+.office-order-items th:last-child,
+.office-order-items td:last-child {
+  padding-right: 0;
+}
+
+.office-order-items thead th {
+  padding-top: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.office-order-items .office-item-unit,
+.office-order-items .office-item-total {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.office-order-items .office-item-qty {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.office-order-items.is-editing td {
+  vertical-align: middle;
+}
+
+.office-item-product {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.office-item-name {
+  display: block;
+  font-weight: 600;
+}
+
+.office-item-sku {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* Shown in place of the unit price column on phones. */
+.office-item-each,
+.office-item-qty-label {
+  display: none;
+}
+
+.office-item-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.office-item-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.office-item-remove:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.office-order-items tfoot th,
+.office-order-items tfoot td {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.office-order-items tfoot th {
+  text-align: right;
+  font-weight: 600;
+}
+
+.office-order-grand-total {
+  font-size: 18px;
+}
+
+.office-order-items-hint {
+  margin: 12px 0 0;
+}
+
+.office-order-items-actions {
+  margin-top: 16px;
+}
+
+.office-order-address {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.office-order-steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.office-order-step {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding-bottom: 16px;
+}
+
+.office-order-step:last-child {
+  padding-bottom: 0;
+}
+
+/* The line joining one step to the next. */
+.office-order-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  bottom: 2px;
+  left: 10px;
+  width: 2px;
+  background: var(--border);
+}
+
+.office-order-step.is-done:has(+ .office-order-step.is-done:not(.is-cancelled))::before {
+  background: var(--primary);
+}
+
+.office-order-step-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--on-primary);
+}
+
+.office-order-step.is-done .office-order-step-mark {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.office-order-step.is-cancelled .office-order-step-mark {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.office-order-step-mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.office-order-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.office-order-step-label {
+  font-weight: 600;
+}
+
+.office-order-step:not(.is-done) .office-order-step-label {
+  color: var(--ink-muted);
+}
+
+.office-order-step.is-cancelled .office-order-step-label {
+  color: var(--danger);
+}
+
+.office-order-step-note {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .office-order-title {
+    font-size: 22px;
+  }
+
+  .office-order-actions {
+    width: 100%;
+  }
+
+  .office-order-actions .button {
+    flex: 1 1 auto;
+  }
+
+  .office-order-detail .office-stepper-button,
+  .office-order-detail .office-icon-action {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Each line becomes a block: the product on top, quantity and total below. */
+  .office-order-items thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .office-order-items tbody tr,
+  .office-order-items tfoot tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .office-order-items tfoot tr {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .office-order-items th,
+  .office-order-items td {
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .office-order-items .office-item-product {
+    flex: 1 1 100%;
+  }
+
+  .office-order-items .office-item-unit {
+    display: none;
+  }
+
+  .office-item-each {
+    display: block;
+    margin-top: 4px;
+  }
+
+  .office-item-qty-label {
+    display: inline;
+    color: var(--ink-muted);
+  }
+
+  .office-order-items .office-item-total {
+    margin-left: auto;
+  }
+
+  .office-order-items tfoot th {
+    text-align: left;
+  }
+}

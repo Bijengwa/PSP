@@ -462,6 +462,275 @@ describe('orders queue (GET /api/office/orders)', () => {
   });
 });
 
+describe('order detail and actions (M7.3)', () => {
+  const ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+  let staffCookie;
+  let productId;
+
+  beforeAll(async () => {
+    staffCookie = `psp_sid=${(await sessions.create({ staffId, ip: '::1', userAgent: 't' })).id}`;
+    const [row] = await db('products')
+      .insert({
+        name: 'Detail test monitor',
+        slug: 'detail-test-monitor',
+        sku: 'DETAIL-TEST-1',
+        category_id: 1,
+        price_tzs: 500000,
+        is_published: true,
+        created_by: staffId,
+      })
+      .returning('id');
+    productId = row.id;
+  });
+
+  afterAll(async () => {
+    await db('order_items').del();
+    await db('products').where({ id: productId }).del();
+  });
+
+  // An order with a priced line (2 × 500,000) and a quotation line, in `status`.
+  async function orderWithItems(over = {}) {
+    const row = await order({ total_tzs: 1000000, has_quotation_lines: true, ...over });
+    const items = await db('order_items')
+      .insert([
+        {
+          order_id: row.id,
+          product_id: productId,
+          product_name: 'Patient monitor',
+          product_sku: 'PM-12',
+          unit_price_tzs: 500000,
+          quantity: 2,
+          line_total_tzs: 1000000,
+        },
+        { order_id: row.id, product_id: productId, product_name: 'CT scanner', product_sku: 'CT-64', quantity: 1, sort_order: 1 },
+      ])
+      .returning('*');
+    return { row, items };
+  }
+
+  const get = (id) => request(app).get(`/api/office/orders/${id}`).set('Cookie', staffCookie);
+  const post = (path, body) =>
+    request(app).post(`/api/office/orders/${path}`).set('Cookie', staffCookie).set('Origin', ORIGIN).send(body);
+  const putItems = (id, items) =>
+    request(app).put(`/api/office/orders/${id}/items`).set('Cookie', staffCookie).set('Origin', ORIGIN).send({ items });
+
+  test('need a session, and changes need the office origin', async () => {
+    const { row } = await orderWithItems();
+    expect((await request(app).get(`/api/office/orders/${row.id}`)).status).toBe(401);
+    const noOrigin = await request(app)
+      .post(`/api/office/orders/${row.id}/status`)
+      .set('Cookie', staffCookie)
+      .send({ status: 'confirmed' });
+    expect(noOrigin.status).toBe(403);
+    expect((await db('orders').where({ id: row.id }).first()).status).toBe('new');
+  });
+
+  test('the detail has items, totals, guest details and the next steps', async () => {
+    const { row, items } = await orderWithItems({ guest_email: 'asha@example.com', notes: 'Call before delivery' });
+    const res = await get(row.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.order).toMatchObject({
+      id: row.id,
+      orderNumber: row.order_number,
+      status: 'new',
+      paymentStatus: 'unpaid',
+      source: 'shop',
+      customer: null,
+      createdBy: null,
+      guestName: 'Asha Mushi',
+      guestPhone: '+255712345678',
+      guestEmail: 'asha@example.com',
+      deliveryArea: 'Kariakoo',
+      deliveryAddress: 'Msimbazi Street',
+      notes: 'Call before delivery',
+      totalTzs: 1000000,
+      hasQuotationLines: true,
+      cancelReason: null,
+      confirmedAt: null,
+      paidAt: null,
+      nextStatuses: ['confirmed', 'cancelled'],
+      itemsEditable: true,
+      items: [
+        { id: items[0].id, productId, productName: 'Patient monitor', productSku: 'PM-12', unitPriceTzs: 500000, quantity: 2, lineTotalTzs: 1000000 },
+        { id: items[1].id, productId, productName: 'CT scanner', productSku: 'CT-64', unitPriceTzs: null, quantity: 1, lineTotalTzs: null },
+      ],
+    });
+  });
+
+  test('the detail names the linked customer and who entered a staff order', async () => {
+    const [customer] = await db('customers')
+      .insert({ type: 'company', company_name: 'Bugando Medical Centre', created_by: staffId })
+      .returning('id');
+    const { row } = await orderWithItems({ customer_id: customer.id, source: 'staff', created_by: staffId });
+    const { order: detail } = (await get(row.id)).body.data;
+
+    expect(detail.customer).toEqual({ id: customer.id, type: 'company', name: 'Bugando Medical Centre' });
+    expect(detail.createdBy).toEqual({ id: staffId, fullName: 'Sam Staff' });
+  });
+
+  test('unknown or malformed ids are a 404', async () => {
+    expect((await get(MISSING_ID)).status).toBe(404);
+    expect((await get('not-a-uuid')).status).toBe(404);
+    expect((await post(`${MISSING_ID}/status`, { status: 'confirmed' })).status).toBe(404);
+    expect((await post(`${MISSING_ID}/paid`)).status).toBe(404);
+    expect((await putItems(MISSING_ID, [{ id: MISSING_ID, quantity: 1 }])).status).toBe(404);
+  });
+
+  test('confirm, deliver and close move the order along and answer with it', async () => {
+    const { row } = await orderWithItems();
+    const steps = [
+      ['confirmed', 'confirmedAt', ['delivered', 'cancelled'], false],
+      ['delivered', 'deliveredAt', ['closed'], false],
+      ['closed', 'closedAt', [], false],
+    ];
+    for (const [status, stamp, next, editable] of steps) {
+      const res = await post(`${row.id}/status`, { status });
+      expect(res.status).toBe(200);
+      expect(res.body.data.order).toMatchObject({ status, nextStatuses: next, itemsEditable: editable });
+      expect(res.body.data.order[stamp]).toEqual(expect.any(String));
+    }
+  });
+
+  test('cancel needs a reason, from new or confirmed', async () => {
+    const { row } = await orderWithItems();
+    for (const reason of [undefined, '', '   ', 'x'.repeat(CANCEL_REASON_MAX + 1)]) {
+      const res = await post(`${row.id}/status`, { status: 'cancelled', reason });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual({ reason: expect.stringMatching(/reason/) });
+    }
+
+    const res = await post(`${row.id}/status`, { status: 'cancelled', reason: '  Ordered twice ' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.order).toMatchObject({ status: 'cancelled', cancelReason: 'Ordered twice', nextStatuses: [] });
+
+    const confirmed = await inStatus('confirmed');
+    expect((await post(`${confirmed.id}/status`, { status: 'cancelled', reason: 'Out of stock' })).status).toBe(200);
+  });
+
+  test('refused moves are a 409 naming the current status; bad statuses a 400', async () => {
+    const { row } = await orderWithItems();
+    let res = await post(`${row.id}/status`, { status: 'delivered' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: 'INVALID_TRANSITION', details: { status: 'new' } });
+
+    const delivered = await inStatus('delivered');
+    res = await post(`${delivered.id}/status`, { status: 'cancelled', reason: 'Too late' });
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toBe('This order is delivered, so it cannot be moved to cancelled.');
+
+    for (const status of ['new', 'shipped', undefined]) {
+      res = await post(`${row.id}/status`, { status });
+      expect(res.status).toBe(400);
+    }
+    expect((await db('orders').where({ id: row.id }).first()).status).toBe('new');
+  });
+
+  test('mark paid works once and never on a cancelled order', async () => {
+    const { row } = await orderWithItems();
+    const res = await post(`${row.id}/paid`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.order).toMatchObject({ paymentStatus: 'paid', paidAt: expect.any(String), status: 'new' });
+
+    const again = await post(`${row.id}/paid`);
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe('ALREADY_PAID');
+
+    const cancelled = await inStatus('cancelled');
+    const refused = await post(`${cancelled.id}/paid`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('ORDER_CANCELLED');
+    expect((await db('orders').where({ id: cancelled.id }).first()).payment_status).toBe('unpaid');
+  });
+
+  test('a new order: quantities change and lines drop; totals use the copied prices', async () => {
+    const { row, items } = await orderWithItems();
+    // A later price change on the product must not reach the order.
+    await db('products').where({ id: productId }).update({ price_tzs: 999999 });
+
+    let res = await putItems(row.id, [
+      { id: items[0].id, quantity: 3 },
+      { id: items[1].id, quantity: 2 },
+    ]);
+    expect(res.status).toBe(200);
+    expect(res.body.data.order).toMatchObject({ totalTzs: 1500000, hasQuotationLines: true });
+    expect(res.body.data.order.items.map((i) => [i.quantity, i.unitPriceTzs, i.lineTotalTzs])).toEqual([
+      [3, 500000, 1500000],
+      [2, null, null],
+    ]);
+
+    res = await putItems(row.id, [{ id: items[0].id, quantity: 1 }]);
+    expect(res.body.data.order).toMatchObject({ totalTzs: 500000, hasQuotationLines: false });
+    expect(res.body.data.order.items).toHaveLength(1);
+    expect(await db('order_items').where({ id: items[1].id }).first()).toBeUndefined();
+    await db('products').where({ id: productId }).update({ price_tzs: 500000 });
+  });
+
+  test('item changes are checked: at least one line, own lines only, quantity 1 to 99', async () => {
+    const { row, items } = await orderWithItems();
+    const other = await orderWithItems();
+    const cases = [
+      [],
+      [{ id: items[0].id, quantity: 0 }],
+      [{ id: items[0].id, quantity: 100 }],
+      [{ id: items[0].id, quantity: 1.5 }],
+      [{ id: items[0].id, quantity: '2' }],
+      [{ id: 'nope', quantity: 1 }],
+      [
+        { id: items[0].id, quantity: 1 },
+        { id: items[0].id, quantity: 2 },
+      ],
+      [{ id: other.items[0].id, quantity: 1 }],
+    ];
+    for (const body of cases) {
+      const res = await putItems(row.id, body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    expect((await putItems(row.id, 'not a list')).status).toBe(400);
+    expect(await db('order_items').where({ order_id: row.id }).orderBy('sort_order').pluck('quantity')).toEqual([2, 1]);
+  });
+
+  test.each(['confirmed', 'delivered', 'closed', 'cancelled'])(
+    'items cannot change once the order is %s',
+    async (status) => {
+      const { row, items } = await orderWithItems({
+        status,
+        ...(status === 'cancelled' ? { cancel_reason: 'Ordered twice', cancelled_at: db.fn.now() } : {}),
+      });
+      const res = await putItems(row.id, [{ id: items[0].id, quantity: 5 }]);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatchObject({ code: 'ITEMS_LOCKED', details: { status } });
+      expect(await db('order_items').where({ order_id: row.id }).orderBy('sort_order').pluck('quantity')).toEqual([2, 1]);
+      expect(Number((await db('orders').where({ id: row.id }).first()).total_tzs)).toBe(1000000);
+      expect((await get(row.id)).body.data.order.itemsEditable).toBe(false);
+    },
+  );
+
+  test('after confirming through the API, the items are locked', async () => {
+    const { row, items } = await orderWithItems();
+    expect((await post(`${row.id}/status`, { status: 'confirmed' })).status).toBe(200);
+    expect((await putItems(row.id, [{ id: items[0].id, quantity: 9 }])).status).toBe(409);
+  });
+
+  test('an item change and a confirm at the same time: both end consistent', async () => {
+    const { row, items } = await orderWithItems();
+    const [edit, confirm] = await Promise.all([
+      putItems(row.id, [{ id: items[0].id, quantity: 4 }]),
+      post(`${row.id}/status`, { status: 'confirmed' }),
+    ]);
+    expect(confirm.status).toBe(200);
+    const stored = await db('order_items').where({ id: items[0].id }).first('quantity');
+    // Either the edit came first (and the confirmed order has it), or it was refused.
+    if (edit.status === 200) expect(stored.quantity).toBe(4);
+    else {
+      expect(edit.status).toBe(409);
+      expect(stored.quantity).toBe(2);
+    }
+  });
+});
+
 describe('extend_orders migration', () => {
   const columns = async () =>
     (

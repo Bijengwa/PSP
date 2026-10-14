@@ -90,7 +90,7 @@ describe('OrdersList', () => {
     const rows = within(table).getAllByRole('row')
     expect(rows).toHaveLength(3)
 
-    expect(within(rows[1]).getByText('PSP-000124')).not.toBeNull()
+    expect(within(rows[1]).getByRole('link', { name: 'PSP-000124' }).getAttribute('href')).toBe('/office/orders/o1')
     expect(within(rows[1]).getByText(/^Shop/)).not.toBeNull()
     expect(within(rows[1]).getByText('Asha Mushi')).not.toBeNull()
     expect(within(rows[1]).getByText('+255 712 345 678')).not.toBeNull()

@@ -168,11 +168,14 @@ describe('StaffProfile access', () => {
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
 
     const confirm = within(access).getByRole('group', { name: 'Deactivate Sam Staff?' })
-    await waitFor(() => expect(document.activeElement).toBe(within(confirm).getByRole('button', { name: 'Cancel' })))
+    // Up to 5 s: in the full parallel suite the focus effect can run after the 1 s default.
+    await waitFor(() => expect(document.activeElement).toBe(within(confirm).getByRole('button', { name: 'Cancel' })), {
+      timeout: 5000,
+    })
     fireEvent.click(within(confirm).getByRole('button', { name: 'Deactivate account' }))
 
     const reactivate = await within(access).findByRole('button', { name: 'Reactivate' })
-    await waitFor(() => expect(document.activeElement).toBe(reactivate))
+    await waitFor(() => expect(document.activeElement).toBe(reactivate), { timeout: 5000 })
     expect(screen.getByRole('status').textContent).toBe('Sam Staff is deactivated and has been signed out.')
     expect(screen.getAllByText('Inactive').length).toBeGreaterThan(0)
 

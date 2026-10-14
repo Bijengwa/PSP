@@ -79,7 +79,7 @@ function BackToCustomers() {
   )
 }
 
-function Facts({ rows }: { rows: [string, ReactNode][] }) {
+export function Facts({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <dl className="office-profile-facts">
       {rows.map(([label, value]) => (

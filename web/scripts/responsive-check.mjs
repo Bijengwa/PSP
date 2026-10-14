@@ -124,6 +124,31 @@ const ROUTES = [
       await page.getByLabel('Search by order number, name or phone').fill('no-such-order-with-a-long-search')
     },
   },
+  // o2: a new order with a very long name, a large total and a quotation line.
+  { name: 'office-order-detail', path: '/office/orders/o2', ready: '.office-order-items' },
+  {
+    name: 'office-order-edit-items',
+    path: '/office/orders/o2',
+    ready: '.office-order-items.is-editing',
+    act: async (page) => {
+      await page.locator('.office-order-items').waitFor()
+      await page.getByRole('button', { name: /Edit items/ }).click()
+      await page.getByRole('button', { name: /^More / }).first().click()
+    },
+  },
+  {
+    // The cancel question with its reason field, after trying without a reason.
+    name: 'office-order-cancel',
+    path: '/office/orders/o2',
+    ready: '.office-order-confirm .field-error',
+    act: async (page) => {
+      await page.locator('.office-order-items').waitFor()
+      await page.getByRole('button', { name: 'Cancel order' }).click()
+      await page.locator('.office-order-confirm').getByRole('button', { name: 'Cancel order' }).click()
+    },
+  },
+  // o6: cancelled with a reason, linked to a customer, entered by staff.
+  { name: 'office-order-cancelled', path: '/office/orders/o6', ready: '.office-order-steps' },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -390,6 +415,41 @@ const orders = [
   orderRow(6, { status: 'cancelled', guestName: 'Rehema Kisanga', totalTzs: 21000000 }),
 ]
 
+// One order's detail page, built from its queue row.
+function orderDetail(id) {
+  const row = orders.find((item) => item.id === id) ?? orders[1]
+  const next = { new: ['confirmed', 'cancelled'], confirmed: ['delivered', 'cancelled'], delivered: ['closed'], closed: [], cancelled: [] }
+  const placed = row.createdAt
+  const cancelled = row.status === 'cancelled'
+  return ok({
+    order: {
+      ...row,
+      customer: cancelled ? { id: 'c2', type: 'company', name: customers[1].companyName } : null,
+      createdBy: cancelled ? { id: 's1', fullName: 'Amina Mushi' } : null,
+      source: cancelled ? 'staff' : row.source,
+      guestEmail: cancelled ? null : 'procurement.office@bugando-medical-centre.example',
+      deliveryAddress: 'Wurzburg Road, Plot 1, opposite the main gate, Block C medical stores',
+      notes: cancelled ? '' : 'Please call the procurement office before delivery. Deliveries only on weekdays, 08:00 to 15:00.',
+      totalTzs: 1250000000,
+      hasQuotationLines: true,
+      cancelReason: cancelled ? 'The customer ordered the same items twice. Kept PSP-000127 instead.' : null,
+      updatedAt: placed,
+      confirmedAt: cancelled ? placed : null,
+      deliveredAt: null,
+      closedAt: null,
+      cancelledAt: cancelled ? placed : null,
+      paidAt: null,
+      nextStatuses: next[row.status],
+      itemsEditable: row.status === 'new',
+      items: [
+        { id: 'i1', productId: 's1', productName: SHOP_NAMES[1][0], productSku: 'PM-12-6P-EXT-WALL', unitPriceTzs: 4850000, quantity: 10, lineTotalTzs: 48500000 },
+        { id: 'i2', productId: 's11', productName: 'Dental Chair Unit', productSku: 'DCU-1', unitPriceTzs: 1201500000, quantity: 1, lineTotalTzs: 1201500000 },
+        { id: 'i3', productId: 's2', productName: 'CT Scanner, 64-Slice', productSku: 'CT-64', unitPriceTzs: null, quantity: 1, lineTotalTzs: null },
+      ],
+    },
+  })
+}
+
 const shopCategories = [
   { name: 'Imaging', slug: 'imaging', productCount: 14 },
   { name: 'Patient monitoring', slug: 'patient-monitoring', productCount: 6 },
@@ -534,6 +594,8 @@ function answer(url, request) {
     const counts = { all: 38, new: 4, confirmed: 9, delivered: 6, closed: 17, cancelled: 2 }
     return ok({ orders, total: 38, page: 1, pageSize: 25, counts })
   }
+  const orderOne = pathname.match(/^\/api\/office\/orders\/([^/]+)$/)
+  if (orderOne) return orderDetail(orderOne[1])
   const staffProfile = pathname.match(/^\/api\/office\/staff\/([^/]+)$/)
   if (staffProfile) {
     const inactive = staffProfile[1] === 'st2' ? { isActive: false, mustChangePassword: false } : {}

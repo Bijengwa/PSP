@@ -1,12 +1,15 @@
 import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
 import '../../auth/auth.css'
 import { phoneText } from './CustomersList'
 import { TZS } from './ProductForm'
 
-type OrderStatus = 'new' | 'confirmed' | 'delivered' | 'closed' | 'cancelled'
-type PaymentStatus = 'unpaid' | 'paid'
-type OrderSource = 'shop' | 'staff'
+export type OrderStatus = 'new' | 'confirmed' | 'delivered' | 'closed' | 'cancelled'
+export type PaymentStatus = 'unpaid' | 'paid'
+export type OrderSource = 'shop' | 'staff'
+
+export const ORDERS_PATH = '/office/orders'
 
 export type OrderRow = {
   id: string
@@ -51,7 +54,9 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 const PAYMENT_LABELS: Record<PaymentStatus, string> = { unpaid: 'Unpaid', paid: 'Paid' }
 const SOURCE_LABELS: Record<OrderSource, string> = { shop: 'Shop', staff: 'Staff' }
 
-const PLACED = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+// Also used by the order detail page.
+// eslint-disable-next-line react-refresh/only-export-components
+export const PLACED = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 // Phones get a card list instead of a table. Only one layout is rendered.
 const COMPACT_QUERY = '(max-width: 640px)'
@@ -94,11 +99,11 @@ const SearchIcon = () => (
   </Svg>
 )
 
-function StatusBadge({ order }: { order: OrderRow }) {
+export function StatusBadge({ order }: { order: Pick<OrderRow, 'status'> }) {
   return <span className={`office-status office-order-${order.status}`}>{STATUS_LABELS[order.status]}</span>
 }
 
-function PaymentBadge({ order }: { order: OrderRow }) {
+export function PaymentBadge({ order }: { order: Pick<OrderRow, 'paymentStatus'> }) {
   return (
     <span className={`office-status office-payment-${order.paymentStatus}`}>{PAYMENT_LABELS[order.paymentStatus]}</span>
   )
@@ -107,7 +112,9 @@ function PaymentBadge({ order }: { order: OrderRow }) {
 function OrderCell({ order }: { order: OrderRow }) {
   return (
     <>
-      <span className="office-order-number">{order.orderNumber}</span>
+      <Link className="office-order-number office-staff-link" to={`${ORDERS_PATH}/${order.id}`}>
+        {order.orderNumber}
+      </Link>
       <span className="office-staff-meta office-number">{PLACED.format(new Date(order.createdAt))}</span>
       <span className="office-staff-meta">{SOURCE_LABELS[order.source]} order</span>
     </>

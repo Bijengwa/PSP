@@ -1578,3 +1578,59 @@ M7.1 ticked; current step is **M7.2**. M7.2 was not started. Nothing committed.
 - Scope Guard: it warned about the order of "tick M7.2" and "set M7.3 as current" in `progress.md`. Both changes are intended: every check passed, so M7.2 is ticked and M7.3 is next in the overnight order.
 
 M7.2 ticked; current step is **M7.3**. M7.3 was not started. Nothing committed.
+
+## M7.3 Order detail and status (2026-10-15, overnight): TICKED
+
+**Changed**
+- `node/src/orders/orders.service.js`: new `findOrder(id)` returns the order detail. It includes the items (name, SKU and unit price as copied in; line totals), the guest and delivery snapshot, notes, the linked customer (id, type, name), who entered a staff order, the cancel reason, every status time plus `paidAt`, and two values worked out on the server: `nextStatuses` (from the life cycle table) and `itemsEditable` (only while `new`). New `updateOrderItems(id, lines)` runs in one transaction. It locks the order row (`FOR UPDATE`) and refuses with `items_locked` unless the order is `new`. It changes quantities and drops left-out lines, then recomputes line totals, `total_tzs` and `has_quotation_lines` from the **copied-in** prices, never the product's current price.
+- `node/src/orders/orders.routes.js`: four new endpoints, all for any signed-in staff member with the same-origin check. Every success returns the order as it is now.
+  - `GET /api/office/orders/:id`.
+  - `POST /:id/status {status, reason}` goes through `changeOrderStatus`. A bad status or a missing reason gives 400 with field details. A refused move gives 409 `INVALID_TRANSITION` with the current status.
+  - `POST /:id/paid` goes through `markOrderPaid`. It gives 409 `ALREADY_PAID` or `ORDER_CANCELLED` when refused.
+  - `PUT /:id/items {items:[{id, quantity}]}` sends the full list of lines to keep, with quantities from 1 to 99. It gives 400 for an empty list, a bad quantity, or a repeated or foreign line. It gives 409 `ITEMS_LOCKED` once the order is confirmed (or delivered, closed or cancelled).
+  - Malformed or unknown ids give 404. The log lines carry the order id and staff id only, with no personal data.
+- `node/src/orders/orders.test.js`: 24 new API tests.
+  - Session and origin are required.
+  - The detail shape, including the linked customer and who entered a staff order. 404s.
+  - Confirm, deliver and close each move the order and stamp their time.
+  - Cancel needs a reason, from new or confirmed. Refused moves give 409 and bad statuses give 400.
+  - Mark paid works once and never on a cancelled order.
+  - Item edits on a new order use the copied prices even after the product's price changes. Every validation case is refused.
+  - **Items are refused after confirmation**, tested once for each of confirmed, delivered, closed and cancelled, and once after confirming through the API. The stored lines and total stay unchanged.
+  - An edit and a confirm sent at the same moment end consistent.
+- New `web/src/management/inApp/pages/OrderDetail.tsx` at `/office/orders/:id`.
+  - Header: a back link, the order number (mono), when it was placed and the source, and status and payment badges.
+  - Actions: the next step (Confirm order / Mark delivered / Close order), Mark paid, and Cancel order. Each one asks once in an inline confirmation. Cancel has a required reason field (up to 500 characters, with a counter and an inline error tied to the field by `aria-describedby`).
+  - **Items** card: a table on desktop and stacked lines on phones. Quotation lines say "Price on request". The order total adds "+ N items on request". "Edit items" (only while new) gives steppers and a remove button per line. At least one line is always kept. The total updates as you edit, and Save stays disabled until something changes.
+  - **Customer and delivery** card: the name, a `tel:` phone, a `mailto:` email, the address, and the linked customer record or "Not linked". Side column: **Progress** (a timeline with times, and the cancel reason), **Payment**, **Notes** and **Record** (source and who entered it).
+  - States: a loading skeleton, "Order not found", and an error with Try again. A 409 shows the server's message and reloads the order as it is now.
+- New `OrderDetail.test.tsx` (11 tests): every action (confirm, deliver, close, cancel with the reason check, mark paid), focus moves, the sidebar event, a refused move, editing items, and the items locking when someone else confirms meanwhile.
+- `OrdersList.tsx`: order numbers now link to the detail page. The badges, order types, `ORDERS_PATH` and the date format are exported for the detail page. `OrdersList.test.tsx` checks the link.
+- `layout/Sidebar.tsx`: new `ORDERS_CHANGED` event. The "new orders" badge refreshes when an order's status changes. `layout/Header.tsx`: the title "Order". `App.tsx`: the route. `CustomerDetail.tsx`: `Facts` is exported for reuse.
+- `web/src/index.css`: an "Order detail (M7.3)" block that uses only existing variables. On phones the steppers and the remove button are 44px.
+- `web/scripts/responsive-check.mjs`: an order detail fixture and four routes: `office-order-detail` (a new order with a long name, a 1,250,000,000 total and a quotation line), `office-order-edit-items`, `office-order-cancel` (the reason error showing), and `office-order-cancelled` (cancelled, linked to a customer, entered by staff).
+- `web/src/management/inApp/pages/StaffProfile.test.tsx` (not an M7.3 file, test only): in the deactivate test, the two focus waits now allow 5 s instead of 1 s. See Decisions.
+
+**Decisions**
+- "Refusing changes to items after confirmation" needs a way to change items before confirmation. The scope lists none, so I added the smallest one: while an order is `new`, staff can change quantities (1–99) or drop lines, keeping at least one. Adding products is left for M7.4 (it needs the product picker). Prices always stay as copied in at checkout.
+- Order of checks for items: the server locks the order row first, so a confirm sent at the same moment waits. Then the confirmed order has exactly the edited items, or the edit is refused. Enforcement is in the service, like the M7.1 status rules. No DB trigger, because `extend_orders` has already run and no other migration is approved.
+- Every action asks once, because none can be undone (the M4.5 deactivate pattern). Cancel asks for the reason in that same box. Closing an unpaid order is allowed, and the question mentions that it is still unpaid.
+- Mark paid is shown in every status except cancelled (the M7.1 rule).
+- Status actions are `POST /:id/status` and `POST /:id/paid`. The server works out `nextStatuses` and `itemsEditable`, so the page never has its own copy of the life cycle rules.
+- The page shows the delivery and contact details as copied in at checkout. A linked customer is shown as a link. Linking itself is M7.5.
+- Focus moves on this page use `useLayoutEffect`. With `useEffect`, they sometimes ran after the tests' checks.
+- StaffProfile test: in the full parallel suite (one more test file now), its deactivate test sometimes timed out at the 1 s default. It already used `waitFor`, and the M7.2 log records the same cold-run timeout. I raised only those two waits to 5 s, with a comment, the same fix M7.2 made for NotFoundPage. No product code changed for it. After that the full suite passed 3 times in a row.
+
+**Verified**
+- `node` `npm test`: 9 suites, 315 tests passed (24 new).
+- `web` `npm test`: 16 files, 136 tests passed (3 runs in a row). `npm run build` passed. `npm run lint` is clean.
+- `npm run check:responsive`: the first full run passed for every route at 360, 768 and 1280px in light and dark, including the four new ones. I looked at `office-order-detail` 360 light, `office-order-edit-items` 360 dark, `office-order-cancel` 360 dark and `office-order-cancelled` 1280 light. Long names, emails and addresses wrap, 1,250,000,000 totals fit, the steppers wrap below the product on a phone, and nothing scrolls sideways. That look found two things, which I fixed in CSS: the timeline line after "Placed" was coloured before the next step was reached, and the reason box showed only one line. I re-ran the full check after the fixes and it passed again ("Responsive check passed."). I confirmed both fixes in `office-order-cancel-360-light`.
+- Per the overnight policy, the tests, the responsive check and the screenshots stand in for a manual browser run.
+- Done when ("each action is tested, including refusing changes to items after confirmation"): covered by the API and component tests above.
+
+**Guard warnings**
+- Progress Guard: the prompt mentions M7.4. I did not touch M7.4. It is only the stop point of the overnight order. Adding products to an order was left for it.
+- Collision Guard: it said `OrdersList.tsx` was edited by another session 21 min earlier. `git status` was clean at the start of this run, so that was the finished and committed M7.2 run. Nothing was overwritten.
+- Scope Guard: it warned about the order of "tick M7.3" and "set M7.5 as current" in `progress.md`. Both changes are intended: every Done when check passed, so M7.3 is ticked and M7.5 is next in the overnight order.
+
+M7.3 ticked; current step is **M7.5** (the overnight order skips M7.4). M7.5 was not started. Nothing committed.

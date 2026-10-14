@@ -17,6 +17,7 @@ function pageTitle(pathname: string) {
   if (path === '/office/customers/new') return 'Add Customer'
   if (/^\/office\/customers\/[^/]+\/edit$/.test(path)) return 'Edit Customer'
   if (/^\/office\/customers\/[^/]+$/.test(path)) return 'Customer'
+  if (/^\/office\/orders\/[^/]+$/.test(path)) return 'Order'
   if (path === '/office/profile') return 'My Profile'
   return PAGE_TITLES[path] ?? 'Not found'
 }

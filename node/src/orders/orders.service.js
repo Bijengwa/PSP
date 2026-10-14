@@ -77,6 +77,113 @@ async function markOrderPaid(id) {
   return { error: current.payment_status === 'paid' ? 'already_paid' : 'cancelled' };
 }
 
+// A line's quantity, as checkout allows it.
+const ITEM_QUANTITY_MAX = 99;
+
+const money = (value) => (value === null || value === undefined ? null : Number(value));
+
+// One order with everything the detail page shows: items, the delivery snapshot, the
+// linked customer, who entered a staff order, and when each status was reached.
+// `nextStatuses` and `itemsEditable` say what staff may still do with it.
+function toOrderDetail(row, items) {
+  return {
+    id: row.id,
+    orderNumber: row.order_number,
+    status: row.status,
+    paymentStatus: row.payment_status,
+    source: row.source,
+    customer: row.customer_id
+      ? { id: row.customer_id, type: row.customer_type, name: row.customer_company_name || row.customer_full_name }
+      : null,
+    createdBy: row.created_by ? { id: row.created_by, fullName: row.created_by_name } : null,
+    guestName: row.guest_name,
+    guestPhone: row.guest_phone,
+    guestEmail: row.guest_email,
+    deliveryArea: row.delivery_area,
+    deliveryAddress: row.delivery_address,
+    notes: row.notes,
+    totalTzs: Number(row.total_tzs),
+    hasQuotationLines: row.has_quotation_lines,
+    cancelReason: row.cancel_reason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    confirmedAt: row.confirmed_at,
+    deliveredAt: row.delivered_at,
+    closedAt: row.closed_at,
+    cancelledAt: row.cancelled_at,
+    paidAt: row.paid_at,
+    nextStatuses: STATUS_TRANSITIONS[row.status] ?? [],
+    itemsEditable: row.status === 'new',
+    items: items.map((item) => ({
+      id: item.id,
+      productId: item.product_id,
+      productName: item.product_name,
+      productSku: item.product_sku,
+      unitPriceTzs: money(item.unit_price_tzs),
+      quantity: item.quantity,
+      lineTotalTzs: money(item.line_total_tzs),
+    })),
+  };
+}
+
+// The detail of one order, or null when it does not exist.
+async function findOrder(id) {
+  const row = await db('orders')
+    .leftJoin('customers', 'customers.id', 'orders.customer_id')
+    .leftJoin('staff_profiles', 'staff_profiles.id', 'orders.created_by')
+    .where('orders.id', id)
+    .first(
+      'orders.*',
+      'customers.type as customer_type',
+      'customers.full_name as customer_full_name',
+      'customers.company_name as customer_company_name',
+      'staff_profiles.full_name as created_by_name',
+    );
+  if (!row) return null;
+  const items = await db('order_items').where({ order_id: id }).orderBy([{ column: 'sort_order' }, { column: 'id' }]);
+  return toOrderDetail(row, items);
+}
+
+// Changes the quantities of a new order's lines, or drops lines. `lines` is the full list
+// to keep: [{ id, quantity }]. Prices stay as copied in at checkout; line totals, the
+// order total and the quotation flag are worked out again. Once an order is confirmed
+// its items never change. Returns { updated: true }, null when the order does not exist,
+// or { error } with 'items_locked' (with `status`), 'unknown_item' or 'no_items'.
+// The order row is locked first, so a confirm arriving at the same time waits for this.
+async function updateOrderItems(id, lines) {
+  return db.transaction(async (trx) => {
+    const order = await trx('orders').where({ id }).forUpdate().first('status');
+    if (!order) return null;
+    if (order.status !== 'new') return { error: 'items_locked', status: order.status };
+    if (lines.length === 0) return { error: 'no_items' };
+
+    const items = await trx('order_items').where({ order_id: id });
+    const byId = new Map(items.map((item) => [item.id, item]));
+    if (lines.some((line) => !byId.has(line.id))) return { error: 'unknown_item' };
+
+    const keep = new Set(lines.map((line) => line.id));
+    const dropped = items.filter((item) => !keep.has(item.id)).map((item) => item.id);
+    if (dropped.length) await trx('order_items').whereIn('id', dropped).del();
+
+    let total = 0;
+    let hasQuotationLines = false;
+    for (const line of lines) {
+      const unit = money(byId.get(line.id).unit_price_tzs);
+      const lineTotal = unit === null ? null : unit * line.quantity;
+      if (lineTotal === null) hasQuotationLines = true;
+      else total += lineTotal;
+      await trx('order_items')
+        .where({ id: line.id })
+        .update({ quantity: line.quantity, line_total_tzs: lineTotal, updated_at: trx.fn.now() });
+    }
+
+    await trx('orders')
+      .where({ id })
+      .update({ total_tzs: total, has_quotation_lines: hasQuotationLines, updated_at: trx.fn.now() });
+    return { updated: true };
+  });
+}
+
 function escapeLike(value) {
   return value.replace(/[\\%_]/g, '\\$&');
 }
@@ -158,8 +265,11 @@ module.exports = {
   ORDER_PAGE_SIZE,
   STATUS_TRANSITIONS,
   CANCEL_REASON_MAX,
+  ITEM_QUANTITY_MAX,
   canChangeStatus,
   changeOrderStatus,
   markOrderPaid,
   listOrders,
+  findOrder,
+  updateOrderItems,
 };

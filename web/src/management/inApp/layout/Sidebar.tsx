@@ -120,6 +120,8 @@ export const RESET_REQUESTS_PATH = '/office/reset-requests'
 // updates without waiting for its next refresh.
 export const RESET_REQUESTS_CHANGED = 'psp:reset-requests-changed'
 const ORDERS_PATH = '/office/orders'
+// The order page fires this after a status change, so the "new orders" badge updates.
+export const ORDERS_CHANGED = 'psp:orders-changed'
 const BADGE_REFRESH_MS = 60 * 1000
 
 // Sidebar navigation, grouped as in docs/management-plan.md §2.
@@ -258,7 +260,7 @@ export default function Sidebar({
   const isAdmin = state.status === 'authenticated' && state.staff.role === 'admin'
   // Pending forgot-password requests (admins only) and new orders (everyone signed in).
   const pendingResets = useBadgeCount('/api/office/reset-requests?status=pending', isAdmin, RESET_REQUESTS_CHANGED)
-  const newOrders = useBadgeCount('/api/office/orders?status=new', state.status === 'authenticated')
+  const newOrders = useBadgeCount('/api/office/orders?status=new', state.status === 'authenticated', ORDERS_CHANGED)
   const badges: Record<string, { count: number; label: string }> = {
     [RESET_REQUESTS_PATH]: { count: pendingResets, label: 'pending' },
     [ORDERS_PATH]: { count: newOrders, label: 'new' },

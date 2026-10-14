@@ -1108,3 +1108,38 @@ M7.2 Orders queue is built and ticked, and the current step is now **M7.3**. All
 - **One change outside M7.2:** `web/src/shop/NotFoundPage.test.tsx` started timing out in the full web test suite once the new test file was added. It passed every time on its own. I raised its two first lookups from the default 1s wait to 5s. No app code changed, and the full suite then passed three times in a row.
 
 **Guard warnings:** the Progress Guard flagged M7.4, which I didn't touch; it's only where tonight's run stops. The Scope Guard warned about the order of ticking M7.2 and setting M7.3 as current, but both changes were intended.
+Waiting for the first responsive run to report.
+
+Waiting for the re-run result.
+
+The re-run is still going (the first one took over 10 minutes). I'm watching it again.
+
+Both fixes show up: the reason box is three lines tall, and the timeline line after "Placed" is now neutral. Waiting for the monitor to confirm the summary line.
+
+M7.3 (order detail and status) is built and every check passed, so I ticked it and set the current step to **M7.5**. I didn't start M7.5, didn't touch M7.4, and committed nothing.
+
+**What staff can now do** on `/office/orders/:id`:
+- See the order's items, totals, contact and delivery details, any customer it's linked to, a progress timeline, payment, notes and who entered it.
+- Move the order on: confirm, mark delivered, close, or cancel with a required reason. They can also mark it paid. Each action asks once before it happens, because none can be undone.
+- Edit items, but only while the order is still new: change quantities or remove lines, always keeping at least one. Prices stay as they were at checkout.
+- The order numbers in the Orders list now link to this page, and the sidebar's "new orders" count updates after a status change.
+
+**On the server:**
+- Four new endpoints: order detail, status change, mark paid, and item editing.
+- Once an order is confirmed (or delivered, closed or cancelled), item changes are refused with a 409. Tests cover each of those statuses and check that the stored items and total don't change.
+- An item edit and a confirm sent at the same moment can't produce a mixed result: the edit lands before the confirm, or it is refused.
+
+**Checks:**
+- node `npm test`: 315 passed (24 new).
+- web `npm test`: 136 passed, three full runs in a row.
+- `npm run build` passed and `npm run lint` is clean.
+- `npm run check:responsive` passed at 360, 768 and 1280px in light and dark, with four new order routes added. Looking at the screenshots, I found two small CSS problems and fixed them, then ran the check again and it passed. As the overnight policy allows, the tests and screenshots stand in for a manual browser check.
+
+**Decisions to review** (all recorded in `docs/overnight-log.md`):
+- **Item editing:** the plan never lists a way to change items, but "refuse changes after confirmation" needs one to exist. I added the smallest version (quantities and removing lines while new). Adding products is left for M7.4.
+- **Rule placement:** the "no item changes after confirmation" rule is enforced in the server code, not the database. Adding it to the database would need a migration, and none is approved for this step.
+- **Unrelated test change:** I edited `StaffProfile.test.tsx`, which isn't an M7.3 file. One of its tests sometimes timed out under full-suite load; the M7.2 log already notes the same timeout. I gave two of its waits 5 seconds instead of 1, the same kind of fix M7.2 made, and changed no app code for it.
+
+**Guard warnings** (logged):
+- One said `OrdersList.tsx` had been edited by another session. That was the finished, committed M7.2 work, and nothing was overwritten.
+- One questioned ticking M7.3 and moving to M7.5 together. Both are intended.
