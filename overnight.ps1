@@ -1,9 +1,10 @@
-# Long overnight run (2026-10-14): M4.8 -> M6.1-M6.4 -> M7.1-M7.3 -> M7.5.
-# Stops when the current step becomes M7.4 (needs the user) or any H step.
+# Overnight run (2026-10-15): H1 -> H2, the hardening reviews that need no approval.
+# Stops when the current step becomes H3 or later: the role matrix (H3) needs the user's
+# approval first, H4-H7 depend on it, and H8 needs the user's sign-off.
 # Waits and retries when the Claude usage limit is hit.
 # Before sleeping: set Windows sleep to "Never" while plugged in, and keep this window open.
 # Run from the PSP folder:  powershell -ExecutionPolicy Bypass -File .\overnight.ps1
-$stopAt = '\*\*(M7\.4|H\d)'
+$stopAt = '\*\*(H[3-8])'
 $mods = ".claude\mods\psp-guards"
 $maxSteps = 25
 $maxLimitWaits = 14   # 14 x 30 minutes = 7 hours per step
@@ -25,7 +26,7 @@ Quality bar: the UI must feel finished, in light AND dark mode, on a 360px phone
 Nobody is awake to answer questions, and the user has approved this policy: where the plan is silent, choose the most reasonable option yourself and record it in docs/overnight-log.md as a Decision. Stop only if (a) you would need a file or folder outside the approved list and it is not a plain sibling of the step's own module, (b) documents disagree about a security rule, or (c) a check still fails after an honest effort to fix it. In those cases write the question to docs/overnight-log.md, leave docs/progress.md unchanged, and stop.
 If Done when asks for a manual browser run or a user sign-off, the automated tests plus npm run check:responsive (and your own look at the saved screenshots) are accepted instead; say so in the log and continue.
 Run the checks: node npm test; web npm test, npm run build, npm run lint. UI steps also need npm run check:responsive in web; add the new pages to it. Never skip a failing check.
-When every Done when check passes: tick the step, set the next step as current (see 'Overnight order' in docs/progress.md; skip M7.4), and write notes to docs/overnight-log.md (what changed, what was verified, decisions, guard warnings). Never start the next step. Never commit.
+When every Done when check passes: tick the step, set the next step as current (see 'Overnight order' in docs/progress.md), and write notes to docs/overnight-log.md (what changed, what was verified, decisions, guard warnings). Never start the next step. Never commit.
 "@
 
   $attempt = 0
