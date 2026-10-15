@@ -1,6 +1,7 @@
 const db = require('../db');
 const sessions = require('./session.store');
 const { hashPassword, verifyPassword, verifyAgainstDummy, passwordProblems } = require('./password');
+const { permissionKeysForRole, permissionsBeyond } = require('./permissions');
 
 const PROFILE_COLUMNS = [
   's.id',
@@ -29,6 +30,12 @@ function toPublicStaff(staff) {
     role: staff.role,
     mustChangePassword: staff.must_change_password,
   };
+}
+
+// The signed-in person as the frontend sees them: the public profile plus the permission
+// keys of their role, read from Postgres now.
+async function toSessionStaff(staff) {
+  return { ...toPublicStaff(staff), permissions: await permissionKeysForRole(staff.role) };
 }
 
 // Failed-login protection (auth spec §7): the 5th wrong password in a row locks
@@ -82,7 +89,7 @@ async function login({ email, password, ip, userAgent }) {
   await db('staff_profiles')
     .where({ id: staff.id })
     .update({ last_login_at: db.fn.now(), failed_login_count: 0, locked_until: null });
-  return { sessionId: id, staff: toPublicStaff(staff) };
+  return { sessionId: id, staff: await toSessionStaff(staff) };
 }
 
 // Returns { sessionId, staff } on success, { error: 'current' } for a wrong
@@ -105,7 +112,7 @@ async function changePassword({ staff, currentPassword, newPassword, ip, userAge
     .where({ id: staff.id })
     .update({ password_hash: passwordHash, must_change_password: false, updated_at: db.fn.now() });
   const { id } = await sessions.create({ staffId: staff.id, ip, userAgent });
-  return { sessionId: id, staff: toPublicStaff({ ...staff, must_change_password: false }) };
+  return { sessionId: id, staff: await toSessionStaff({ ...staff, must_change_password: false }) };
 }
 
 // Stores a request for IT and returns nothing. Known and unknown emails take the
@@ -186,12 +193,15 @@ async function resetStaffPassword({ staffId, temporaryPassword, resetBy }) {
 const REGISTRABLE_ROLES = ['IT', 'staff'];
 
 // IT registers someone with a temporary password. Returns { staff }, or
-// { error: 'weak', problems }, { error: 'email_taken' } or { error: 'role' }.
+// { error: 'weak', problems }, { error: 'email_taken' }, { error: 'role' } or
+// { error: 'beyond', keys } when the role holds permissions the registrar lacks.
 // The person must choose their own password at first login. The password is
 // hashed here and never logged or returned.
-async function registerStaff({ fullName, email, phone, role, temporaryPassword, createdBy }) {
+async function registerStaff({ fullName, email, phone, role, temporaryPassword, createdBy, actorRole }) {
   const roleRow = REGISTRABLE_ROLES.includes(role) ? await db('roles').where({ name: role }).first('id') : null;
   if (!roleRow) return { error: 'role' };
+  const beyond = await permissionsBeyond(actorRole, role);
+  if (beyond.length) return { error: 'beyond', keys: beyond };
 
   const problems = passwordProblems(temporaryPassword, { email, fullName });
   if (problems.length) return { error: 'weak', problems };
@@ -322,14 +332,17 @@ function listRoles() {
 
 // IT changes a person's role to one of the existing roles. Returns { staff, changed,
 // from }, null when the person does not exist, { error: 'role' } for an unknown role,
-// { error: 'self' } when an admin tries to remove their own admin role, or
-// { error: 'last_admin' } when the last active admin would be demoted. Locks the
+// { error: 'self' } when an admin tries to remove their own admin role,
+// { error: 'last_admin' } when the last active admin would be demoted, or
+// { error: 'beyond', keys } when the new role holds permissions the actor lacks. Locks the
 // active admins and then the target, as setStaffActive does, so two admins demoting
 // each other at once cannot leave none. A changed role ends the person's sessions
 // inside the transaction (Redis down means nothing changes) and again after it.
-async function setStaffRole(id, role, { actorId }) {
+async function setStaffRole(id, role, { actorId, actorRole }) {
   const roleRow = await db('roles').where({ name: role }).first('id');
   if (!roleRow) return { error: 'role' };
+  const beyond = await permissionsBeyond(actorRole, role);
+  if (beyond.length) return { error: 'beyond', keys: beyond };
 
   const result = await db.transaction(async (trx) => {
     const activeAdmins = await trx('staff_profiles as s')
@@ -406,4 +419,5 @@ module.exports = {
   STAFF_PAGE_SIZE,
   findStaffById,
   toPublicStaff,
+  toSessionStaff,
 };

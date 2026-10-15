@@ -1817,3 +1817,30 @@ H2 is a review. The findings table is in the Appendix of `docs/management-plan.m
 For H8: the proxy must overwrite, not append to, a client-supplied `X-Forwarded-For`.
 
 H2 ticked; current step is **H3**, which needs the user to approve the role matrix. The overnight run stops here. Nothing committed.
+
+---
+
+## H4 Permissions (old M5.2), 2026-10-15
+
+**What changed**
+- `node/migrations/20261015120000_create_permissions.js`: `permissions` and `role_permissions` tables with 19 keys (`staff.*`, `reset_requests.*`, `products.*`, `customers.*`, `orders.*`, `audit.view`). IT holds all; Staff holds all except `staff.register` (the matrix approved in H3).
+- `node/src/auth/permissions.js` (new): `permissionKeysForRole` and `permissionsBeyond`. Both read Postgres on every call; nothing is cached.
+- `auth.service.js` and `auth.routes.js`: `/api/auth/me`, login and change-password return `permissions`. `registerStaff` and `setStaffRole` refuse a role that holds permissions the actor lacks (403, "You cannot give a role more permissions than you hold.").
+- `web/src/management/auth/AuthProvider.tsx`: optional `permissions` on the `Staff` type, so H5 can hide the sidebar by permission.
+- Tests: new `permissions (H4)` block in `staff.test.js` (matrix, migration round trip, /me not cached, login, grant limit). Two `auth.test.js` expectations now include `permissions`.
+
+**Verified**
+- `node` `npm test`: 11 suites, 373 tests pass.
+- `web` `npm test`: 150 pass. `npm run build` and `npm run lint` are clean. No UI changed, so `check:responsive` was not run.
+
+**Decisions**
+- H4 has no "Done when" line. I used its Scope as the bar.
+- Key names are mine. Products: `view`, `create`, `edit` (edit covers publish, archive and images, because one PATCH does all three). Customers: `view`, `create`, `edit`. Orders: `view`, `create`, `update` (status, payment, items), `link` (link or unlink a customer). Staff: `view`, `register`, `edit`, `change_role`, `deactivate`, `reset_password` (setting a temporary password). Reset requests: `view`, `manage` (dismiss). They can be renamed before H5 uses them.
+- Routes still use `requireRole`; replacing it is H5.
+- The grant limit is checked on role change and registration, the only two places a role is given. Until H5, Staff cannot reach either, so this is the second guard.
+- Existing tests truncate `roles`, which empties `role_permissions` in the test database; the new block re-runs the migration to restore the grants.
+
+**Guard warnings**
+- Scope Guard asked to confirm H4's checks passed before ticking. They did (above).
+
+H4 ticked; current step is **H5**. H5 was not started. Nothing committed.

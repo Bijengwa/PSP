@@ -12,6 +12,8 @@ export type Staff = {
   email: string
   role: string
   mustChangePassword: boolean
+  // Permission keys of the role, from /api/auth/me. The server stays the authority.
+  permissions?: string[]
 }
 
 export type AuthState =

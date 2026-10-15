@@ -19,7 +19,7 @@ const {
   setStaffRole,
   STAFF_STATUSES,
   STAFF_PAGE_SIZE,
-  toPublicStaff,
+  toSessionStaff,
 } = require('./auth.service');
 const {
   httpError,
@@ -78,8 +78,8 @@ router.post('/login', async (req, res) => {
   res.json({ success: true, data: { staff: result.staff } });
 });
 
-router.get('/me', requireAuth({ allowPendingPasswordChange: true }), (req, res) => {
-  res.json({ success: true, data: { staff: toPublicStaff(req.staff) } });
+router.get('/me', requireAuth({ allowPendingPasswordChange: true }), async (req, res) => {
+  res.json({ success: true, data: { staff: await toSessionStaff(req.staff) } });
 });
 
 // Reachable while a temporary password is set, so the person can replace it.
@@ -262,7 +262,8 @@ officeRouter.post('/staff', async (req, res) => {
     throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: parsed.fields });
   }
 
-  const result = await registerStaff({ ...parsed.values, createdBy: req.staff.id });
+  const result = await registerStaff({ ...parsed.values, createdBy: req.staff.id, actorRole: req.staff.role });
+  if (result.error === 'beyond') throw httpError(403, 'You cannot give a role more permissions than you hold.');
   if (result.error === 'email_taken') {
     throw Object.assign(httpError(409, 'Someone is already registered with this email.', 'EMAIL_TAKEN'), {
       details: { email: 'This email is already registered.' },
@@ -310,8 +311,9 @@ async function changeStatus(req, res, staffId, isActive) {
 // Change the role: { role } alone, one of the existing roles. The person's sessions
 // end, so they sign in again under the new role.
 async function changeRole(req, res, staffId, role) {
-  const result = await setStaffRole(staffId, role, { actorId: req.staff.id });
+  const result = await setStaffRole(staffId, role, { actorId: req.staff.id, actorRole: req.staff.role });
   if (!result) throw httpError(404, 'Not found');
+  if (result.error === 'beyond') throw httpError(403, 'You cannot give a role more permissions than you hold.');
   if (result.error === 'role') {
     throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), {
       details: { role: 'Choose one of the existing roles.' },

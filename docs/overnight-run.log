@@ -1230,3 +1230,31 @@ H2 is done and ticked, and `docs/progress.md` now has H3 as the current step. No
 **For you**
 - H3 needs you to approve the role matrix before any code, so I stopped there as the overnight order says.
 - For deployment, set `NODE_ENV=production`, the real https `CLIENT_ORIGIN`, and the real `TRUST_PROXY` hop count. The proxy must overwrite, not append to, a client-supplied `X-Forwarded-For`.
+H4 Permissions is done and ticked. `docs/progress.md` now shows **H5** as the current step, and I did not start it. Nothing is committed.
+
+**What changed**
+- **Tables and keys:** the new migration `node/migrations/20261015120000_create_permissions.js` adds `permissions` and `role_permissions` with 19 keys. IT holds all of them; Staff holds all except `staff.register`, which is the matrix approved in H3.
+- **Permission lookup:** the new `node/src/auth/permissions.js` reads a role's keys from Postgres on every call. Nothing is cached.
+- **Auth responses:** `/api/auth/me`, login and change-password now return `permissions`.
+- **Grant limit:** `registerStaff` and `setStaffRole` refuse a role that holds permissions the actor lacks, with a 403.
+- **Web type:** `web/src/management/auth/AuthProvider.tsx` gets an optional `permissions` field on `Staff`, ready for H5.
+- **Tests:** a new `permissions (H4)` block in `node/src/auth/staff.test.js`. Two expectations in `auth.test.js` now include `permissions`.
+
+**Verified**
+- `node` `npm test`: 11 suites, 373 tests pass.
+- `web` `npm test`: 150 pass.
+- `web` `npm run build` and `npm run lint` are clean.
+- `check:responsive` was not run, because no UI changed.
+
+**Decisions** (also in `docs/overnight-log.md`)
+- **Key names are mine:**
+  - Products: `view`, `create`, `edit`; `edit` covers publish, archive and images because one PATCH does all three.
+  - Customers: `view`, `create`, `edit`.
+  - Orders: `view`, `create`, `update`, `link`.
+  - Staff: `view`, `register`, `edit`, `change_role`, `deactivate`, `reset_password`.
+  - Reset requests: `view`, `manage`.
+  - They can be renamed before H5 uses them.
+- **Enforcement:** routes still use `requireRole`; replacing it is H5.
+- **Test database:** existing tests truncate `roles`, which empties `role_permissions`; the new test block re-runs the migration to restore the grants.
+
+H4 has no "Done when" line, so I used its Scope as the bar.

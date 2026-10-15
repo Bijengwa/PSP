@@ -864,3 +864,104 @@ describe('the IT role (H3)', () => {
     expect(await db('roles').where({ name: 'admin' }).first('id')).toBeUndefined();
   });
 });
+
+describe('permissions (H4)', () => {
+  const MIGRATION = '20261015120000_create_permissions.js';
+  const keysOf = async (roleName) =>
+    (
+      await db('role_permissions as rp')
+        .join('roles as r', 'r.id', 'rp.role_id')
+        .join('permissions as p', 'p.id', 'rp.permission_id')
+        .where('r.name', roleName)
+        .orderBy('p.key')
+        .select('p.key')
+    ).map((row) => row.key);
+  const roleOf = async (id) =>
+    (await db('staff_profiles as s').join('roles as r', 'r.id', 's.role_id').where('s.id', id).first('r.name')).name;
+
+  beforeAll(async () => {
+    // The earlier blocks truncate roles; migrating down and up grants the matrix to the
+    // roles that exist now, which is also the migration's own round-trip test.
+    await db.migrate.down({ name: MIGRATION });
+    expect(await db.schema.hasTable('permissions')).toBe(false);
+    expect(await db.schema.hasTable('role_permissions')).toBe(false);
+    await db.migrate.latest();
+  });
+
+  test('IT holds every permission; Staff holds every one except registering staff', async () => {
+    const all = (await db('permissions').orderBy('key').select('key')).map((row) => row.key);
+    expect(all).toEqual(
+      expect.arrayContaining([
+        'staff.view',
+        'staff.register',
+        'staff.edit',
+        'staff.change_role',
+        'staff.deactivate',
+        'staff.reset_password',
+        'reset_requests.view',
+        'reset_requests.manage',
+        'products.view',
+        'customers.view',
+        'orders.view',
+        'audit.view',
+      ]),
+    );
+
+    expect(await keysOf('IT')).toEqual(all);
+    expect(await keysOf('staff')).toEqual(all.filter((key) => key !== 'staff.register'));
+  });
+
+  test('/api/auth/me returns the permission keys of the role, read from Postgres each time', async () => {
+    const asha = await me(adminCookie);
+    expect(asha.body.data.staff.permissions).toEqual(await keysOf('IT'));
+
+    const sam = await me(staffCookie);
+    expect(sam.body.data.staff.permissions).toEqual(await keysOf('staff'));
+    expect(sam.body.data.staff.permissions).not.toContain('staff.register');
+
+    // Removing a key is seen on the very next request: nothing is cached.
+    const row = await db('permissions').where({ key: 'audit.view' }).first('id');
+    const staffRole = await db('roles').where({ name: 'staff' }).first('id');
+    await db('role_permissions').where({ role_id: staffRole.id, permission_id: row.id }).del();
+    expect((await me(staffCookie)).body.data.staff.permissions).not.toContain('audit.view');
+    await db('role_permissions').insert({ role_id: staffRole.id, permission_id: row.id });
+  });
+
+  test('login returns the permissions too', async () => {
+    const sam = await person('IT');
+    const res = await login(sam.email);
+    expect(res.status).toBe(200);
+    expect(res.body.data.staff.permissions).toEqual(await keysOf('IT'));
+  });
+
+  test('nobody can give a role that holds more permissions than they hold', async () => {
+    const sam = await person();
+
+    // Staff lacks staff.register, which IT holds, so Staff cannot make anyone IT.
+    expect(await setStaffRole(sam.id, 'IT', { actorId: staffId, actorRole: 'staff' })).toEqual({
+      error: 'beyond',
+      keys: ['staff.register'],
+    });
+    expect(await roleOf(sam.id)).toBe('staff');
+
+    // IT can give any role, and Staff can give Staff.
+    expect(await setStaffRole(sam.id, 'staff', { actorId: staffId, actorRole: 'staff' })).toMatchObject({ changed: false });
+    expect(await setStaffRole(sam.id, 'IT', { actorId: adminId, actorRole: 'IT' })).toMatchObject({ changed: true });
+    expect(await roleOf(sam.id)).toBe('IT');
+  });
+
+  test('registering someone into a role beyond the registrar is refused', async () => {
+    const { registerStaff } = require('./auth.service');
+    const result = await registerStaff({
+      fullName: 'New Person',
+      email: 'new.person@psp.test',
+      phone: '+255 700 000 777',
+      role: 'IT',
+      temporaryPassword: 'Temporary-Pass-77!x',
+      createdBy: staffId,
+      actorRole: 'staff',
+    });
+    expect(result).toEqual({ error: 'beyond', keys: ['staff.register'] });
+    expect(await db('staff_profiles').where({ email: 'new.person@psp.test' }).first('id')).toBeUndefined();
+  });
+});

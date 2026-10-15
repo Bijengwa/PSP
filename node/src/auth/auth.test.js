@@ -200,7 +200,14 @@ describe('POST /api/auth/login', () => {
     expect(res.body).toEqual({
       success: true,
       data: {
-        staff: { id: adminId, fullName: ADMIN.fullName, email: ADMIN.email, role: 'IT', mustChangePassword: false },
+        staff: {
+          id: adminId,
+          fullName: ADMIN.fullName,
+          email: ADMIN.email,
+          role: 'IT',
+          mustChangePassword: false,
+          permissions: expect.any(Array),
+        },
       },
     });
     expect(res.text).not.toContain('password_hash');
@@ -296,6 +303,7 @@ describe('GET /api/auth/me', () => {
       email: ADMIN.email,
       role: 'IT',
       mustChangePassword: false,
+      permissions: expect.any(Array),
     });
   });
 
