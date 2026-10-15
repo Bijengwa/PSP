@@ -32,6 +32,7 @@ const {
   assertPermission,
 } = require('./auth.middleware');
 const { permissionsBeyond } = require('./permissions');
+const { audit, listAuditLogs, AUDIT_CATEGORIES } = require('../audit');
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
 const ACCOUNT_LOCKED = 'Account temporarily locked. Try again later or contact IT.';
@@ -65,18 +66,23 @@ router.post('/login', async (req, res) => {
   if (result.error === 'locked') {
     if (result.justLocked) {
       req.log.warn({ event: 'auth.account_locked', staffId: result.staffId }, 'Account locked after failed logins');
+      audit('auth.account_locked', { targetId: result.staffId, ip: req.ip });
     } else {
       req.log.warn({ event: 'auth.login_failed', reason: 'locked', staffId: result.staffId }, 'Login refused: account locked');
+      audit('auth.login_failed', { targetId: result.staffId, ip: req.ip, reason: 'locked' });
     }
     throw httpError(423, ACCOUNT_LOCKED, 'ACCOUNT_LOCKED');
   }
   if (result.error) {
     req.log.warn({ event: 'auth.login_failed' }, 'Login failed');
+    // The email as typed (never the password), so repeated guesses can be traced.
+    audit('auth.login_failed', { ip: req.ip, email: email.trim().toLowerCase().slice(0, 254) });
     throw httpError(401, INVALID_CREDENTIALS);
   }
 
   setSessionCookie(res, result.sessionId);
   req.log.info({ event: 'auth.login_succeeded', staffId: result.staff.id }, 'Login succeeded');
+  audit('auth.login_succeeded', { targetId: result.staff.id, ip: req.ip }, { actorId: result.staff.id });
   res.json({ success: true, data: { staff: result.staff } });
 });
 
@@ -114,6 +120,7 @@ router.post('/change-password', requireAuth({ allowPendingPasswordChange: true }
 
   setSessionCookie(res, result.sessionId);
   req.log.info({ event: 'auth.password_changed', staffId: result.staff.id }, 'Password changed');
+  audit('auth.password_changed', { targetId: result.staff.id, ip: req.ip }, { actorId: result.staff.id });
   res.json({ success: true, data: { staff: result.staff } });
 });
 
@@ -129,6 +136,7 @@ router.post('/forgot-password', async (req, res) => {
 
   await requestPasswordReset({ email, ip: req.ip });
   req.log.info({ event: 'reset_request.created' }, 'Password reset requested');
+  audit('reset_request.created', { ip: req.ip });
   res.json({ success: true, data: { message: RESET_REQUESTED } });
 });
 
@@ -137,7 +145,10 @@ router.post('/logout', async (req, res) => {
   const sessionId = readSessionCookie(req);
   clearSessionCookie(res);
   const staffId = sessionId ? await sessions.destroy(sessionId) : null;
-  if (staffId) req.log.info({ event: 'auth.logged_out', staffId }, 'Logged out');
+  if (staffId) {
+    req.log.info({ event: 'auth.logged_out', staffId }, 'Logged out');
+    audit('auth.logged_out', { targetId: staffId, ip: req.ip }, { actorId: staffId });
+  }
   res.json({ success: true, data: null });
 });
 
@@ -147,6 +158,7 @@ router.post('/logout-all', requireAuth({ allowPendingPasswordChange: true }), as
   await sessions.destroyAllForStaff(req.staff.id);
   clearSessionCookie(res);
   req.log.info({ event: 'auth.logged_out_all', staffId: req.staff.id }, 'Logged out of all devices');
+  audit('auth.logged_out_all', { targetId: req.staff.id, ip: req.ip }, { actorId: req.staff.id });
   res.json({ success: true, data: null });
 });
 
@@ -188,6 +200,7 @@ officeRouter.post('/reset-requests/:id/dismiss', requirePermission('reset_reques
   if (result === 'not_pending') throw httpError(409, 'This request has already been handled', 'NOT_PENDING');
 
   req.log.info({ event: 'reset_request.dismissed', requestId: id, by: req.staff.id }, 'Reset request dismissed');
+  audit('reset_request.dismissed', { targetId: id, ip: req.ip }, { actorId: req.staff.id });
   res.json({ success: true, data: null });
 });
 
@@ -293,6 +306,7 @@ officeRouter.post('/staff', requirePermission('staff.register'), async (req, res
     { event: 'staff.registered', staffId: result.staff.id, role: result.staff.role, by: req.staff.id },
     'Staff registered',
   );
+  audit('staff.created', { targetId: result.staff.id, ip: req.ip, role: result.staff.role }, { actorId: req.staff.id });
   res.status(201).json({ success: true, data: { staff: result.staff } });
 });
 
@@ -320,6 +334,7 @@ async function changeStatus(req, res, staffId, isActive) {
   if (result.changed) {
     const event = isActive ? 'staff.reactivated' : 'staff.deactivated';
     req.log.info({ event, staffId, by: req.staff.id }, isActive ? 'Staff reactivated' : 'Staff deactivated');
+    audit(event, { targetId: staffId, ip: req.ip }, { actorId: req.staff.id });
   }
   res.json({ success: true, data: { staff: result.staff } });
 }
@@ -346,6 +361,11 @@ async function changeRole(req, res, staffId, role) {
     req.log.info(
       { event: 'staff.role_changed', staffId, from: result.from, to: role, by: req.staff.id },
       'Staff role changed',
+    );
+    audit(
+      'staff.role_changed',
+      { targetId: staffId, ip: req.ip, from: result.from, to: role },
+      { actorId: req.staff.id },
     );
   }
   res.json({ success: true, data: { staff: result.staff } });
@@ -398,6 +418,11 @@ officeRouter.patch('/staff/:id', async (req, res) => {
     { event: 'staff.profile_updated', staffId, fields: Object.keys(parsed.values), by: req.staff.id },
     'Staff profile updated',
   );
+  audit(
+    'staff.updated',
+    { targetId: staffId, ip: req.ip, fields: Object.keys(parsed.values) },
+    { actorId: req.staff.id },
+  );
   res.json({ success: true, data: { staff } });
 });
 
@@ -421,7 +446,22 @@ officeRouter.post('/staff/:id/reset-password', requirePermission('staff.reset_pa
     { event: 'staff.password_reset', staffId, by: req.staff.id, resolvedRequests: result.resolvedRequests },
     'Password reset by IT',
   );
+  audit(
+    'staff.password_reset',
+    { targetId: staffId, ip: req.ip, resolvedRequests: result.resolvedRequests },
+    { actorId: req.staff.id },
+  );
   res.json({ success: true, data: { staff: result.staff, resolvedRequests: result.resolvedRequests } });
+});
+
+// The audit log (H7): read-only, newest first, optionally one category.
+officeRouter.get('/audit-logs', requirePermission('audit.view'), async (req, res) => {
+  const category = req.query.category || undefined;
+  if (category && !AUDIT_CATEGORIES.includes(category)) {
+    throw httpError(400, `category must be one of: ${AUDIT_CATEGORIES.join(', ')}`);
+  }
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  res.json({ success: true, data: await listAuditLogs({ category, page }) });
 });
 
 module.exports = router;

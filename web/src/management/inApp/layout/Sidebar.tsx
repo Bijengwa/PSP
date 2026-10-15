@@ -64,6 +64,12 @@ const ICON_PATHS: Record<string, ReactNode> = {
       <path d="M11 12l8-8M16 7l2 2M14 9l2 2" />
     </>
   ),
+  audit: (
+    <>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8h6M9 12h6M9 16h3" />
+    </>
+  ),
   reports: (
     <>
       <path d="M4 20h16" />
@@ -170,6 +176,7 @@ export const NAV_GROUPS: {
         icon: 'resetRequests',
         permission: 'reset_requests.view',
       },
+      { label: 'Audit log', to: '/office/audit-log', icon: 'audit', permission: 'audit.view' },
     ],
   },
   {

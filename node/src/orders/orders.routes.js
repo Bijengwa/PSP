@@ -18,6 +18,7 @@ const {
   createStaffOrder,
 } = require('./orders.service');
 const { findCustomer } = require('../customers/customers.service');
+const { audit } = require('../audit');
 
 // Office orders, mounted at /api/office/orders. Every route needs an orders.* permission,
 // read from Postgres on each request.
@@ -165,6 +166,11 @@ router.post('/', requirePermission('orders.create'), async (req, res) => {
     { event: 'order.created', orderId: result.order.id, orderNumber: result.order.orderNumber, by: req.staff.id },
     'Staff order created',
   );
+  audit(
+    'order.created',
+    { targetId: result.order.id, ip: req.ip, orderNumber: result.order.orderNumber, customerId: customer?.id ?? null },
+    { actorId: req.staff.id },
+  );
   res.status(201);
   await sendOrder(res, result.order.id);
 });
@@ -194,6 +200,11 @@ router.post('/:id/status', requirePermission('orders.update'), async (req, res) 
   }
 
   req.log.info({ event: 'order.status_changed', orderId: id, status: to, by: req.staff.id }, 'Order status changed');
+  audit(
+    'order.status_changed',
+    { targetId: id, ip: req.ip, status: to, orderNumber: result.order?.orderNumber },
+    { actorId: req.staff.id },
+  );
   await sendOrder(res, id);
 });
 
@@ -205,6 +216,7 @@ router.post('/:id/paid', requirePermission('orders.update'), async (req, res) =>
   if (result.error === 'cancelled') throw httpError(409, 'A cancelled order cannot be marked paid.', 'ORDER_CANCELLED');
 
   req.log.info({ event: 'order.paid', orderId: id, by: req.staff.id }, 'Order marked paid');
+  audit('order.paid', { targetId: id, ip: req.ip, orderNumber: result.order?.orderNumber }, { actorId: req.staff.id });
   await sendOrder(res, id);
 });
 
@@ -241,6 +253,7 @@ router.put('/:id/items', requirePermission('orders.update'), async (req, res) =>
   if (result.error === 'unknown_item') throw validationError({ items: 'A line does not belong to this order.' });
 
   req.log.info({ event: 'order.items_changed', orderId: id, by: req.staff.id }, 'Order items changed');
+  audit('order.items_changed', { targetId: id, ip: req.ip, lines: lines.length }, { actorId: req.staff.id });
   await sendOrder(res, id);
 });
 
@@ -273,6 +286,7 @@ router.put('/:id/customer', requirePermission('orders.link'), async (req, res) =
   if (result.error === 'unknown_customer') throw validationError({ customerId: 'This customer no longer exists.' });
 
   req.log.info({ event: 'order.customer_linked', orderId: id, customerId, by: req.staff.id }, 'Order linked to customer');
+  audit('order.customer_linked', { targetId: id, ip: req.ip, customerId }, { actorId: req.staff.id });
   await sendOrder(res, id);
 });
 
@@ -288,6 +302,7 @@ router.post('/:id/customer', requirePermission('orders.link', 'customers.create'
     { event: 'order.customer_created', orderId: id, customerId: result.customer.id, by: req.staff.id },
     'Customer created from order',
   );
+  audit('order.customer_created', { targetId: id, ip: req.ip, customerId: result.customer.id }, { actorId: req.staff.id });
   res.status(201);
   await sendOrder(res, id);
 });
@@ -300,6 +315,7 @@ router.delete('/:id/customer', requirePermission('orders.link'), async (req, res
   if (refusal) throw refusal;
 
   req.log.info({ event: 'order.customer_unlinked', orderId: id, by: req.staff.id }, 'Order unlinked from customer');
+  audit('order.customer_unlinked', { targetId: id, ip: req.ip }, { actorId: req.staff.id });
   await sendOrder(res, id);
 });
 

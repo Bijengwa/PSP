@@ -17,6 +17,7 @@ const {
   reorderImages,
 } = require('./products.service');
 const { readPhotos, storePhotos, removeFile } = require('./products.images');
+const { audit } = require('../audit');
 
 // Office product catalogue, mounted at /api/office/products. Every route needs a
 // products.* permission, read from Postgres on each request.
@@ -221,6 +222,11 @@ router.post('/', requirePermission('products.create'), async (req, res) => {
   if (result.error === 'sku_taken') throw skuTaken();
 
   req.log.info({ event: 'product.created', productId: result.product.id, by: req.staff.id }, 'Product created');
+  audit(
+    'product.created',
+    { targetId: result.product.id, ip: req.ip, sku: result.product.sku },
+    { actorId: req.staff.id },
+  );
   res.status(201).json({ success: true, data: { product: result.product } });
 });
 
@@ -261,6 +267,22 @@ router.patch('/:id', requirePermission('products.edit'), async (req, res) => {
   if (result.error === 'sku_taken') throw skuTaken();
 
   req.log.info({ event: 'product.updated', productId: id, by: req.staff.id }, 'Product updated');
+  // One event for the edit, plus a specific one for each change worth finding later.
+  const changed = Object.keys(values).filter((key) => JSON.stringify(values[key]) !== JSON.stringify(current[key]));
+  const base = { targetId: id, ip: req.ip, sku: result.product.sku };
+  const actor = { actorId: req.staff.id };
+  if (changed.length) audit('product.updated', { ...base, fields: changed }, actor);
+  for (const key of ['priceTzs', 'costPriceTzs']) {
+    if (changed.includes(key)) {
+      audit('product.price_changed', { ...base, field: key, from: current[key], to: values[key] }, actor);
+    }
+  }
+  if (changed.includes('isPublished')) {
+    audit(values.isPublished ? 'product.published' : 'product.unpublished', base, actor);
+  }
+  if (changed.includes('isArchived')) {
+    audit(values.isArchived ? 'product.archived' : 'product.restored', base, actor);
+  }
   res.json({ success: true, data: { product: result.product } });
 });
 
@@ -284,6 +306,7 @@ router.post('/:id/images', requirePermission('products.edit'), readPhotos, async
   }
 
   req.log.info({ event: 'product.images_added', productId: id, count: urls.length, by: req.staff.id }, 'Photos added');
+  audit('product.images_added', { targetId: id, ip: req.ip, count: urls.length }, { actorId: req.staff.id });
   res.status(201).json({ success: true, data: { product: await findProduct(id) } });
 });
 
@@ -308,6 +331,7 @@ router.delete('/:id/images/:imageId', requirePermission('products.edit'), async 
   await removeFile(removed.url);
 
   req.log.info({ event: 'product.image_removed', productId: id, by: req.staff.id }, 'Photo removed');
+  audit('product.image_removed', { targetId: id, ip: req.ip }, { actorId: req.staff.id });
   res.json({ success: true, data: { product: await findProduct(id) } });
 });
 

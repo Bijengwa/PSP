@@ -2492,6 +2492,42 @@ a {
   white-space: nowrap;
 }
 
+/* Audit log (H7). Long emails, IPv6 addresses and names wrap inside their column, so
+   the table never scrolls sideways; the card list on phones does the same. */
+.office-audit-table {
+  table-layout: fixed;
+}
+
+.office-audit-table th:first-child,
+.office-audit-table td:first-child {
+  width: 180px;
+  min-width: 0;
+}
+
+.office-audit-table th:nth-child(3),
+.office-audit-table td:nth-child(3),
+.office-audit-table th:nth-child(4),
+.office-audit-table td:nth-child(4) {
+  width: 22%;
+}
+
+.office-audit-table td,
+.office-audit-card .office-staff-meta,
+.office-audit-card dd {
+  overflow-wrap: anywhere;
+}
+
+/* An IPv6 address has no spaces; it may break anywhere, and the numeric style may not stop it. */
+.office-audit-table td:nth-child(3) .office-staff-meta {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.office-audit-card {
+  margin-top: 12px;
+}
+
 .office-staff-table th.office-col-total,
 .office-staff-table td.office-col-total {
   text-align: right;

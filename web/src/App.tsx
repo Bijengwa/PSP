@@ -29,6 +29,7 @@ const CustomerDetail = lazy(() => import('./management/inApp/pages/CustomerDetai
 const OrdersList = lazy(() => import('./management/inApp/pages/OrdersList'))
 const OrderDetail = lazy(() => import('./management/inApp/pages/OrderDetail'))
 const OrderNew = lazy(() => import('./management/inApp/pages/OrderNew'))
+const AuditLog = lazy(() => import('./management/inApp/pages/AuditLog'))
 const PlaceholderPage = lazy(() => import('./management/inApp/pages/PlaceholderPage'))
 const OfficeNotFound = lazy(() => import('./management/inApp/pages/OfficeNotFound'))
 
@@ -99,7 +100,8 @@ export default function App() {
             <Route path="staff/:id" element={<StaffProfile />} />
             <Route path="profile" element={<MyProfile />} />
             <Route path="reset-requests" element={<ResetRequestsPage />} />
-            <Route path="reports" element={<PlaceholderPage title="Reports" />} />
+            <Route path="audit-log" element={<AuditLog />} />
+            <Route path="reports"element={<PlaceholderPage title="Reports" />} />
             <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<OfficeNotFound />} />

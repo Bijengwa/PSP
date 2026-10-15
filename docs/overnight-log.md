@@ -1902,3 +1902,43 @@ H5 ticked; current step is **H6**. H6 was not started. Nothing committed.
 - Scope Guard asked to confirm Done when before ticking: H6 lists none; the node suite and web checks passed.
 
 H6 ticked; current step is **H7**. H7 was not started. Nothing committed.
+
+---
+
+## H7 Audit events (old M6.2 + M6.3), 2026-10-15
+
+**What changed**
+- Events are published through `audit()` from `node/src/audit.js`, beside each existing `req.log` line, in `auth.routes.js`, `products.routes.js`, `customers.routes.js` and `orders.routes.js`:
+  - auth: `auth.login_succeeded`, `auth.login_failed` (email and IP, never the password), `auth.account_locked`, `auth.logged_out`, `auth.logged_out_all`, `auth.password_changed`;
+  - reset requests: `reset_request.created`, `reset_request.dismissed`;
+  - staff: `staff.created`, `staff.updated`, `staff.deactivated`, `staff.reactivated`, `staff.role_changed` (from, to), `staff.password_reset`;
+  - products: `product.created`, `product.updated` (field names), `product.price_changed` (field, from, to; price and cost price), `product.published`, `product.unpublished`, `product.archived`, `product.restored`, `product.images_added`, `product.image_removed`;
+  - customers: `customer.created`, `customer.updated` (field names only, no personal data);
+  - orders: `order.created`, `order.status_changed`, `order.paid`, `order.items_changed`, `order.customer_linked`, `order.customer_created`, `order.customer_unlinked`.
+  - Each has the actor and the target. An edit that changes nothing publishes nothing.
+- `GET /api/office/audit-logs` (`audit.view`): newest first, `category` filter, 25 per page, with actor and target names (staff, customer, product or order number). `listAuditLogs` is in `node/src/audit.js`.
+- Web: `AuditLog.tsx` at `/office/audit-log` (IT sidebar group, hidden without `audit.view`): category tabs, table on desktop, cards on phones, loading, empty and error states. A few `office-audit-*` rules in `index.css`.
+- Tests: "audit events (H7)" block in `node/src/auth/permissions.enforcement.test.js`; new `AuditLog.test.tsx`; two audit routes with fixtures in `web/scripts/responsive-check.mjs`.
+
+**Verified**
+- `node` `npm test`: 13 suites, 430 passed.
+- `web` `npm test`: 158 passed; `npm run build` and `npm run lint` clean.
+- `npm run check:responsive`: exit 0 on the final run. I viewed the audit screenshots (360, 768, 1280; light and dark). Three layout problems were found and fixed on the way (clipped About column, date running into the Event column, IPv6 address overflowing). Per policy, tests plus the check and my look at the screenshots stand in for a manual browser run.
+- Not run against a real Redis: the bus is faked in tests, as in H6.
+
+**Decisions**
+- H7 has no "Done when" line; I used its Scope as the bar.
+- Event names are mine, in the spec's `area.action` style.
+- The new tests live in `permissions.enforcement.test.js` because it already has the sign-in and permission setup; a new suite would copy about 80 lines of fake Redis.
+- Customer and product events store changed field names; price events also store the old and new price, since price changes are what the plan asks to trace. No customer details are stored.
+- `auth.login_failed` stores the email as typed (lower-cased, capped), as the spec's event table says. A password mistyped into the email field would land there.
+- Viewing the log is not itself audited.
+- The page is reachable by URL without `audit.view`; the server answers 403 and the page shows the message (same as H5's edit forms).
+- Not audited: rate-limit refusals (429) and shop orders from customers (no staff actor). `reset_request.resolved` from the spec is covered by `staff.password_reset` (which carries `resolvedRequests`) and `reset_request.dismissed`.
+
+**Guard warnings**
+- Collision Guard said another session (9b6b6218) edited `node/src/audit.js` about 7 minutes before my edit. I re-read it: it held only my intended content.
+- Scope Guard asked to confirm Done when before ticking: H7 lists none; the checks above passed.
+- The responsive check was stopped twice by the background time limit and restarted with a longer limit; the final run exited 0.
+
+H7 ticked; current step is **H8**, which needs the user's sign-off. The overnight run stops here. H8 was not started. Nothing committed.

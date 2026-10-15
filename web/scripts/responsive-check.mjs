@@ -191,6 +191,17 @@ const ROUTES = [
       await page.getByRole('button', { name: /^More / }).first().click()
     },
   },
+  // H7. Every kind of event, a long email and name, an unknown type, a pager.
+  { name: 'office-audit-log', path: '/office/audit-log', ready: '.office-list-footer' },
+  {
+    name: 'office-audit-log-empty',
+    path: '/office/audit-log',
+    ready: '.office-customer-empty',
+    act: async (page) => {
+      await page.locator('.office-list-footer').waitFor()
+      await page.getByRole('button', { name: 'Orders' }).click()
+    },
+  },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },
@@ -391,6 +402,56 @@ const staffList = [
     createdAt: '2026-10-10T08:00:00.000Z',
   },
 ]
+
+// Audit events (H7): one of each shape, with a long name, a long email and an unknown type.
+const auditEvent = (n, patch) => ({
+  id: String(n),
+  type: 'auth.login_succeeded',
+  actorId: 's1',
+  actorName: 'Amina Mushi',
+  targetId: null,
+  targetName: null,
+  ip: '203.0.113.7',
+  meta: {},
+  createdAt: new Date(Date.UTC(2026, 9, 15, 8, 60 - n)).toISOString(),
+  ...patch,
+})
+const auditEvents = [
+  auditEvent(1, {
+    type: 'auth.login_failed',
+    actorId: null,
+    actorName: null,
+    ip: '2001:0db8:85a3:0000:0000:8a2e:0370:7334',
+    meta: { email: 'someone.with.a.very.long.address.at.a.long.domain@pspengineering.example' },
+  }),
+  auditEvent(2, {
+    type: 'product.price_changed',
+    targetId: 'p1',
+    meta: { sku: 'PSP-PM-001', field: 'priceTzs', from: 4250000, to: 4500000 },
+  }),
+  auditEvent(3, { type: 'product.archived', targetId: 'p2', meta: { sku: 'PSP-XR-0002-LONG-REFERENCE' } }),
+  auditEvent(4, { type: 'order.status_changed', targetId: 'o2', meta: { status: 'cancelled', orderNumber: 'PSP-000124' } }),
+  auditEvent(5, {
+    type: 'customer.updated',
+    targetId: 'c2',
+    meta: { fields: ['companyName', 'tin', 'contactPerson', 'addresses'] },
+  }),
+  auditEvent(6, {
+    type: 'staff.role_changed',
+    actorName: 'Rehema Mwanaisha Kisanga-Lyimo',
+    targetId: 'st1',
+    targetName: 'Grace Mollel',
+    meta: { from: 'staff', to: 'IT' },
+  }),
+  auditEvent(7, { type: 'stock.adjusted' }),
+]
+
+// A category tab with no events answers an empty page.
+function auditLogs(category) {
+  const events = category ? auditEvents.filter((event) => event.type.startsWith(`${category}.`)) : auditEvents
+  const empty = category === 'order'
+  return ok({ events: empty ? [] : events, total: empty ? 0 : category ? events.length : 53, page: 1, pageSize: 25 })
+}
 
 // Customers: an individual, a long-named company with TIN and contact person, one with
 // no contact details and one with a foreign phone. The total spans two pages.
@@ -625,6 +686,7 @@ function answer(url, request) {
   }
   const one = pathname.match(/^\/api\/office\/products\/(p\d+)$/)
   if (one) return ok({ product: products.find((item) => item.id === one[1]) ?? products[0] })
+  if (pathname === '/api/office/audit-logs') return auditLogs(searchParams.get('category'))
   if (pathname === '/api/office/reset-requests') return ok({ requests: [], total: 0 })
   if (pathname === '/api/office/roles') {
     return ok({

@@ -1336,3 +1336,68 @@ H6 (Audit foundation) is done and ticked in `docs/progress.md`, and the current 
 - The auth spec `docs/superpowers/specs/2026-10-06-staff-auth-design.md` is missing from the main tree, so I read it from the copy under `.claude/worktrees/m1-5-verify/`. Its absence is worth fixing, since CLAUDE.md names it.
 - No route publishes an event yet; that is H7.
 - Collision Guard reported another session editing `docs/progress.md`; I re-read the file and it holds only my two edits.
+H7 is built and its code checks pass, but I have not ticked it. The responsive check is re-running after a CSS fix, and I still have to look at the new screenshots.
+
+**What changed**
+- **Events:** the auth, staff, product, customer and order routes now publish audit events beside their existing log lines. Product edits also get specific events for price, publish and archive changes. Customer events carry field names only, never personal details. A failed login records the email and IP, never the password. A failed publish never fails the request.
+- **Endpoint:** `GET /api/office/audit-logs` needs `audit.view`, shows newest first, can filter by category, and resolves actor and target names. It lives in `node/src/audit.js` and `node/src/auth/auth.routes.js`.
+- **Page:** the new Audit log page (`web/src/management/inApp/pages/AuditLog.tsx`, route `/office/audit-log`) is in the IT sidebar group, with tabs, a card list on phones and a table on desktop. `index.css` gained a few `office-audit-*` rules.
+- **Tests:** `permissions.enforcement.test.js` has a new "audit events (H7)" block, `AuditLog.test.tsx` is new, and `responsive-check.mjs` has two new routes and fixtures.
+
+**Verified so far**
+- `node` `npm test`: 13 suites, 430 passed.
+- `web` `npm test`: 158 passed. `npm run build` and `npm run lint` are clean.
+- `check:responsive` passed before the CSS fix; the first screenshots showed the desktop table clipping the "About" column. I added fixed column widths with wrapping and a gap between phone cards, then restarted the check.
+
+**Still to do when the check finishes**
+- Look at the new audit screenshots at 360px, 768px and desktop in both themes.
+- Tick H7 in `docs/progress.md` and set the current step to H8.
+- Write the H7 notes to `docs/overnight-log.md`, including Decisions, guard warnings and the Collision Guard notice on `audit.js`.
+
+**Decisions to record in the log**
+- The new tests sit in `permissions.enforcement.test.js` so they reuse its setup.
+- Event type names are my own choice.
+- The audit page is reachable by URL without `audit.view`; the server refuses with 403.
+
+Nothing is committed.
+
+The last responsive-check run was killed at its 10-minute background limit, so I have restarted it with a 30-minute limit. It is still running.
+
+H7 stays unticked until it passes and I have looked at the new audit screenshots at 360px, 768px and desktop in both themes. Nothing is committed.
+
+The responsive check is running again, now with the "When" column widened to 180px. I won't tick H7 until it exits 0 and I have viewed the desktop screenshot.
+
+Findings from the previous run's screenshots:
+- **Phone (360px, dark):** no horizontal scroll, and cards, long email and IPv6 address wrap cleanly.
+- **Desktop (1280px, light):** the "About" column no longer clips, but the date ran into the Event column. That is what the 180px width fixes.
+
+I'll update `docs/progress.md` and `docs/overnight-log.md` after the check passes. Nothing is committed.
+
+Re-running the responsive check once more, because the desktop screenshot I viewed may predate the column-width fix. I'll confirm by file times when it finishes.
+
+The desktop table is now laid out correctly, with one flaw: the long IPv6 address in the "By" column runs into the "About" column. I added a wrapping rule and the responsive check is running again to confirm it.
+
+When it finishes I'll look at the 1280px screenshot, then tick H7 in `docs/progress.md` and write the notes to `docs/overnight-log.md`. Nothing is committed.
+
+The IPv6 address now wraps inside the "By" column. The same rule was also breaking words in the Event column ("addresse/s", "PSP-PM-/001"), so I limited it to the "By" column and started the responsive check again.
+
+H7 remains unticked until this run exits 0 and I have looked at the 1280px screenshot. Nothing is committed.
+
+H7 is built and ticked in `docs/progress.md`, and the current step is now H8. H8 needs your sign-off, so I stopped there. Nothing is committed.
+
+**What changed**
+- **Events:** the auth, reset-request, staff, product, customer and order routes now publish audit events with actor and target. Product events cover price (with old and new value), publish and archive. Customer events carry field names only, never personal data. A failed login records the email and IP, never the password.
+- **Endpoint:** `GET /api/office/audit-logs` needs `audit.view`. It returns newest first, can filter by category, and shows actor and target names.
+- **Page:** the new Audit log page at `/office/audit-log` sits in the IT sidebar group and is hidden without `audit.view`.
+- **Docs:** notes, decisions and guard warnings are in `docs/overnight-log.md`.
+
+**Verified**
+- `node` `npm test`: 430 passed.
+- `web` `npm test`: 158 passed; `npm run build` and `npm run lint` are clean.
+- `npm run check:responsive` exited 0 on the final run. I viewed the audit screenshots at 360px, 768px and 1280px in light and dark.
+
+**Worth knowing**
+- **Layout fixes:** three desktop layout problems turned up and are fixed.
+- **Redis:** the event bus is faked in tests, as in H6, so nothing was run against a real Redis.
+- **URL access:** the page is reachable by URL without `audit.view`; the server answers 403 and the page shows the message.
+- **Not audited:** rate-limit refusals and shop orders from customers (no staff actor).

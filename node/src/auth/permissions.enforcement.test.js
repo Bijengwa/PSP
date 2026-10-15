@@ -256,3 +256,144 @@ describe('Staff cannot act on an IT account', () => {
     expect(itEdit.status).toBe(200);
   });
 });
+
+// H7: events published by the office routes, and the audit log endpoint.
+describe('audit events (H7)', () => {
+  const bus = require('./event-bus');
+  const { handleEvent } = require('../audit');
+  let publish;
+
+  beforeEach(() => {
+    publish = jest.spyOn(bus, 'publish').mockResolvedValue('1-0');
+  });
+  afterEach(() => publish.mockRestore());
+
+  const published = () => publish.mock.calls.map(([type, payload, options]) => ({ type, payload, options }));
+  const types = () => published().map((event) => event.type);
+
+  test('product price, publish and archive changes name the actor and the product', async () => {
+    await setKeys(allKeys);
+    const category = await db('product_categories').first('id');
+    const created = await send('post', '/api/office/products', {
+      name: 'Audit Test Monitor',
+      categoryId: category.id,
+      priceTzs: 1000000,
+      costPriceTzs: 800000,
+    }, itCookie);
+    expect(created.status).toBe(201);
+    const id = created.body.data.product.id;
+    expect(types()).toContain('product.created');
+
+    publish.mockClear();
+    const edit = await send('patch', `/api/office/products/${id}`, { priceTzs: 1200000, isPublished: true }, itCookie);
+    expect(edit.status).toBe(200);
+    expect(types()).toEqual(expect.arrayContaining(['product.updated', 'product.price_changed', 'product.published']));
+    const price = published().find((event) => event.type === 'product.price_changed');
+    expect(price.payload).toMatchObject({ targetId: id, field: 'priceTzs', from: 1000000, to: 1200000 });
+    expect(price.options.actorId).toBe(itTargetId);
+
+    publish.mockClear();
+    await send('patch', `/api/office/products/${id}`, { isPublished: false, isArchived: true }, itCookie);
+    expect(types()).toEqual(expect.arrayContaining(['product.unpublished', 'product.archived']));
+
+    // An edit that changes nothing publishes nothing.
+    publish.mockClear();
+    await send('patch', `/api/office/products/${id}`, { priceTzs: 1200000 }, itCookie);
+    expect(types()).toEqual([]);
+  });
+
+  test('customer events list the changed field names, not the personal details', async () => {
+    await setKeys(allKeys);
+    const created = await send('post', '/api/office/customers', {
+      type: 'individual',
+      fullName: 'Audit Person',
+      phone: '0712 000 111',
+    }, itCookie);
+    expect(created.status).toBe(201);
+    const id = created.body.data.customer.id;
+
+    publish.mockClear();
+    const edit = await send('patch', `/api/office/customers/${id}`, { fullName: 'Audit Renamed' }, itCookie);
+    expect(edit.status).toBe(200);
+    const [event] = published();
+    expect(event.type).toBe('customer.updated');
+    expect(event.payload).toMatchObject({ targetId: id, fields: ['fullName'] });
+    expect(JSON.stringify(event.payload)).not.toContain('Audit Renamed');
+    expect(JSON.stringify(event.payload)).not.toContain('0712');
+  });
+
+  test('staff management and password events are published without any password', async () => {
+    await setKeys(allKeys);
+    const reset = await send(
+      'post',
+      `/api/office/staff/${staffTargetId}/reset-password`,
+      { temporaryPassword: 'Copper-Kettle-27#' },
+      itCookie,
+    );
+    expect(reset.status).toBe(200);
+    const role = await send('patch', `/api/office/staff/${staffTargetId}`, { isActive: false }, itCookie);
+    expect(role.status).toBe(200);
+    expect(types()).toEqual(expect.arrayContaining(['staff.password_reset', 'staff.deactivated']));
+    expect(JSON.stringify(published())).not.toContain('Copper-Kettle');
+    await send('patch', `/api/office/staff/${staffTargetId}`, { isActive: true }, itCookie);
+  });
+
+  test('a failed login is published with the email and IP, never the password', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .set('Origin', ORIGIN)
+      .send({ email: 'Nobody@psp.test', password: 'Wrong-Password-99!' });
+    expect(res.status).toBe(401);
+    const event = published().find((item) => item.type === 'auth.login_failed');
+    expect(event.payload).toMatchObject({ email: 'nobody@psp.test' });
+    expect(event.payload.ip).toBeTruthy();
+    expect(JSON.stringify(event)).not.toContain('Wrong-Password');
+  });
+
+  test('a publish that fails does not fail the request', async () => {
+    await setKeys(allKeys);
+    // The real bus: the in-memory Redis stand-in has no stream commands, so the publish fails.
+    publish.mockRestore();
+    const res = await send('patch', `/api/office/staff/${staffTargetId}`, { fullName: 'Tom Again' }, itCookie);
+    expect(res.status).toBe(200);
+  });
+
+  describe('GET /api/office/audit-logs', () => {
+    beforeAll(async () => {
+      await db('audit_logs').del();
+      const at = (minutes) => new Date(Date.UTC(2026, 9, 15, 8, minutes)).toISOString();
+      await handleEvent({
+        id: 'h7-1', type: 'order.status_changed', occurredAt: at(1), actorId: itTargetId,
+        payload: { targetId: ID, status: 'confirmed', ip: '10.0.0.1' },
+      });
+      await handleEvent({
+        id: 'h7-2', type: 'staff.deactivated', occurredAt: at(2), actorId: itTargetId,
+        payload: { targetId: staffTargetId, ip: '10.0.0.1' },
+      });
+      await handleEvent({ id: 'h7-3', type: 'auth.login_failed', occurredAt: at(3), payload: { email: 'x@psp.test' } });
+    });
+
+    test('lists newest first with actor and target names', async () => {
+      await setKeys(allKeys);
+      const res = await send('get', '/api/office/audit-logs', undefined, itCookie);
+      expect(res.status).toBe(200);
+      const { events, total } = res.body.data;
+      expect(total).toBe(3);
+      expect(events.map((event) => event.type)).toEqual(['auth.login_failed', 'staff.deactivated', 'order.status_changed']);
+      expect(events[1]).toMatchObject({ actorName: expect.stringContaining('Ivy'), targetName: expect.stringContaining('Tom') });
+      expect(events[2].meta).toEqual({ status: 'confirmed' });
+    });
+
+    test('filters by category and rejects an unknown one', async () => {
+      await setKeys(allKeys);
+      const res = await send('get', '/api/office/audit-logs?category=order', undefined, itCookie);
+      expect(res.body.data.events.map((event) => event.type)).toEqual(['order.status_changed']);
+      expect((await send('get', '/api/office/audit-logs?category=nope', undefined, itCookie)).status).toBe(400);
+    });
+
+    test('needs audit.view', async () => {
+      await setKeys(allKeys.filter((key) => key !== 'audit.view'));
+      expect((await send('get', '/api/office/audit-logs')).status).toBe(403);
+    });
+  });
+});

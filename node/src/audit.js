@@ -51,9 +51,76 @@ async function handleEvent(event) {
     .ignore();
 }
 
+// ---------- Reading the log (the office Audit log page) ----------
+
+const AUDIT_PAGE_SIZE = 25;
+// The part of the type before the first dot: auth.login_failed -> auth.
+const AUDIT_CATEGORIES = ['auth', 'staff', 'reset_request', 'product', 'customer', 'order'];
+
+// Newest first. The actor's name comes from `staff_profiles`; the target's name from
+// whichever table holds that id (staff, customer, product or order number). Ids are
+// uuids, so at most one join matches. A deleted target shows no name.
+async function listAuditLogs({ category, page = 1, limit = AUDIT_PAGE_SIZE } = {}) {
+  const filter = (query) => {
+    if (category) query.where('audit_logs.type', 'like', `${category}.%`);
+    return query;
+  };
+  const [{ count }] = await filter(db('audit_logs')).count({ count: '*' });
+  const rows = await filter(
+    db('audit_logs')
+      .leftJoin('staff_profiles as actor', 'actor.id', 'audit_logs.actor_id')
+      .leftJoin('staff_profiles as target', 'target.id', 'audit_logs.target_id')
+      .leftJoin('customers', 'customers.id', 'audit_logs.target_id')
+      .leftJoin('products', 'products.id', 'audit_logs.target_id')
+      .leftJoin('orders', 'orders.id', 'audit_logs.target_id'),
+  )
+    .select(
+      'audit_logs.id',
+      'audit_logs.type',
+      'audit_logs.actor_id',
+      'audit_logs.target_id',
+      'audit_logs.ip',
+      'audit_logs.meta',
+      'audit_logs.created_at',
+      'actor.full_name as actor_name',
+      db.raw(
+        'coalesce(target.full_name, customers.company_name, customers.full_name, products.name, orders.order_number) as target_name',
+      ),
+    )
+    .orderBy([{ column: 'audit_logs.created_at', order: 'desc' }, { column: 'audit_logs.id', order: 'desc' }])
+    .limit(limit)
+    .offset((page - 1) * limit);
+
+  return {
+    events: rows.map((row) => ({
+      id: String(row.id),
+      type: row.type,
+      actorId: row.actor_id,
+      actorName: row.actor_name,
+      targetId: row.target_id,
+      targetName: row.target_name,
+      ip: row.ip,
+      meta: row.meta ?? {},
+      createdAt: row.created_at,
+    })),
+    total: Number(count),
+    page,
+    pageSize: limit,
+  };
+}
+
 // Called once when the API starts; the consumer runs inside the API process.
 function startAuditConsumer() {
   return bus.startConsumer({ group: GROUP, handler: handleEvent });
 }
 
-module.exports = { audit, handleEvent, startAuditConsumer, cleanMeta, GROUP };
+module.exports = {
+  audit,
+  handleEvent,
+  startAuditConsumer,
+  cleanMeta,
+  listAuditLogs,
+  AUDIT_CATEGORIES,
+  AUDIT_PAGE_SIZE,
+  GROUP,
+};

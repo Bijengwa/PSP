@@ -9,6 +9,7 @@ const {
   updateCustomer,
   findDuplicates,
 } = require('./customers.service');
+const { audit } = require('../audit');
 
 // Office customer directory, mounted at /api/office/customers. Every route needs a
 // customers.* permission, read from Postgres on each request.
@@ -174,6 +175,7 @@ router.post('/', requirePermission('customers.create'), async (req, res) => {
   });
 
   req.log.info({ event: 'customer.created', customerId: customer.id, by: req.staff.id }, 'Customer created');
+  audit('customer.created', { targetId: customer.id, ip: req.ip, type: customer.type }, { actorId: req.staff.id });
   res.status(201).json({ success: true, data: { customer } });
 });
 
@@ -200,6 +202,10 @@ router.patch('/:id', requirePermission('customers.edit'), async (req, res) => {
   if (!customer) throw httpError(404, 'Not found');
 
   req.log.info({ event: 'customer.updated', customerId: id, by: req.staff.id }, 'Customer updated');
+  // Field names only: customer details are personal data and stay out of the audit log.
+  const changed = Object.keys(parsed.values).filter((key) => parsed.values[key] !== current[key]);
+  if (parsed.addresses !== undefined) changed.push('addresses');
+  audit('customer.updated', { targetId: id, ip: req.ip, fields: changed }, { actorId: req.staff.id });
   res.json({ success: true, data: { customer } });
 });
 
