@@ -26,8 +26,8 @@ const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', time
 const ROLE_LABELS: Record<string, string> = { admin: 'Admin', staff: 'Staff' }
 
 // Phones get a card list instead of a table. Only one layout is rendered, so the
-// reset form's input id exists once. Keep the width in step with index.css.
-const COMPACT_QUERY = '(max-width: 640px)'
+// reset form's input id exists once. Keep the width in step with the 900px rules in index.css.
+const COMPACT_QUERY = '(max-width: 900px)'
 
 function subscribeToCompact(onChange: () => void) {
   const query = window.matchMedia(COMPACT_QUERY)

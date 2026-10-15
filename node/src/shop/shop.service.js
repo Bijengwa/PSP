@@ -182,6 +182,17 @@ function withoutRowData(err) {
 // Quotation lines are saved without a price and left out of the total. Stock is not
 // decreased: staff do that when they confirm the order.
 async function createShopOrder(guest, lines) {
+  const result = await placeOrder(guest, lines, { source: 'shop' });
+  if (result.problems) return result;
+  // The shop's answer is the number and total only, never the internal id.
+  const { orderNumber, totalTzs } = result.order;
+  return { order: { orderNumber, totalTzs } };
+}
+
+// The transaction behind both kinds of order. `extra` adds the columns that differ:
+// source, and for staff orders the customer and who entered it. Returns the same
+// shape as createShopOrder, with the order's `id` as well.
+async function placeOrder(guest, lines, extra) {
   try {
     return await db.transaction(async (trx) => {
       const rows = await trx('products')
@@ -220,14 +231,14 @@ async function createShopOrder(guest, lines) {
       const [order] = await trx('orders')
         .insert({
           ...guest,
-          source: 'shop',
+          ...extra,
           total_tzs: String(total),
           has_quotation_lines: items.some((item) => item.unit_price_tzs === null),
         })
         .returning(['id', 'order_number', 'total_tzs']);
       await trx('order_items').insert(items.map((item) => ({ ...item, order_id: order.id })));
 
-      return { order: { orderNumber: order.order_number, totalTzs: Number(order.total_tzs) } };
+      return { order: { id: order.id, orderNumber: order.order_number, totalTzs: Number(order.total_tzs) } };
     });
   } catch (err) {
     throw withoutRowData(err);
@@ -242,4 +253,5 @@ module.exports = {
   getShopProduct,
   getCartPrices,
   createShopOrder,
+  placeOrder,
 };

@@ -174,6 +174,23 @@ const ROUTES = [
   },
   // o5: a closed shop order linked to Asha Mushi.
   { name: 'office-order-linked', path: '/office/orders/o5', ready: '.office-link-current' },
+  // M7.4. The empty form, and a form with a customer chosen and products added.
+  { name: 'office-order-new', path: '/office/orders/new', ready: '.office-order-new .office-card' },
+  {
+    name: 'office-order-new-filled',
+    path: '/office/orders/new',
+    ready: '.office-order-new .office-order-items',
+    act: async (page) => {
+      await page.getByLabel(/Find a customer/).fill('Asha')
+      await page.locator('.office-link-option .office-link-action').first().click()
+      await page.getByLabel('Add a product').fill('mon')
+      const add = page.locator('.office-order-new button[aria-label^="Add "]:not([disabled])')
+      await add.first().waitFor()
+      await add.first().click()
+      await add.first().click()
+      await page.getByRole('button', { name: /^More / }).first().click()
+    },
+  },
   { name: 'shop-home', path: '/', ready: '.shop-category-count' },
   { name: 'shop-products', path: '/products', ready: '.shop-card:not(.shop-card-skeleton)' },
   { name: 'shop-products-filtered', path: '/products?category=imaging&page=2', ready: '.shop-pager' },

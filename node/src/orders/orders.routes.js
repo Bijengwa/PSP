@@ -15,7 +15,9 @@ const {
   linkOrderToCustomer,
   unlinkOrderCustomer,
   createCustomerFromOrder,
+  createStaffOrder,
 } = require('./orders.service');
+const { findCustomer } = require('../customers/customers.service');
 
 // Office orders, mounted at /api/office/orders. Any signed-in staff member may use it
 // until the permissions stage (H3-H5) replaces role checks.
@@ -63,6 +65,109 @@ async function sendOrder(res, id) {
   if (!order) throw httpError(404, 'Not found');
   res.json({ success: true, data: { order } });
 }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TZ_PHONE_PATTERN = /^(?:\+?255|0)?([267]\d{8})$/;
+const MAX_ORDER_LINES = 50;
+const text = (raw) => (typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '');
+
+// A new staff order (M7.4). Body: { customerId?, guestName?, guestPhone?, guestEmail?,
+// deliveryArea?, deliveryAddress?, notes?, items: [{ productId, quantity }] }. With a
+// customer, any detail left out is copied from the customer (name, phone, email and
+// default address); without one, name, phone and the address are required. Prices and
+// names come only from the database. Starts as a new, unpaid staff order.
+router.post('/', async (req, res) => {
+  const input = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const fields = {};
+
+  let customer = null;
+  if (input.customerId !== undefined && input.customerId !== null && input.customerId !== '') {
+    if (typeof input.customerId !== 'string' || !UUID_PATTERN.test(input.customerId)) {
+      fields.customerId = 'Choose a customer.';
+    } else {
+      customer = await findCustomer(input.customerId.toLowerCase());
+      if (!customer) fields.customerId = 'This customer no longer exists.';
+    }
+  }
+  const home = customer?.addresses?.[0];
+
+  const name = text(input.guestName) || (customer ? customer.companyName || customer.fullName || '' : '');
+  if (name.length < 2 || name.length > 100) fields.guestName = 'Enter the name (2 to 100 characters).';
+
+  let phone = null;
+  const typedPhone = typeof input.guestPhone === 'string' ? input.guestPhone.trim() : '';
+  if (typedPhone) {
+    const match = typedPhone.replace(/[\s()-]/g, '').match(TZ_PHONE_PATTERN);
+    phone = match ? `+255${match[1]}` : null;
+  } else if (customer?.phone) {
+    phone = customer.phone;
+  }
+  if (!phone) fields.guestPhone = 'Enter a Tanzanian phone number, for example 0712 345 678.';
+
+  const email = (text(input.guestEmail) || customer?.email || '').toLowerCase();
+  if (email && (email.length > 254 || !EMAIL_PATTERN.test(email))) fields.guestEmail = 'Enter a valid email address.';
+
+  const area = text(input.deliveryArea) || home?.area || '';
+  if (area.length < 2 || area.length > 100) fields.deliveryArea = 'Enter the area or city (2 to 100 characters).';
+  const address = text(input.deliveryAddress) || home?.address || '';
+  if (address.length < 2 || address.length > 200) {
+    fields.deliveryAddress = 'Enter a street or landmark (2 to 200 characters).';
+  }
+
+  let notes = '';
+  if (input.notes !== undefined && input.notes !== null && typeof input.notes !== 'string') {
+    fields.notes = 'Notes must be text.';
+  } else {
+    notes = (input.notes ?? '').trim();
+    if (notes.length > 1000) fields.notes = 'Use at most 1000 characters.';
+  }
+
+  const lines = [];
+  if (!Array.isArray(input.items) || input.items.length === 0 || input.items.length > MAX_ORDER_LINES) {
+    fields.items = `Add between 1 and ${MAX_ORDER_LINES} products.`;
+  } else {
+    const seen = new Set();
+    input.items.forEach((line, index) => {
+      const productId = typeof line?.productId === 'string' ? line.productId.toLowerCase() : null;
+      const quantity = line?.quantity;
+      if (!productId || !UUID_PATTERN.test(productId)) fields[`items.${index}.productId`] = 'Unknown product.';
+      else if (seen.has(productId)) fields[`items.${index}.productId`] = 'This product is already in the order.';
+      if (productId) seen.add(productId);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > ITEM_QUANTITY_MAX) {
+        fields[`items.${index}.quantity`] = `Enter a quantity from 1 to ${ITEM_QUANTITY_MAX}.`;
+      }
+      lines.push({ productId, quantity });
+    });
+  }
+  if (Object.keys(fields).length) throw validationError(fields);
+
+  const result = await createStaffOrder({
+    customerId: customer?.id ?? null,
+    guest: {
+      guest_name: name,
+      guest_phone: phone,
+      guest_email: email || null,
+      delivery_area: area,
+      delivery_address: address,
+      notes,
+    },
+    lines,
+    createdBy: req.staff.id,
+  });
+  if (result.problems) {
+    throw Object.assign(
+      httpError(409, 'Some products are no longer available.', 'LINES_UNAVAILABLE'),
+      { details: { lines: result.problems } },
+    );
+  }
+
+  req.log.info(
+    { event: 'order.created', orderId: result.order.id, orderNumber: result.order.orderNumber, by: req.staff.id },
+    'Staff order created',
+  );
+  res.status(201);
+  await sendOrder(res, result.order.id);
+});
 
 router.get('/:id', async (req, res) => {
   await sendOrder(res, idParam(req));

@@ -40,7 +40,7 @@ const TYPE_LABELS: Record<CustomerType, string> = { individual: 'Individual', co
 const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
 // Phones get a card list instead of a table. Only one layout is rendered.
-const COMPACT_QUERY = '(max-width: 640px)'
+const COMPACT_QUERY = '(max-width: 900px)'
 
 function subscribeToCompact(onChange: () => void) {
   const query = window.matchMedia(COMPACT_QUERY)

@@ -1055,6 +1055,19 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+  overflow-x: auto;
+}
+
+/* Never squeeze the first column to one letter per line; scroll the table instead. */
+.office-staff-table td:first-child,
+.office-staff-table th:first-child {
+  min-width: 200px;
+}
+
+.office-staff-table .office-staff-name,
+.office-staff-table .office-staff-meta {
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .office-staff-table {

@@ -931,3 +931,196 @@ describe('extend_orders migration', () => {
     expect(await customerForeignKey()).toBe(1);
   });
 });
+
+describe('staff-created orders (M7.4)', () => {
+  const ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+  let staffCookie;
+  let counter = 0;
+
+  beforeAll(async () => {
+    staffCookie = `psp_sid=${(await sessions.create({ staffId, ip: '::1', userAgent: 't' })).id}`;
+  });
+
+  beforeEach(async () => {
+    await db('product_images').del();
+    await db('products').del();
+  });
+
+  async function product(over = {}) {
+    counter += 1;
+    const [row] = await db('products')
+      .insert({
+        name: `Monitor ${counter}`,
+        slug: `monitor-${counter}`,
+        sku: `SKU-${counter}`,
+        category_id: 1,
+        price_tzs: 1000000,
+        quantity_in_stock: 5,
+        is_published: true,
+        is_archived: false,
+        created_by: staffId,
+        ...over,
+      })
+      .returning('*');
+    return row;
+  }
+
+  async function customer(over = {}) {
+    const [row] = await db('customers')
+      .insert({ type: 'individual', full_name: 'Asha Mushi', phone: '+255712345678', created_by: staffId, ...over })
+      .returning('*');
+    await db('customer_addresses').insert({ customer_id: row.id, area: 'Kariakoo', address: 'Msimbazi Street', is_default: true });
+    return row;
+  }
+
+  const create = (body, cookie = staffCookie) =>
+    request(app).post('/api/office/orders').set('Cookie', cookie).set('Origin', ORIGIN).send(body);
+  const orderCount = async () => Number((await db('orders').count('* as n').first()).n);
+
+  test('need a session and the office origin', async () => {
+    const p = await product();
+    const body = { guestName: 'Walk In', guestPhone: '0712345678', deliveryArea: 'Kariakoo', deliveryAddress: 'Shop 4', items: [{ productId: p.id, quantity: 1 }] };
+    expect((await request(app).post('/api/office/orders').set('Origin', ORIGIN).send(body)).status).toBe(401);
+    expect((await request(app).post('/api/office/orders').set('Cookie', staffCookie).send(body)).status).toBe(403);
+    expect(await orderCount()).toBe(0);
+  });
+
+  test('creates a new, unpaid staff order for a customer, copying their details in', async () => {
+    const c = await customer({ email: 'asha@example.com' });
+    const p = await product({ price_tzs: 250000 });
+
+    const res = await create({ customerId: c.id, notes: 'Phone call', items: [{ productId: p.id, quantity: 3 }] });
+
+    expect(res.status).toBe(201);
+    const { order } = res.body.data;
+    expect(order).toMatchObject({
+      source: 'staff',
+      status: 'new',
+      paymentStatus: 'unpaid',
+      customer: { id: c.id },
+      createdBy: { id: staffId },
+      guestName: 'Asha Mushi',
+      guestPhone: '+255712345678',
+      guestEmail: 'asha@example.com',
+      deliveryArea: 'Kariakoo',
+      deliveryAddress: 'Msimbazi Street',
+      notes: 'Phone call',
+      totalTzs: 750000,
+      hasQuotationLines: false,
+      itemsEditable: true,
+    });
+    expect(order.orderNumber).toMatch(/^PSP-\d+$/);
+    expect(order.items).toHaveLength(1);
+    expect(order.items[0]).toMatchObject({ productId: p.id, productName: p.name, productSku: p.sku, unitPriceTzs: 250000, quantity: 3, lineTotalTzs: 750000 });
+  });
+
+  test('a guest sale needs a name, phone and address, and has no customer', async () => {
+    const p = await product();
+    const bad = await create({ items: [{ productId: p.id, quantity: 1 }] });
+    expect(bad.status).toBe(400);
+    expect(Object.keys(bad.body.error.details).sort()).toEqual(
+      ['deliveryAddress', 'deliveryArea', 'guestName', 'guestPhone'],
+    );
+
+    const res = await create({
+      guestName: 'Walk In',
+      guestPhone: '0754 111 222',
+      deliveryArea: 'Mikocheni',
+      deliveryAddress: 'Near the market',
+      items: [{ productId: p.id, quantity: 2 }],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.order).toMatchObject({ source: 'staff', customer: null, guestPhone: '+255754111222', totalTzs: 2000000 });
+  });
+
+  test('ignores any price, name or total sent by the client', async () => {
+    const c = await customer();
+    const p = await product({ price_tzs: 400000 });
+
+    const res = await create({
+      customerId: c.id,
+      totalTzs: 1,
+      items: [{ productId: p.id, quantity: 2, unitPriceTzs: 1, name: 'Free monitor', priceTzs: 1 }],
+    });
+
+    expect(res.status).toBe(201);
+    const { order } = res.body.data;
+    expect(order.totalTzs).toBe(800000);
+    expect(order.items[0]).toMatchObject({ productName: p.name, unitPriceTzs: 400000 });
+  });
+
+  test('quotation lines are saved without a price and left out of the total', async () => {
+    const c = await customer();
+    const priced = await product({ price_tzs: 100000 });
+    const quote = await product({ price_tzs: null, request_quotation: true });
+
+    const res = await create({
+      customerId: c.id,
+      items: [{ productId: priced.id, quantity: 1 }, { productId: quote.id, quantity: 1 }],
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.order.totalTzs).toBe(100000);
+    expect(res.body.data.order.hasQuotationLines).toBe(true);
+    expect(res.body.data.order.items[1]).toMatchObject({ unitPriceTzs: null, lineTotalTzs: null });
+  });
+
+  test('refuses draft, archived, unknown and out-of-stock products, saving nothing', async () => {
+    const c = await customer();
+    const ok = await product();
+    const draft = await product({ is_published: false });
+    const archived = await product({ is_published: false, is_archived: true });
+    const out = await product({ quantity_in_stock: 0 });
+
+    const res = await create({
+      customerId: c.id,
+      items: [
+        { productId: ok.id, quantity: 1 },
+        { productId: draft.id, quantity: 1 },
+        { productId: archived.id, quantity: 1 },
+        { productId: out.id, quantity: 1 },
+        { productId: MISSING_ID, quantity: 1 },
+      ],
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('LINES_UNAVAILABLE');
+    expect(res.body.error.details.lines.map((line) => [line.index, line.code])).toEqual([
+      [1, 'UNAVAILABLE'],
+      [2, 'UNAVAILABLE'],
+      [3, 'OUT_OF_STOCK'],
+      [4, 'UNAVAILABLE'],
+    ]);
+    expect(await orderCount()).toBe(0);
+  });
+
+  test('refuses an unknown customer, bad quantities and repeated products', async () => {
+    const p = await product();
+
+    const unknown = await create({ customerId: MISSING_ID, items: [{ productId: p.id, quantity: 1 }] });
+    expect(unknown.status).toBe(400);
+
+    const c = await customer();
+    const bad = await create({
+      customerId: c.id,
+      items: [{ productId: p.id, quantity: 0 }, { productId: p.id, quantity: 100 }],
+    });
+    expect(bad.status).toBe(400);
+    expect(await orderCount()).toBe(0);
+  });
+
+  test('a staff order can then be confirmed like any other', async () => {
+    const c = await customer();
+    const p = await product();
+    const created = await create({ customerId: c.id, items: [{ productId: p.id, quantity: 1 }] });
+
+    const res = await request(app)
+      .post(`/api/office/orders/${created.body.data.order.id}/status`)
+      .set('Cookie', staffCookie)
+      .set('Origin', ORIGIN)
+      .send({ status: 'confirmed' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.order.status).toBe('confirmed');
+  });
+});

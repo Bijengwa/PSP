@@ -1,5 +1,6 @@
 const db = require('../db');
 const { phoneDigits, createCustomer } = require('../customers/customers.service');
+const { placeOrder } = require('../shop/shop.service');
 
 const ORDER_STATUSES = ['new', 'confirmed', 'delivered', 'closed', 'cancelled'];
 const PAYMENT_STATUSES = ['unpaid', 'paid'];
@@ -261,6 +262,15 @@ async function createCustomerFromOrder(id, createdBy) {
   });
 }
 
+// Creates a staff order (M7.4) for a phone or walk-in sale: `source = staff`, entered by
+// `createdBy`, status new and unpaid. `guest` is the validated contact and delivery
+// snapshot; `customerId` is the customer it is for, or null for a guest sale. Products
+// are read again from the database, so prices only ever come from there. Returns
+// { order: { id, orderNumber, totalTzs } } or { problems } like a shop order.
+async function createStaffOrder({ customerId, guest, lines, createdBy }) {
+  return placeOrder(guest, lines, { source: 'staff', customer_id: customerId, created_by: createdBy });
+}
+
 function escapeLike(value) {
   return value.replace(/[\\%_]/g, '\\$&');
 }
@@ -354,4 +364,5 @@ module.exports = {
   linkOrderToCustomer,
   unlinkOrderCustomer,
   createCustomerFromOrder,
+  createStaffOrder,
 };

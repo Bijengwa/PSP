@@ -59,7 +59,7 @@ const SOURCE_LABELS: Record<OrderSource, string> = { shop: 'Shop', staff: 'Staff
 export const PLACED = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 // Phones get a card list instead of a table. Only one layout is rendered.
-const COMPACT_QUERY = '(max-width: 640px)'
+const COMPACT_QUERY = '(max-width: 900px)'
 
 function subscribeToCompact(onChange: () => void) {
   const query = window.matchMedia(COMPACT_QUERY)
@@ -91,6 +91,12 @@ function Svg({ children, size = 18 }: { children: React.ReactNode; size?: number
     </svg>
   )
 }
+
+const PlusIcon = () => (
+  <Svg>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+)
 
 const SearchIcon = () => (
   <Svg>
@@ -233,6 +239,12 @@ export default function OrdersList() {
         <div className="office-product-heading">
           <h1 className="office-title">Orders</h1>
           <p className="office-lead">Shop and staff orders, newest first</p>
+        </div>
+        <div className="office-product-actions">
+          <Link className="button button-primary" to={`${ORDERS_PATH}/new`}>
+            <PlusIcon />
+            New order
+          </Link>
         </div>
       </div>
 

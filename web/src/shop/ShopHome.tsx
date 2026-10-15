@@ -159,23 +159,6 @@ export default function ShopHome() {
               fetchPriority="high"
               decoding="async"
             />
-            <div className="shop-hero-card">
-              <div className="shop-hero-card-top">
-                <span className="shop-hero-card-meta">Imaging · Large equipment</span>
-                <span className="shop-pill shop-pill-quote">
-                  <IconDocument size={14} />
-                  Price on request
-                </span>
-              </div>
-              <span className="shop-hero-card-title">CT and X-ray systems</span>
-              <span className="shop-hero-card-text">
-                Installation, training and service included. Pricing for your facility on request.
-              </span>
-              <Link to="/#contact" className="shop-hero-card-link">
-                Request a quotation
-                <IconArrow size={16} />
-              </Link>
-            </div>
           </div>
         </div>
       </section>

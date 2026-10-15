@@ -33,7 +33,7 @@ const STATUS_LABELS: Record<Product['status'], string> = {
 }
 
 // Phones get a card list instead of a table. Only one layout is rendered.
-const COMPACT_QUERY = '(max-width: 640px)'
+const COMPACT_QUERY = '(max-width: 900px)'
 
 function subscribeToCompact(onChange: () => void) {
   const query = window.matchMedia(COMPACT_QUERY)
