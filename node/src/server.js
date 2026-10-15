@@ -144,6 +144,7 @@ async function stop(server) {
     });
     logger.info('HTTP server closed');
   }
+  await require('./auth/event-bus').stopConsumers();
   await redis.disconnect();
   await db.destroy();
   logger.info('Database pool closed');
@@ -153,6 +154,10 @@ async function stop(server) {
 if (require.main === module) {
   start()
     .then((server) => {
+      // Bus consumers run inside the API process (auth spec §5). Not in start(), so
+      // tests that call start() do not open extra Redis connections.
+      require('./audit').startAuditConsumer();
+
       let shuttingDown = false;
       function shutdown(signal) {
         if (shuttingDown) return;

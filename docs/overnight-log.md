@@ -1872,3 +1872,33 @@ H4 ticked; current step is **H5**. H5 was not started. Nothing committed.
 - Collision Guard named another session editing `auth.routes.js`, `staff.test.js`, `auth.test.js` and `AuthProvider.tsx`. I re-read `auth.routes.js` and it held only my edits.
 
 H5 ticked; current step is **H6**. H6 was not started. Nothing committed.
+
+---
+
+## H6 Audit foundation (old M6.1), 2026-10-15
+
+**What changed**
+- `node/migrations/20261015150000_create_audit_logs.js`: `audit_logs` as in the auth spec §3 (`event_id` unique; `actor_id`/`target_id` plain uuids; `meta` jsonb; indexes on time, type+time, actor, target).
+- `node/src/auth/event-bus.js`: Redis Streams bus on `psp:events` (`MAXLEN ~ 100000`). `publish()` never throws or rejects; a failure is logged (type and message only) and returns `null`. Consumer groups via `XREADGROUP`, `XACK` after success, `XPENDING`/`XCLAIM` of entries idle over 60s, dead-letter stream `psp:events:dead` after 5 deliveries. Each consumer uses its own `client.duplicate()` connection.
+- `node/src/audit.js`: shared helper `audit(type, details, { actorId })` (details: `targetId`, `ip`, rest becomes `meta`) and the `audit` group handler (`ON CONFLICT (event_id) DO NOTHING`).
+- `node/src/server.js`: the audit consumer starts when run directly; `stop()` closes consumers before Redis.
+- `node/src/auth/event-bus.test.js`: new, with an in-memory stream fake.
+
+**Verified**
+- `node` `npm test`: 13 suites, 422 pass.
+- `web` `npm test` 153 pass; `npm run build` and `npm run lint` clean (no web change). `check:responsive` not run: no UI in this step.
+- Not verified against a real Redis; the tests use a fake of the stream commands, as the other suites do for Redis.
+
+**Decisions**
+- `docs/superpowers/specs/2026-10-06-staff-auth-design.md` is missing from the main tree (CLAUDE.md names it); I read the copy under `.claude/worktrees/m1-5-verify/` for §3 and §5.
+- The envelope id and `audit_logs.event_id` are the stream entry ID.
+- Consumers start only in the `require.main` block so tests calling `start()` open no extra connections.
+- `audit.js` drops meta keys that look like credentials (password, hash, secret, token, session, cookie, authorization) as defence in depth.
+- Only the `audit` group exists; `cache` and `it-notify` from §5 are outside H6's scope.
+- No route publishes an event yet; that is H7.
+
+**Guard warnings**
+- Collision Guard said another session (aab262dc) edited `docs/progress.md` 10 minutes before my edit. I re-read it afterwards: it holds only the H6 tick and the Current step change.
+- Scope Guard asked to confirm Done when before ticking: H6 lists none; the node suite and web checks passed.
+
+H6 ticked; current step is **H7**. H7 was not started. Nothing committed.

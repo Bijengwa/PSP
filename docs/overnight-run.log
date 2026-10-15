@@ -1315,3 +1315,24 @@ That wakeup prompt was left over from earlier, and all of it is already done:
 - **Progress:** H5 is ticked in `docs/progress.md` and the current step is **H6**.
 
 I have not started H6, and I have not edited either doc again. Nothing is committed.
+H6 (Audit foundation) is done and ticked in `docs/progress.md`, and the current step is now H7. H7 was not started and nothing was committed.
+
+**What changed**
+- `node/migrations/20261015150000_create_audit_logs.js`: new `audit_logs` table as in the auth spec ┬º3, with a unique `event_id`.
+- `node/src/auth/event-bus.js`: the Redis Streams bus.
+  - **Publish:** `publish()` never throws; a failed publish is logged and returns `null`.
+  - **Consumers:** `XREADGROUP`/`XACK`, reclaim of entries idle over 60s, and a dead-letter stream after 5 deliveries.
+- `node/src/audit.js`: the shared `audit(type, details, { actorId })` helper and the `audit` consumer, which skips an event it has already logged. It also drops credential-looking keys from `meta`.
+- `node/src/server.js`: starts the audit consumer when run directly and stops it on shutdown.
+- `node/src/auth/event-bus.test.js`: new tests covering the points above.
+
+**Verified**
+- **node:** `npm test` passes, 13 suites and 422 tests.
+- **web:** `npm test` passes (153 tests), and `npm run build` and `npm run lint` are clean. There is no web change in this step.
+- **responsive check:** not run, because this step has no UI.
+- **Redis:** the tests use an in-memory fake of the stream commands, as the other suites do for Redis. Nothing was run against a real Redis.
+
+**Decisions and warnings** (details in `docs/overnight-log.md`)
+- The auth spec `docs/superpowers/specs/2026-10-06-staff-auth-design.md` is missing from the main tree, so I read it from the copy under `.claude/worktrees/m1-5-verify/`. Its absence is worth fixing, since CLAUDE.md names it.
+- No route publishes an event yet; that is H7.
+- Collision Guard reported another session editing `docs/progress.md`; I re-read the file and it holds only my two edits.
