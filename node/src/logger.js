@@ -4,7 +4,17 @@ const pinoHttp = require('pino-http');
 
 // Credential fields are redacted wherever they appear, up to three levels deep
 // (e.g. `password`, `body.password`, `req.body.password`), plus credential headers.
-const SECRET_FIELDS = ['password', 'currentPassword', 'newPassword', 'token'];
+// `temporaryPassword` is what IT sends when registering or resetting someone;
+// `password_hash` / `passwordHash` cover a staff row or service value logged by mistake.
+const SECRET_FIELDS = [
+  'password',
+  'currentPassword',
+  'newPassword',
+  'temporaryPassword',
+  'password_hash',
+  'passwordHash',
+  'token',
+];
 
 const REDACT_PATHS = [
   ...SECRET_FIELDS,

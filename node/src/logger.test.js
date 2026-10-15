@@ -13,6 +13,8 @@ const SECRETS = {
   password: 'Pw-S3cret-11111',
   currentPassword: 'Pw-S3cret-22222',
   newPassword: 'Pw-S3cret-33333',
+  temporaryPassword: 'Pw-S3cret-77777',
+  passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$hash-S3cret-88888',
   token: 'tok-S3cret-44444',
   bearer: 'Bearer bearer-S3cret-55555',
   cookie: 'psp_sid=cookie-S3cret-66666',
@@ -130,13 +132,16 @@ describe('request logging (real server)', () => {
 });
 
 describe('redaction of credential fields', () => {
-  test('password, currentPassword, newPassword and token are redacted at any common depth', () => {
+  test('passwords, password hashes and tokens are redacted at any common depth', () => {
     const cap = capture();
     const log = createLogger({ env: 'test', level: 'info', destination: cap.stream });
     const fields = {
       password: SECRETS.password,
       currentPassword: SECRETS.currentPassword,
       newPassword: SECRETS.newPassword,
+      temporaryPassword: SECRETS.temporaryPassword,
+      password_hash: SECRETS.passwordHash,
+      passwordHash: SECRETS.passwordHash,
       token: SECRETS.token,
     };
 
@@ -173,6 +178,7 @@ describe('redaction of credential fields', () => {
         password: SECRETS.password,
         currentPassword: SECRETS.currentPassword,
         newPassword: SECRETS.newPassword,
+        temporaryPassword: SECRETS.temporaryPassword,
         token: SECRETS.token,
       });
     await waitFor(() => cap.lines().some((line) => line.res));
@@ -180,6 +186,7 @@ describe('redaction of credential fields', () => {
     const bodyLine = cap.lines().find((line) => line.msg === 'received body');
     expect(bodyLine.body.email).toBe('staff@example.com');
     expect(bodyLine.body.password).toBe('[REDACTED]');
+    expect(bodyLine.body.temporaryPassword).toBe('[REDACTED]');
     expect(bodyLine.body.token).toBe('[REDACTED]');
     expectNoSecrets(cap.text());
   });

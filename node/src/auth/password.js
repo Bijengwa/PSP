@@ -1,8 +1,19 @@
 const argon2 = require('argon2');
 
-// argon2id with the library's defaults (OWASP-recommended memory and time cost).
+// argon2id: 64 MiB, 3 passes, 4 lanes (RFC 9106's second recommended option,
+// above the OWASP minimum of 19 MiB / 2 passes / 1 lane). Pinned here so a
+// library upgrade cannot change them silently; verify() reads the parameters
+// from each stored hash, so changing these later keeps old hashes valid.
+const HASH_OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 64 * 1024,
+  timeCost: 3,
+  parallelism: 4,
+  hashLength: 32,
+};
+
 function hashPassword(password) {
-  return argon2.hash(password, { type: argon2.argon2id });
+  return argon2.hash(password, HASH_OPTIONS);
 }
 
 // Never throws for a malformed hash; a mismatch and a bad hash both return false.
@@ -35,9 +46,11 @@ const COMMON_PASSWORDS = new Set([
 // Parts of a name or email shorter than this are too common to forbid.
 const MIN_PERSONAL_PART = 3;
 
+// Names split on anything that is not a letter or digit, so each part of
+// "Mary-Jane O'Brien" counts on its own (accented letters stay in the part).
 function personalParts({ email, fullName }) {
   const localPart = String(email || '').split('@')[0];
-  return [...String(fullName || '').split(/\s+/), ...localPart.split(/[^a-z0-9]+/i)]
+  return [...String(fullName || '').split(/[^\p{L}\p{N}]+/u), ...localPart.split(/[^a-z0-9]+/i)]
     .map((part) => part.toLowerCase())
     .filter((part) => part.length >= MIN_PERSONAL_PART);
 }
@@ -61,4 +74,4 @@ function passwordProblems(password, person) {
   return problems;
 }
 
-module.exports = { hashPassword, verifyPassword, verifyAgainstDummy, passwordProblems };
+module.exports = { HASH_OPTIONS, MAX_LENGTH, hashPassword, verifyPassword, verifyAgainstDummy, passwordProblems };

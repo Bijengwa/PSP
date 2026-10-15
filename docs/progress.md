@@ -6,7 +6,7 @@ Replanned: 2026-10-07. Re-ordered 2026-10-14 (shop first): M5.6 → C2 → C3 �
 M4.1–M4.3 ticked on 2026-10-14 at the user's instruction after a code check (see `docs/overnight-log.md` for the checks still open).
 Overnight order after M4.8: M6.1 → M6.2 → M6.3 → M6.4 → M7.1 → M7.2 → M7.3 → M7.5. M7.4 was built on 2026-10-15 at the user's instruction.
 Overnight order from 2026-10-15: H1 → H2, then Current step is set to H3 (needs the user: approve the role matrix first) and the run stops.
-Current step: **H1**
+Current step: **H2**
 
 ## M1 — Management Shell
 
@@ -79,7 +79,7 @@ Current step: **H1**
 
 ## H — Hardening before launch
 
-- [ ] H1 Password security (old M3.4)
+- [x] H1 Password security (old M3.4)
 - [ ] H2 Cookie/proxy/security review (old M3.5)
 - [ ] H3 Roles (old M5.1)
 - [ ] H4 Permissions (old M5.2)

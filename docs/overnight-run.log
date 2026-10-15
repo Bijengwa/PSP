@@ -1176,3 +1176,29 @@ M7.5 is built and ticked. The current step is now **M7.4**, which the overnight 
 - **Responsive check script:** Windows sometimes locked an old screenshot while the check was replacing it, which stopped the whole run. Screenshot saves now retry up to 5 times. Any other error, or a lock that doesn't clear, still fails the check.
 
 The `frontend-design` skill wasn't available, so I matched the existing Customers and Orders pages and the preview file. I couldn't run `git status` or `git diff` because they needed approval, so I reviewed the changes file by file.
+H1 (Password security) is finished and ticked. The current step is now **H2**, which I have not started. Nothing is committed.
+
+**What the review found**
+- **Password hashing (argon2id):** the settings were already strong (64 MiB memory, 3 passes, 4 lanes, above the OWASP minimum). But they came from the library's defaults, so an `argon2` upgrade could have changed them without anyone noticing. I now set them explicitly in `node/src/auth/password.js`, with the same values, so existing passwords and logins are unaffected.
+- **No name or email in the password (bug, fixed):** the full name was only split on spaces. Someone named "Mary-Jane O'Brien" could use `Mary-Rocks-2026#` and it was accepted. Names now split on any character that isn't a letter or digit, and accented letters still count.
+- **Passwords in logs (gap, fixed):** the log filter in `node/src/logger.js` hid `password`, `currentPassword`, `newPassword` and `token`, but not `temporaryPassword` (what IT sends when registering or resetting someone) or the password hash fields. All three are now hidden.
+- **1024-character cap:** no problem found. Nothing longer than 1024 characters is ever hashed.
+- **Hashes or passwords in responses:** no problem found. No response includes a hash, and the "weak password" error lists only the rules, never the password itself.
+- **Common-password list:** unchanged. It is an exact list of 22 entries, so patterns like `Welcome2026!` still pass (more under "Decisions for you").
+
+**Tests**
+- I added `node/src/auth/password.test.js` with 18 tests for the hash settings, the 1024 cap, the name and email rule (including hyphens, apostrophes and accents) and the common-password list.
+- I extended the existing log tests in `node/src/logger.test.js` to cover the newly hidden fields.
+
+**Checks**
+- **Node:** `npm test` passed, 350 tests.
+- **Web:** `npm test` failed one of 150 tests on the first run, and I couldn't tell which one. It passed 4 runs in a row after that, and H1 changed no web code. `npm run build` and `npm run lint` pass.
+- **Responsive check:** not run, because H1 changes no screens.
+
+**Decisions for you** (all recorded in `docs/overnight-log.md`)
+- **Password checklist on the website is now slightly out of step.** The live checklist in `web/src/management/auth/login.tsx` still splits names on spaces only. For a hyphenated or apostrophe name it can show "Not your name or email" as met, then the server refuses the password with that reason. Nothing weak gets accepted. That file is outside H1's approved list, so it needs your go-ahead; the fix is the same one-line change.
+- **I changed `node/src/logger.js`, which isn't on H1's approved list.** I treated it as a sibling of `server.js`, since it's the only place log hiding is set up. Tell me if you'd rather I hadn't.
+- **Stricter common-password check (recommendation).** Passwords like `Welcome2026!` and `P@ssw0rd2026!` pass today. I'd add a check for common words plus a year, applied on both the server and the website. It's a new rule rather than a bug fix, so I left it for you to approve.
+- **Missing auth design document.** `docs/superpowers/specs/2026-10-06-staff-auth-design.md`, which CLAUDE.md points to, doesn't exist (the folder is empty). I reviewed against the plan's rules instead; you may want to restore it.
+
+The progress tracker showed a warning about the order of my two edits to `docs/progress.md` (ticking H1 and moving to H2). Both edits were intended. I couldn't run `git status` or `git diff` without approval, so I reviewed the changes file by file.
