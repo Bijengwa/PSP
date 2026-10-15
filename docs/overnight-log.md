@@ -1790,3 +1790,30 @@ H1 is a review. Each item in its Scope was checked against the code. Bugs were f
 - `git status` and `git diff` needed approval in this session, so I reviewed the change file by file.
 
 H1 ticked; current step is **H2**. H2 was not started. Nothing committed.
+
+---
+
+## H2 Cookie/proxy/security review (old M3.5), 2026-10-15
+
+H2 is a review. The findings table is in the Appendix of `docs/management-plan.md`.
+
+**What changed**
+- `node/src/server.js`: `trust proxy` is read from `TRUST_PROXY` (hop count; unset means off). The unknown-route 404 no longer echoes the method and URL. Body-parser errors return fixed 400 and 413 messages.
+- `node/.env.example`: documents `TRUST_PROXY`.
+- Tests: new `node/src/auth/auth.middleware.test.js` (cookie flags in production and development, clear flags, `requireSameOrigin` cases) and a new block in `node/src/server.test.js` (trust proxy, helmet, CORS, 404, bad JSON, 413, 5xx leak).
+
+**Verified**
+- `npm test` in `node`: 11 suites, 367 tests, all pass.
+- `web` was not touched, so its checks were not run. Nothing in `web/src` reads the old 404 text.
+
+**Decisions**
+- `TRUST_PROXY` accepts only a hop count. `true` is rejected because it would trust any client-supplied `X-Forwarded-For`.
+- `POST /api/shop/orders` stays without a same-origin check (public, cookie-less, rate limited by IP and phone).
+
+**Guard warnings**
+- Collision Guard said another session edited `docs/progress.md` four minutes earlier. I re-read the file before finishing: it holds only my two changes (H2 ticked, current step H3). I did not touch anything else in it.
+- Scope Guard flagged the order "tick H2, then move Current step". Both edits are intended and H2's checks passed.
+
+For H8: the proxy must overwrite, not append to, a client-supplied `X-Forwarded-For`.
+
+H2 ticked; current step is **H3**, which needs the user to approve the role matrix. The overnight run stops here. Nothing committed.

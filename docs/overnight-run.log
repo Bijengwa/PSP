@@ -1202,3 +1202,31 @@ H1 (Password security) is finished and ticked. The current step is now **H2**, w
 - **Missing auth design document.** `docs/superpowers/specs/2026-10-06-staff-auth-design.md`, which CLAUDE.md points to, doesn't exist (the folder is empty). I reviewed against the plan's rules instead; you may want to restore it.
 
 The progress tracker showed a warning about the order of my two edits to `docs/progress.md` (ticking H1 and moving to H2). Both edits were intended. I couldn't run `git status` or `git diff` without approval, so I reviewed the changes file by file.
+H2 is done and ticked, and `docs/progress.md` now has H3 as the current step. Nothing is committed.
+
+**Findings and fixes (all in `node/`)**
+- **Proxy:** `trust proxy` was never set, so behind a reverse proxy every client shared the proxy's IP and the per-IP rate limits and login logs were wrong.
+  - It is now read from `TRUST_PROXY` as a hop count.
+  - Unset means off, so `X-Forwarded-For` can't be spoofed.
+  - Non-numeric values (including `true`) stop startup.
+  - It is documented in `.env.example`.
+- **Error leaks:** malformed or oversized JSON returned the parser's own message, and the unknown-route 404 echoed the method and URL. They now return the fixed texts "Invalid request body" (400), "Request body too large" (413) and "Route not found" (404).
+- **Already fine, now tested:**
+  - Session cookie flags: HttpOnly, SameSite=Lax, path `/`, and Secure in production.
+  - Matching flags when the cookie is cleared.
+  - Exact-match `requireSameOrigin`.
+  - Single-origin CORS.
+  - Helmet headers.
+  - Hidden 5xx messages.
+
+**Verification**
+- `npm test` in `node`: 11 suites, 367 tests, all pass.
+- `web` wasn't touched, so its checks weren't run.
+
+**Docs**
+- The review table is in the Appendix of `docs/management-plan.md`, and the notes and decisions are in `docs/overnight-log.md`.
+- The two collision-guard warnings are recorded there as well. I re-read `docs/progress.md` and `docs/overnight-log.md` afterwards and found only my own changes in them.
+
+**For you**
+- H3 needs you to approve the role matrix before any code, so I stopped there as the overnight order says.
+- For deployment, set `NODE_ENV=production`, the real https `CLIENT_ORIGIN`, and the real `TRUST_PROXY` hop count. The proxy must overwrite, not append to, a client-supplied `X-Forwarded-For`.

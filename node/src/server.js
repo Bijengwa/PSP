@@ -8,6 +8,16 @@ const redis = require('./redis');
 const { logger, createHttpLogger } = require('./logger');
 
 const app = express();
+
+// Behind a reverse proxy, req.ip (rate limits, login logs) is the proxy's address unless
+// Express is told how many proxy hops to trust. Set TRUST_PROXY to the hop count (e.g. 1).
+// Unset means no proxy: X-Forwarded-For is ignored, so a client cannot spoof its IP.
+function parseTrustProxy(value) {
+  if (value === undefined || value === '' || value === 'false') return false;
+  if (/^\d+$/.test(value)) return Number(value);
+  throw new Error('TRUST_PROXY must be a number of proxy hops (e.g. 1) or unset');
+}
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 const PORT = Number(process.env.PORT) || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
@@ -73,7 +83,7 @@ app.use('/api/office', require('./auth/auth.routes').officeRouter);
 app.use('/api', (req, res) => {
   res.status(404).json({
     success: false,
-    error: { message: `Route not found: ${req.method} ${req.originalUrl}` },
+    error: { message: 'Route not found' },
   });
 });
 
@@ -86,6 +96,15 @@ app.use('/api', (req, res) => {
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   const status = err.status || err.statusCode || 500;
+
+  // body-parser errors carry parser internals (token positions, limits); send fixed text.
+  if (typeof err.type === 'string' && err.type.startsWith('entity.')) {
+    const tooLarge = err.type === 'entity.too.large';
+    return res.status(tooLarge ? 413 : 400).json({
+      success: false,
+      error: { message: tooLarge ? 'Request body too large' : 'Invalid request body' },
+    });
+  }
 
   if (status >= 500) {
     (req.log || logger).error({ err, reqId: req.id }, 'Unhandled error');

@@ -443,3 +443,17 @@ Inventory, Reports, real Notifications, online payment, customer accounts. Each 
 
 ## Appendix — Review notes
 (Filled in by H2 and H8.)
+
+### H2 — Cookie, proxy and security review (2026-10-15)
+
+| Area | Finding | Result |
+|---|---|---|
+| Session cookie | `psp_sid` is HttpOnly, SameSite=Lax, path `/`, Secure when `NODE_ENV=production`, with the same options on clear. | OK; now tested. |
+| Proxy | `trust proxy` was never set, so behind a reverse proxy every client shared the proxy's `req.ip` and the per-IP rate limits and login logs were wrong. | **Fixed.** `TRUST_PROXY=<hops>` sets it; unset means off, so `X-Forwarded-For` cannot spoof an IP. Any non-numeric value stops startup. Documented in `.env.example`. |
+| CORS | One fixed origin (`CLIENT_ORIGIN`) with credentials; no wildcard. | OK; tested. |
+| `requireSameOrigin` | Applied to auth, office, products, customers and orders routers. POST/PUT/PATCH/DELETE need `Origin` equal to `CLIENT_ORIGIN` exactly; a missing, `null`, look-alike or http variant gets 403. GET is not checked and changes no state. | OK; tested. |
+| Public shop | `POST /api/shop/orders` has no same-origin check by design: it is cookie-less and rate limited by IP and phone. | Accepted. |
+| helmet | Defaults on; `x-powered-by` removed. `/uploads` sends `Cross-Origin-Resource-Policy: cross-origin` only for API-written random-named files. | OK; tested. |
+| Error responses | 5xx hide the message. Malformed or oversized JSON returned body-parser text; the unknown-route 404 echoed the method and URL. | **Fixed.** Fixed text (400 `Invalid request body`, 413 `Request body too large`, 404 `Route not found`). |
+
+Open for the deployment: set `NODE_ENV=production`, `CLIENT_ORIGIN` to the real https origin and `TRUST_PROXY` to the real hop count; the proxy must overwrite, not append, a client-supplied `X-Forwarded-For`. The `Secure` cookie needs https end to end up to the proxy.
