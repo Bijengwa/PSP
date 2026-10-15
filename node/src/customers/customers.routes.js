@@ -1,5 +1,5 @@
 const express = require('express');
-const { httpError, requireSameOrigin, requireAuth } = require('../auth/auth.middleware');
+const { httpError, requireSameOrigin, requireAuth, requirePermission } = require('../auth/auth.middleware');
 const {
   CUSTOMER_TYPES,
   CUSTOMER_PAGE_SIZE,
@@ -10,8 +10,8 @@ const {
   findDuplicates,
 } = require('./customers.service');
 
-// Office customer directory, mounted at /api/office/customers. Any signed-in staff
-// member may use it until the permissions stage (H3-H5) replaces role checks.
+// Office customer directory, mounted at /api/office/customers. Every route needs a
+// customers.* permission, read from Postgres on each request.
 const router = express.Router();
 router.use(requireSameOrigin, requireAuth());
 
@@ -142,7 +142,7 @@ function parseCustomer(body, current = null) {
   return Object.keys(fields).length ? { fields } : { values, addresses };
 }
 
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('customers.view'), async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
   const type = req.query.type || undefined;
   if (type && !CUSTOMER_TYPES.includes(type)) {
@@ -155,7 +155,7 @@ router.get('/', async (req, res) => {
 
 // Who already has this phone or email? For the form's duplicate warning only; a
 // duplicate never blocks saving. Values that are not a valid phone or email are ignored.
-router.get('/duplicates', async (req, res) => {
+router.get('/duplicates', requirePermission('customers.view'), async (req, res) => {
   const phone = typeof req.query.phone === 'string' ? normalizePhone(req.query.phone) : null;
   const email = typeof req.query.email === 'string' ? normalizeEmail(req.query.email) : null;
   const exclude = typeof req.query.exclude === 'string' && UUID_PATTERN.test(req.query.exclude) ? req.query.exclude : null;
@@ -163,7 +163,7 @@ router.get('/duplicates', async (req, res) => {
   res.json({ success: true, data: { matches: await findDuplicates({ phone, email, excludeId: exclude }) } });
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requirePermission('customers.create'), async (req, res) => {
   const parsed = parseCustomer(req.body);
   if (parsed.fields) throw validationError(parsed.fields);
 
@@ -182,13 +182,13 @@ function idParam(req) {
   return req.params.id;
 }
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePermission('customers.view'), async (req, res) => {
   const customer = await findCustomer(idParam(req));
   if (!customer) throw httpError(404, 'Not found');
   res.json({ success: true, data: { customer } });
 });
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requirePermission('customers.edit'), async (req, res) => {
   const id = idParam(req);
   const current = await findCustomer(id);
   if (!current) throw httpError(404, 'Not found');

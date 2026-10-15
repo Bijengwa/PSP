@@ -123,6 +123,7 @@ jest.mock('../redis', () => {
 });
 
 const db = require('../db');
+const { grantMatrix } = require('./permissions.testing');
 const redis = require('../redis');
 const { app, errorHandler } = require('../server');
 const { hashPassword } = require('./password');
@@ -170,6 +171,7 @@ beforeAll(async () => {
   await db.raw('truncate staff_profiles, roles restart identity cascade');
 
   const [role] = await db('roles').insert({ name: 'IT', description: 'Full access' }).returning('id');
+  await grantMatrix();
   passwordHash = await hashPassword(PASSWORD);
   const [admin] = await db('staff_profiles')
     .insert([
@@ -828,6 +830,7 @@ describe('IT password resets (/api/office)', () => {
 
   beforeAll(async () => {
     const [role] = await db('roles').insert({ name: 'staff', description: 'Office staff' }).returning('id');
+    await grantMatrix();
     const [target] = await db('staff_profiles')
       .insert({ full_name: TARGET.fullName, email: TARGET.email, password_hash: passwordHash, role_id: role.id, must_change_password: false })
       .returning('id');
@@ -944,12 +947,13 @@ describe('IT password resets (/api/office)', () => {
     expect((await dismiss('nope')).status).toBe(404);
   });
 
-  test('only a signed-in admin from the app origin gets in', async () => {
+  test('only a signed-in person from the app origin gets in; Staff cannot reset an IT account', async () => {
     const staff = await loginAsTarget();
     const admin = await loginAsAdmin();
 
     expect((await request(app).get('/api/office/reset-requests')).status).toBe(401);
-    expect((await asAdmin(staff, 'get', '/api/office/reset-requests')).status).toBe(403);
+    // Staff holds reset_requests.view but not the permissions of the IT account.
+    expect((await asAdmin(staff, 'get', '/api/office/reset-requests')).status).toBe(200);
     expect((await resetPassword(staff, adminId)).status).toBe(403);
 
     const crossSite = await request(app)

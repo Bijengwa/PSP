@@ -66,7 +66,7 @@ const ROUTES = [
     ready: '.office-role-option',
     act: async (page) => {
       await page.getByRole('button', { name: 'Change role' }).click()
-      await page.getByRole('radio', { name: /Admin/ }).check()
+      await page.getByRole('radio', { name: /IT/ }).check()
       await page.locator('.office-role-form').scrollIntoViewIfNeeded()
     },
   },
@@ -362,7 +362,7 @@ const staffList = [
     fullName: 'Amina Mushi',
     email: 'amina@psp.example',
     phone: '+255 754 100 200',
-    role: 'admin',
+    role: 'IT',
     isActive: true,
     mustChangePassword: false,
     lastLoginAt: '2026-10-14T06:10:00.000Z',
@@ -582,7 +582,35 @@ function answer(url, request) {
   }
   if (pathname === '/api/auth/me') {
     return ok({
-      staff: { id: 's1', fullName: 'Amina Mushi', email: 'amina@psp.example', role: 'admin', mustChangePassword: false },
+      staff: {
+        id: 's1',
+        fullName: 'Amina Mushi',
+        email: 'amina@psp.example',
+        role: 'IT',
+        mustChangePassword: false,
+        // Every key (H4): the sidebar and the action buttons show by permission.
+        permissions: [
+          'staff.view',
+          'staff.register',
+          'staff.edit',
+          'staff.change_role',
+          'staff.deactivate',
+          'staff.reset_password',
+          'reset_requests.view',
+          'reset_requests.manage',
+          'products.view',
+          'products.create',
+          'products.edit',
+          'customers.view',
+          'customers.create',
+          'customers.edit',
+          'orders.view',
+          'orders.create',
+          'orders.update',
+          'orders.link',
+          'audit.view',
+        ],
+      },
     })
   }
   if (pathname === '/api/office/products/categories') return ok({ categories })
@@ -601,7 +629,7 @@ function answer(url, request) {
   if (pathname === '/api/office/roles') {
     return ok({
       roles: [
-        { name: 'admin', description: 'Full access to the office' },
+        { name: 'IT', description: 'Full access to the office' },
         { name: 'staff', description: 'Normal office employee' },
       ],
     })

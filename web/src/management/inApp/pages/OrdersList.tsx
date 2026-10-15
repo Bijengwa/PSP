@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react
 import { Link } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
 import '../../auth/auth.css'
+import { usePermission } from '../../auth/AuthProvider'
 import { phoneText } from './CustomersList'
 import { TZS } from './ProductForm'
 
@@ -156,6 +157,7 @@ function TotalCell({ order }: { order: OrderRow }) {
 // search by order number, name or phone, paged, newest first.
 export default function OrdersList() {
   const compact = useSyncExternalStore(subscribeToCompact, () => window.matchMedia(COMPACT_QUERY).matches)
+  const canCreate = usePermission('orders.create')
 
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
@@ -240,12 +242,14 @@ export default function OrdersList() {
           <h1 className="office-title">Orders</h1>
           <p className="office-lead">Shop and staff orders, newest first</p>
         </div>
-        <div className="office-product-actions">
-          <Link className="button button-primary" to={`${ORDERS_PATH}/new`}>
-            <PlusIcon />
-            New order
-          </Link>
-        </div>
+        {canCreate && (
+          <div className="office-product-actions">
+            <Link className="button button-primary" to={`${ORDERS_PATH}/new`}>
+              <PlusIcon />
+              New order
+            </Link>
+          </div>
+        )}
       </div>
 
       <section className="office-list-card" aria-label="Orders">

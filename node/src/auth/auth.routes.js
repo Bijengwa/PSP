@@ -28,8 +28,10 @@ const {
   clearSessionCookie,
   requireSameOrigin,
   requireAuth,
-  requireRole,
+  requirePermission,
+  assertPermission,
 } = require('./auth.middleware');
+const { permissionsBeyond } = require('./permissions');
 
 const INVALID_CREDENTIALS = 'Invalid email or password';
 const ACCOUNT_LOCKED = 'Account temporarily locked. Try again later or contact IT.';
@@ -149,7 +151,7 @@ router.post('/logout-all', requireAuth({ allowPendingPasswordChange: true }), as
 });
 
 // ---------- IT's side of password resets, mounted at /api/office ----------
-// Admin only. The role is read from Postgres on every request by requireAuth.
+// Each route needs its own permission key, read from Postgres on every request.
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function uuidParam(req, name) {
@@ -158,9 +160,20 @@ function uuidParam(req, name) {
 }
 
 const officeRouter = express.Router();
-officeRouter.use(requireSameOrigin, requireAuth(), requireRole('IT'));
+officeRouter.use(requireSameOrigin, requireAuth());
 
-officeRouter.get('/reset-requests', async (req, res) => {
+// Nobody may act on an account whose role holds permissions they lack: that would let
+// them sign in as that person (for example Staff resetting an IT password). Compared
+// by permission, not by role name. 404 first, so unknown ids behave as before.
+async function assertCanActOn(req, staffId) {
+  const target = await getStaff(staffId);
+  if (!target) throw httpError(404, 'Not found');
+  if ((await permissionsBeyond(req.staff.role, target.role)).length) {
+    throw httpError(403, 'You cannot change an account that holds more permissions than you.');
+  }
+}
+
+officeRouter.get('/reset-requests', requirePermission('reset_requests.view'), async (req, res) => {
   const status = req.query.status ?? 'pending';
   if (!RESET_REQUEST_STATUSES.includes(status)) {
     throw httpError(400, `status must be one of: ${RESET_REQUEST_STATUSES.join(', ')}`);
@@ -168,7 +181,7 @@ officeRouter.get('/reset-requests', async (req, res) => {
   res.json({ success: true, data: await listResetRequests({ status }) });
 });
 
-officeRouter.post('/reset-requests/:id/dismiss', async (req, res) => {
+officeRouter.post('/reset-requests/:id/dismiss', requirePermission('reset_requests.manage'), async (req, res) => {
   const id = uuidParam(req, 'id');
   const result = await dismissResetRequest({ id, dismissedBy: req.staff.id });
   if (result === 'not_found') throw httpError(404, 'Not found');
@@ -246,7 +259,7 @@ function parseProfileEdit(body) {
   return Object.keys(fields).length ? { fields } : { values };
 }
 
-officeRouter.get('/staff', async (req, res) => {
+officeRouter.get('/staff', requirePermission('staff.view'), async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
   const status = req.query.status || undefined;
   if (status && !STAFF_STATUSES.includes(status)) {
@@ -256,7 +269,7 @@ officeRouter.get('/staff', async (req, res) => {
   res.json({ success: true, data: await listStaff({ q, status, page, limit: STAFF_PAGE_SIZE }) });
 });
 
-officeRouter.post('/staff', async (req, res) => {
+officeRouter.post('/staff', requirePermission('staff.register'), async (req, res) => {
   const parsed = parseRegistration(req.body);
   if (parsed.fields) {
     throw Object.assign(httpError(400, 'Check the highlighted fields.', 'VALIDATION_ERROR'), { details: parsed.fields });
@@ -283,10 +296,13 @@ officeRouter.post('/staff', async (req, res) => {
   res.status(201).json({ success: true, data: { staff: result.staff } });
 });
 
-officeRouter.get('/staff/:id', async (req, res) => {
+officeRouter.get('/staff/:id', requirePermission('staff.view'), async (req, res) => {
   const staff = await getStaff(uuidParam(req, 'id'));
   if (!staff) throw httpError(404, 'Not found');
-  res.json({ success: true, data: { staff } });
+  // canManage tells the profile page whether to offer the edit actions; the PATCH and
+  // reset-password routes check the same rule (assertCanActOn) on every request.
+  const canManage = (await permissionsBeyond(req.staff.role, staff.role)).length === 0;
+  res.json({ success: true, data: { staff, canManage } });
 });
 
 // Deactivate or reactivate: { isActive } alone. Deactivation ends the person's
@@ -336,13 +352,19 @@ async function changeRole(req, res, staffId, role) {
 }
 
 // The roles IT can assign on the staff profile.
-officeRouter.get('/roles', async (req, res) => {
+officeRouter.get('/roles', requirePermission('staff.view'), async (req, res) => {
   res.json({ success: true, data: { roles: await listRoles() } });
 });
 
 // Name and phone, the status on its own, or the role on its own.
 officeRouter.patch('/staff/:id', async (req, res) => {
   const staffId = uuidParam(req, 'id');
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  await assertPermission(
+    req,
+    'role' in body ? 'staff.change_role' : 'isActive' in body ? 'staff.deactivate' : 'staff.edit',
+  );
+  await assertCanActOn(req, staffId);
   if (req.body && typeof req.body === 'object' && 'role' in req.body) {
     const keys = Object.keys(req.body);
     const fields = {};
@@ -379,8 +401,9 @@ officeRouter.patch('/staff/:id', async (req, res) => {
   res.json({ success: true, data: { staff } });
 });
 
-officeRouter.post('/staff/:id/reset-password', async (req, res) => {
+officeRouter.post('/staff/:id/reset-password', requirePermission('staff.reset_password'), async (req, res) => {
   const staffId = uuidParam(req, 'id');
+  await assertCanActOn(req, staffId);
   const { temporaryPassword } = req.body ?? {};
   if (typeof temporaryPassword !== 'string' || !temporaryPassword) {
     throw httpError(400, 'A temporary password is required');

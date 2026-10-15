@@ -71,6 +71,7 @@ jest.mock('../redis', () => {
 });
 
 const db = require('../db');
+const { grantMatrix } = require('./permissions.testing');
 const { app } = require('../server');
 const { hashPassword } = require('./password');
 const sessions = require('./session.store');
@@ -93,6 +94,7 @@ beforeAll(async () => {
   await db.raw('truncate staff_profiles, roles restart identity cascade');
   const [admin] = await db('roles').insert({ name: 'IT', description: 'Full access' }).returning('id');
   const [staff] = await db('roles').insert({ name: 'staff', description: 'Staff' }).returning('id');
+  await grantMatrix();
   const hash = await hashPassword('Correct-Horse-42!');
   const rows = await db('staff_profiles')
     .insert([
@@ -115,6 +117,20 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db('staff_profiles').where({ id: staffId }).update({ full_name: 'Sam Staff', phone_number: '+255 700 000 001' });
 });
+
+// Runs `run` while Sam holds a role with no permissions at all (the "viewer" role exists
+// only for the duration), so the 403 comes from the missing permission, not the role name.
+async function withoutPermissions(run) {
+  const staffRole = await db('roles').where({ name: 'staff' }).first('id');
+  const [viewer] = await db('roles').insert({ name: 'viewer', description: 'No permissions' }).returning('id');
+  await db('staff_profiles').where({ id: staffId }).update({ role_id: viewer.id });
+  try {
+    return await run();
+  } finally {
+    await db('staff_profiles').where({ id: staffId }).update({ role_id: staffRole.id });
+    await db('roles').where({ id: viewer.id }).del();
+  }
+}
 
 afterAll(async () => {
   await db.raw('truncate staff_profiles, roles restart identity cascade');
@@ -145,8 +161,8 @@ describe('GET /api/office/staff/:id', () => {
     expect((await as(adminCookie).get('/api/office/staff/not-a-uuid')).status).toBe(404);
   });
 
-  test('a non-admin gets 403', async () => {
-    const res = await as(staffCookie).get(`/api/office/staff/${adminId}`);
+  test('someone without staff.view gets 403', async () => {
+    const res = await withoutPermissions(() => as(staffCookie).get(`/api/office/staff/${adminId}`));
     expect(res.status).toBe(403);
   });
 });
@@ -228,7 +244,10 @@ describe('PATCH /api/office/staff/:id', () => {
 
   test('unknown ids are 404; a non-admin gets 403; another origin is refused', async () => {
     expect((await as(adminCookie).patch(`/api/office/staff/${MISSING_ID}`, { fullName: 'Nobody' })).status).toBe(404);
-    expect((await as(staffCookie).patch(`/api/office/staff/${staffId}`, { fullName: 'Myself' })).status).toBe(403);
+    const denied = await withoutPermissions(() =>
+      as(staffCookie).patch(`/api/office/staff/${staffId}`, { fullName: 'Myself' }),
+    );
+    expect(denied.status).toBe(403);
 
     const foreign = await request(app)
       .patch(`/api/office/staff/${staffId}`)
@@ -392,7 +411,10 @@ describe('PATCH /api/office/staff/:id { isActive }', () => {
   test('unknown ids are 404; a non-admin gets 403; another origin is refused', async () => {
     const sam = await person();
     expect((await as(adminCookie).patch(`/api/office/staff/${MISSING_ID}`, { isActive: false })).status).toBe(404);
-    expect((await as(staffCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false })).status).toBe(403);
+    const denied = await withoutPermissions(() =>
+      as(staffCookie).patch(`/api/office/staff/${sam.id}`, { isActive: false }),
+    );
+    expect(denied.status).toBe(403);
 
     const foreign = await request(app)
       .patch(`/api/office/staff/${sam.id}`)
@@ -517,7 +539,8 @@ describe('GET /api/office/staff', () => {
   });
 
   test('only a signed-in admin gets the list', async () => {
-    expect((await as(staffCookie).get('/api/office/staff')).status).toBe(403);
+    expect((await withoutPermissions(() => as(staffCookie).get('/api/office/staff'))).status).toBe(403);
+    expect((await as(staffCookie).get('/api/office/staff')).status).toBe(200); // Staff holds staff.view
     expect((await request(app).get('/api/office/staff')).status).toBe(401);
   });
 });
@@ -646,7 +669,8 @@ describe('M4 end-to-end circle', () => {
     expect(changed.status).toBe(200);
     cookie = cookieOf(changed);
     expect((await office(cookie)).status).toBe(200);
-    expect((await as(cookie).get('/api/office/staff')).status).toBe(403);
+    // Staff may look at the staff list but not register anyone.
+    expect((await as(cookie).get('/api/office/staff')).status).toBe(200);
 
     // They forget it; IT sees the request in the queue.
     expect((await post('/api/auth/forgot-password', { email })).status).toBe(200);
@@ -697,7 +721,7 @@ describe('GET /api/office/roles', () => {
       { name: 'staff', description: 'Staff' },
     ]);
 
-    expect((await as(staffCookie).get('/api/office/roles')).status).toBe(403);
+    expect((await withoutPermissions(() => as(staffCookie).get('/api/office/roles'))).status).toBe(403);
   });
 });
 
@@ -739,7 +763,8 @@ describe('PATCH /api/office/staff/:id { role }', () => {
 
     const again = await login(other.email);
     const cookie = again.headers['set-cookie'][0].split(';')[0];
-    expect((await as(cookie).get('/api/office/staff')).status).toBe(403);
+    expect(again.body.data.staff.permissions).not.toContain('staff.register');
+    expect((await as(cookie).get('/api/office/staff')).status).toBe(200);
   });
 
   test('the same role again changes nothing and keeps the sessions', async () => {
@@ -768,7 +793,7 @@ describe('PATCH /api/office/staff/:id { role }', () => {
     await onlyMainAdminActive();
     // Over HTTP the caller is always another active admin, so this guard is reached
     // through the service (and through the race below).
-    const result = await setStaffRole(adminId, 'staff', { actorId: staffId });
+    const result = await setStaffRole(adminId, 'staff', { actorId: staffId, actorRole: 'IT' });
 
     expect(result).toEqual({ error: 'last_admin' });
     expect(await roleOf(adminId)).toBe('IT');
@@ -788,8 +813,8 @@ describe('PATCH /api/office/staff/:id { role }', () => {
     await onlyMainAdminActive();
     const one = await person('IT');
     const results = await Promise.all([
-      setStaffRole(one.id, 'staff', { actorId: adminId }),
-      setStaffRole(adminId, 'staff', { actorId: one.id }),
+      setStaffRole(one.id, 'staff', { actorId: adminId, actorRole: 'IT' }),
+      setStaffRole(adminId, 'staff', { actorId: one.id, actorRole: 'IT' }),
     ]);
 
     expect(results.filter((r) => r.error === 'last_admin')).toHaveLength(1);
@@ -836,7 +861,10 @@ describe('PATCH /api/office/staff/:id { role }', () => {
   test('unknown ids are 404; a non-admin gets 403; another origin is refused', async () => {
     const sam = await person();
     expect((await as(adminCookie).patch(`/api/office/staff/${MISSING_ID}`, { role: 'IT' })).status).toBe(404);
-    expect((await as(staffCookie).patch(`/api/office/staff/${staffId}`, { role: 'IT' })).status).toBe(403);
+    const denied = await withoutPermissions(() =>
+      as(staffCookie).patch(`/api/office/staff/${staffId}`, { role: 'IT' }),
+    );
+    expect(denied.status).toBe(403);
 
     const foreign = await request(app)
       .patch(`/api/office/staff/${sam.id}`)

@@ -10,9 +10,53 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+const STAFF_KEYS = [
+  'staff.view',
+  'staff.edit',
+  'staff.change_role',
+  'staff.deactivate',
+  'staff.reset_password',
+  'reset_requests.view',
+  'reset_requests.manage',
+  'products.view',
+  'products.create',
+  'products.edit',
+  'customers.view',
+  'customers.create',
+  'customers.edit',
+  'orders.view',
+  'orders.create',
+  'orders.update',
+  'orders.link',
+  'audit.view',
+]
+
+// The approved matrix: IT holds everything, Staff everything except registering staff.
 const people = {
-  admin: { id: 'a1', fullName: 'Asha Admin', email: 'asha@psp.test', role: 'IT', mustChangePassword: false },
-  staff: { id: 's1', fullName: 'Sam Staff', email: 'sam@psp.test', role: 'staff', mustChangePassword: false },
+  admin: {
+    id: 'a1',
+    fullName: 'Asha Admin',
+    email: 'asha@psp.test',
+    role: 'IT',
+    mustChangePassword: false,
+    permissions: [...STAFF_KEYS, 'staff.register'],
+  },
+  staff: {
+    id: 's1',
+    fullName: 'Sam Staff',
+    email: 'sam@psp.test',
+    role: 'staff',
+    mustChangePassword: false,
+    permissions: STAFF_KEYS,
+  },
+  nobody: {
+    id: 'n1',
+    fullName: 'Nia Nobody',
+    email: 'nia@psp.test',
+    role: 'viewer',
+    mustChangePassword: false,
+    permissions: [] as string[],
+  },
 }
 
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }), { status: 200 })
@@ -56,16 +100,32 @@ function renderSidebar() {
 const IT_LINKS = ['Staff', 'Register Staff', /^Reset requests/]
 
 describe('Sidebar IT group', () => {
-  it('is not shown to a non-admin, and the reset badge is never asked for', async () => {
-    const fetchMock = stubApi(people.staff)
+  it('is not shown without permissions, and no badge is asked for', async () => {
+    const fetchMock = stubApi(people.nobody)
     renderSidebar()
-    await screen.findByText('Signed in as staff')
+    await screen.findByText('Signed in as viewer')
 
     const nav = screen.getByRole('navigation', { name: 'Office' })
     expect(within(nav).queryByRole('heading', { name: 'IT' })).toBeNull()
     for (const name of IT_LINKS) expect(within(nav).queryByRole('link', { name })).toBeNull()
+    for (const name of ['Products', 'Add Product', 'Orders', 'Customers']) {
+      expect(within(nav).queryByRole('link', { name })).toBeNull()
+    }
+    expect(within(nav).getByRole('link', { name: 'Home' })).not.toBeNull()
+    expect(within(nav).getByRole('link', { name: 'Settings' })).not.toBeNull()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/office/'))).toBe(false)
+  })
+
+  it('shows Staff everything except Register Staff', async () => {
+    stubApi(people.staff, 2)
+    renderSidebar()
+    await screen.findByText('Signed in as staff')
+
+    const nav = screen.getByRole('navigation', { name: 'Office' })
+    expect(within(nav).getByRole('link', { name: 'Staff' })).not.toBeNull()
+    expect(within(nav).getByRole('link', { name: /^Reset requests/ })).not.toBeNull()
+    expect(within(nav).queryByRole('link', { name: 'Register Staff' })).toBeNull()
     expect(within(nav).getByRole('link', { name: 'Products' })).not.toBeNull()
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/office/reset-requests'))).toBe(false)
   })
 
   it('is shown to an admin, with Staff, Register Staff and Reset requests and the pending badge', async () => {

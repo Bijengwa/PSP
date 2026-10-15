@@ -130,8 +130,10 @@ const BADGE_REFRESH_MS = 60 * 1000
 // eslint-disable-next-line react-refresh/only-export-components
 export const NAV_GROUPS: {
   label: string
-  adminOnly?: boolean
-  items: { label: string; to: string; icon: IconName; adminOnly?: boolean }[]
+  // An item is shown only to people who hold its permission key. Items without a key
+  // (Home, Notifications, Settings) are for everyone signed in. Inventory and Reports
+  // are locked until H8: no role holds their keys yet, so nobody sees them.
+  items: { label: string; to: string; icon: IconName; permission?: string }[]
 }[] = [
   {
     label: 'Overview',
@@ -140,33 +142,33 @@ export const NAV_GROUPS: {
   {
     label: 'Catalog',
     items: [
-      { label: 'Products', to: '/office/products', icon: 'products' },
-      { label: 'Add Product', to: '/office/products/new', icon: 'addProduct' },
-      { label: 'Inventory', to: '/office/inventory', icon: 'inventory', adminOnly: true },
+      { label: 'Products', to: '/office/products', icon: 'products', permission: 'products.view' },
+      { label: 'Add Product', to: '/office/products/new', icon: 'addProduct', permission: 'products.create' },
+      { label: 'Inventory', to: '/office/inventory', icon: 'inventory', permission: 'inventory.view' },
     ],
   },
   {
     label: 'Sales',
     items: [
-      { label: 'Orders', to: ORDERS_PATH, icon: 'orders' },
-      { label: 'Customers', to: '/office/customers', icon: 'customers' },
+      { label: 'Orders', to: ORDERS_PATH, icon: 'orders', permission: 'orders.view' },
+      { label: 'Customers', to: '/office/customers', icon: 'customers', permission: 'customers.view' },
     ],
   },
   {
     label: 'Management',
-    items: [{ label: 'Reports', to: '/office/reports', icon: 'reports', adminOnly: true }],
+    items: [{ label: 'Reports', to: '/office/reports', icon: 'reports', permission: 'reports.view' }],
   },
   {
-    // The server checks every IT call too; hiding the group is only a convenience.
+    // The server checks every call too; hiding items is only a convenience.
     label: 'IT',
-    adminOnly: true,
     items: [
-      { label: 'Staff', to: '/office/staff', icon: 'staff' },
-      { label: 'Register Staff', to: '/office/staff/new', icon: 'addStaff' },
+      { label: 'Staff', to: '/office/staff', icon: 'staff', permission: 'staff.view' },
+      { label: 'Register Staff', to: '/office/staff/new', icon: 'addStaff', permission: 'staff.register' },
       {
         label: 'Reset requests',
         to: RESET_REQUESTS_PATH,
         icon: 'resetRequests',
+        permission: 'reset_requests.view',
       },
     ],
   },
@@ -257,19 +259,25 @@ export default function Sidebar({
   onToggleRail,
 }: SidebarProps) {
   const { state } = useAuth()
-  const isAdmin = state.status === 'authenticated' && state.staff.role === 'IT'
-  // Pending forgot-password requests (admins only) and new orders (everyone signed in).
-  const pendingResets = useBadgeCount('/api/office/reset-requests?status=pending', isAdmin, RESET_REQUESTS_CHANGED)
-  const newOrders = useBadgeCount('/api/office/orders?status=new', state.status === 'authenticated', ORDERS_CHANGED)
+  const held = state.status === 'authenticated' ? (state.staff.permissions ?? []) : []
+  // Pending forgot-password requests and new orders are only asked for by people who
+  // may see those lists.
+  const pendingResets = useBadgeCount(
+    '/api/office/reset-requests?status=pending',
+    held.includes('reset_requests.view'),
+    RESET_REQUESTS_CHANGED,
+  )
+  const newOrders = useBadgeCount('/api/office/orders?status=new', held.includes('orders.view'), ORDERS_CHANGED)
   const badges: Record<string, { count: number; label: string }> = {
     [RESET_REQUESTS_PATH]: { count: pendingResets, label: 'pending' },
     [ORDERS_PATH]: { count: newOrders, label: 'new' },
   }
-  // Staff do not see admin-only items or groups (the server still checks every call);
-  // a group left with no items is dropped, heading included.
-  const visibleGroups = NAV_GROUPS.filter((group) => isAdmin || !group.adminOnly)
-    .map((group) => ({ ...group, items: group.items.filter((item) => isAdmin || !item.adminOnly) }))
-    .filter((group) => group.items.length > 0)
+  // Items the person has no permission for are hidden (the server still checks every
+  // call); a group left with no items is dropped, heading included.
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.permission || held.includes(item.permission)),
+  })).filter((group) => group.items.length > 0)
 
   return (
     <aside

@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuth, usePermission } from '../../auth/AuthProvider'
 import '../../auth/auth.css'
 import { TemporaryPasswordForm } from './OfficeHome'
 
@@ -36,7 +36,7 @@ function subscribeToCompact(onChange: () => void) {
 }
 
 function listErrorMessage(result: Extract<ApiResult<unknown>, { ok: false }>) {
-  if (result.status === 403) return 'Only IT can see the staff list.'
+  if (result.status === 403) return 'You do not have access to the staff list.'
   if (result.status === 503) return 'The service is temporarily unavailable. Please try again shortly.'
   return result.message
 }
@@ -50,6 +50,7 @@ function statusLabel(member: StaffMember) {
 // and a Reset password action. Activate/deactivate and role change come later.
 export default function StaffList() {
   const { state } = useAuth()
+  const canRegister = usePermission('staff.register')
   const compact = useSyncExternalStore(subscribeToCompact, () => window.matchMedia(COMPACT_QUERY).matches)
   const selfId = state.status === 'authenticated' ? state.staff.id : null
 
@@ -178,9 +179,11 @@ export default function StaffList() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <Link className="button button-primary" to="/office/staff/new">
-            Register staff
-          </Link>
+          {canRegister && (
+            <Link className="button button-primary" to="/office/staff/new">
+              Register staff
+            </Link>
+          )}
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
-import { LOGIN_PATH, useAuth } from '../../auth/AuthProvider'
+import { LOGIN_PATH, useAuth, usePermission } from '../../auth/AuthProvider'
 import { passwordRules } from '../../auth/login'
 import { CHANGE_PASSWORD_PATH } from '../../auth/AuthProvider'
 import { RESET_REQUESTS_CHANGED } from '../layout/Sidebar'
@@ -144,7 +144,7 @@ type QueueState =
 const REQUESTED_AT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 function queueErrorMessage(result: Extract<ApiResult<unknown>, { ok: false }>) {
-  if (result.status === 403) return 'Only IT can see reset requests.'
+  if (result.status === 403) return 'You do not have access to reset requests.'
   if (result.status === 503) return 'The service is temporarily unavailable. Please try again shortly.'
   return result.message
 }
@@ -241,8 +241,10 @@ export function TemporaryPasswordForm({
   )
 }
 
-// /office/reset-requests (admins): forgot-password requests waiting for IT.
+// /office/reset-requests: forgot-password requests waiting for IT.
 export function ResetRequestsPage() {
+  const mayReset = usePermission('staff.reset_password')
+  const mayDismiss = usePermission('reset_requests.manage')
   const [queue, setQueue] = useState<QueueState>({ status: 'loading' })
   const [reload, setReload] = useState(0)
   const [openForm, setOpenForm] = useState<string | null>(null)
@@ -325,7 +327,7 @@ export function ResetRequestsPage() {
                     </span>
                   </div>
                   <div className="office-reset-actions">
-                    {request.staff && openForm !== request.id && (
+                    {request.staff && mayReset && openForm !== request.id && (
                       <button
                         type="button"
                         className="button button-primary"
@@ -337,14 +339,16 @@ export function ResetRequestsPage() {
                         Reset password
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className="button button-secondary"
-                      onClick={() => dismiss(request)}
-                      disabled={dismissing === request.id}
-                    >
-                      {dismissing === request.id ? 'Dismissing…' : 'Dismiss'}
-                    </button>
+                    {mayDismiss && (
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() => dismiss(request)}
+                        disabled={dismissing === request.id}
+                      >
+                        {dismissing === request.id ? 'Dismissing…' : 'Dismiss'}
+                      </button>
+                    )}
                   </div>
                 </div>
                 {request.staff && openForm === request.id && (

@@ -1,5 +1,5 @@
 const express = require('express');
-const { httpError, requireSameOrigin, requireAuth } = require('../auth/auth.middleware');
+const { httpError, requireSameOrigin, requireAuth, requirePermission } = require('../auth/auth.middleware');
 const {
   ORDER_STATUSES,
   PAYMENT_STATUSES,
@@ -19,8 +19,8 @@ const {
 } = require('./orders.service');
 const { findCustomer } = require('../customers/customers.service');
 
-// Office orders, mounted at /api/office/orders. Any signed-in staff member may use it
-// until the permissions stage (H3-H5) replaces role checks.
+// Office orders, mounted at /api/office/orders. Every route needs an orders.* permission,
+// read from Postgres on each request.
 const router = express.Router();
 router.use(requireSameOrigin, requireAuth());
 
@@ -33,7 +33,7 @@ function oneOf(req, name, allowed) {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('orders.view'), async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
   const status = oneOf(req, 'status', ORDER_STATUSES);
   const paymentStatus = oneOf(req, 'paymentStatus', PAYMENT_STATUSES);
@@ -76,7 +76,7 @@ const text = (raw) => (typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ')
 // customer, any detail left out is copied from the customer (name, phone, email and
 // default address); without one, name, phone and the address are required. Prices and
 // names come only from the database. Starts as a new, unpaid staff order.
-router.post('/', async (req, res) => {
+router.post('/', requirePermission('orders.create'), async (req, res) => {
   const input = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const fields = {};
 
@@ -169,13 +169,13 @@ router.post('/', async (req, res) => {
   await sendOrder(res, result.order.id);
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePermission('orders.view'), async (req, res) => {
   await sendOrder(res, idParam(req));
 });
 
 // Moves the order one step along its life cycle: confirm, deliver, close, or cancel
 // (with a reason). Any other move is a 409 that names the order's current status.
-router.post('/:id/status', async (req, res) => {
+router.post('/:id/status', requirePermission('orders.update'), async (req, res) => {
   const id = idParam(req);
   const to = req.body?.status;
   const result = await changeOrderStatus(id, to, { reason: req.body?.reason });
@@ -197,7 +197,7 @@ router.post('/:id/status', async (req, res) => {
   await sendOrder(res, id);
 });
 
-router.post('/:id/paid', async (req, res) => {
+router.post('/:id/paid', requirePermission('orders.update'), async (req, res) => {
   const id = idParam(req);
   const result = await markOrderPaid(id);
   if (!result) throw httpError(404, 'Not found');
@@ -211,7 +211,7 @@ router.post('/:id/paid', async (req, res) => {
 // Changes quantities or drops lines while the order is still new. Body:
 // { items: [{ id, quantity }] }, the full list of lines to keep. After confirmation the
 // items are fixed (409 ITEMS_LOCKED).
-router.put('/:id/items', async (req, res) => {
+router.put('/:id/items', requirePermission('orders.update'), async (req, res) => {
   const id = idParam(req);
   const raw = req.body?.items;
   if (!Array.isArray(raw) || raw.length === 0) throw validationError({ items: 'Keep at least one line. To drop the whole order, cancel it.' });
@@ -259,7 +259,7 @@ function linkRefusal(result) {
 }
 
 // Links the order to an existing customer. Body: { customerId }.
-router.put('/:id/customer', async (req, res) => {
+router.put('/:id/customer', requirePermission('orders.link'), async (req, res) => {
   const id = idParam(req);
   const customerId = req.body?.customerId;
   if (typeof customerId !== 'string' || !UUID_PATTERN.test(customerId)) {
@@ -277,7 +277,7 @@ router.put('/:id/customer', async (req, res) => {
 });
 
 // Creates a customer from the order's guest details and links the order to it.
-router.post('/:id/customer', async (req, res) => {
+router.post('/:id/customer', requirePermission('orders.link', 'customers.create'), async (req, res) => {
   const id = idParam(req);
   const result = await createCustomerFromOrder(id, req.staff.id);
   if (!result) throw httpError(404, 'Not found');
@@ -292,7 +292,7 @@ router.post('/:id/customer', async (req, res) => {
   await sendOrder(res, id);
 });
 
-router.delete('/:id/customer', async (req, res) => {
+router.delete('/:id/customer', requirePermission('orders.link'), async (req, res) => {
   const id = idParam(req);
   const result = await unlinkOrderCustomer(id);
   if (!result) throw httpError(404, 'Not found');

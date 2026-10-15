@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import CustomerDetail from './CustomerDetail'
 import type { CustomerRecord } from './CustomerForm'
 
+// Which buttons show for which permission is covered by the permissions tests; here
+// the person holds everything.
+vi.mock('../../auth/AuthProvider', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../auth/AuthProvider')>()),
+  usePermission: () => true,
+}))
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()

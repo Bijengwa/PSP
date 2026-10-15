@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
+import { usePermission } from '../../auth/AuthProvider'
 import '../../auth/auth.css'
 import { initials } from '../layout/ProfileMenu'
 import { ORDERS_CHANGED } from '../layout/Sidebar'
@@ -721,6 +722,10 @@ function CustomerLinkCard({ order, onChanged, onRefused }: LinkProps) {
 // quantities or drop lines. Every move asks once, because none can be undone.
 export default function OrderDetail() {
   const { id = '' } = useParams()
+  // Status, payment and items need orders.update; linking a customer needs orders.link
+  // and, to create one from the order, customers.create (the server checks the same).
+  const mayUpdate = usePermission('orders.update')
+  const mayLink = usePermission('orders.link')
 
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -940,7 +945,7 @@ export default function OrderDetail() {
   const forward = order.nextStatuses.find((status) => status !== 'cancelled') as Action | undefined
   const canCancel = order.nextStatuses.includes('cancelled')
   const canPay = order.paymentStatus === 'unpaid' && order.status !== 'cancelled'
-  const showActions = !pending && !draft && (forward || canCancel || canPay)
+  const showActions = mayUpdate && !pending && !draft && (forward || canCancel || canPay)
   const draftChanged =
     draft !== null &&
     (draft.length !== order.items.length ||
@@ -1117,7 +1122,7 @@ export default function OrderDetail() {
           <section className="office-card" aria-labelledby="order-items-heading">
             <div className="office-profile-card-head">
               <h2 id="order-items-heading">Items</h2>
-              {order.itemsEditable && !draft && !pending && (
+              {mayUpdate && order.itemsEditable && !draft && !pending && (
                 <button ref={editButtonRef} type="button" className="button button-secondary" onClick={() => startEditing(order)}>
                   <EditIcon />
                   Edit items
@@ -1160,7 +1165,7 @@ export default function OrderDetail() {
             <Facts rows={contactRows} />
           </section>
 
-          {order.source === 'shop' && (
+          {mayLink && order.source === 'shop' && (
             <CustomerLinkCard order={order} onChanged={customerChanged} onRefused={customerRefused} />
           )}
         </div>

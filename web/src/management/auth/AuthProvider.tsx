@@ -126,3 +126,14 @@ export function useAuth() {
   if (!value) throw new Error('useAuth must be used inside <AuthProvider>')
   return value
 }
+
+// Whether the signed-in person holds every one of the permission keys, as /api/auth/me
+// last reported them. This only decides what to show; the server checks every request.
+// While loading, or when signed out, nothing is held.
+// eslint-disable-next-line react-refresh/only-export-components
+export function usePermission(...keys: string[]) {
+  const { state } = useAuth()
+  if (state.status !== 'authenticated') return false
+  const held = state.staff.permissions ?? []
+  return keys.every((key) => held.includes(key))
+}

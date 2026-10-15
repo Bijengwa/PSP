@@ -131,6 +131,7 @@ const UPLOADS = fs.mkdtempSync(path.join(os.tmpdir(), 'psp-uploads-'));
 process.env.UPLOADS_DIR = UPLOADS;
 
 const db = require('../db');
+const { grantMatrix } = require('../auth/permissions.testing');
 const redis = require('../redis');
 const { app } = require('../server');
 const { hashPassword } = require('../auth/password');
@@ -163,6 +164,7 @@ beforeAll(async () => {
   await db.raw('truncate staff_profiles, roles restart identity cascade');
   const [admin] = await db('roles').insert({ name: 'IT', description: 'Full access' }).returning('id');
   const [staff] = await db('roles').insert({ name: 'staff', description: 'Staff' }).returning('id');
+  await grantMatrix();
   const hash = await hashPassword('Correct-Horse-42!');
   const rows = await db('staff_profiles')
     .insert([

@@ -1,5 +1,6 @@
 const sessions = require('./session.store');
 const { findStaffById } = require('./auth.service');
+const { permissionKeysForRole } = require('./permissions');
 
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const COOKIE_NAME = 'psp_sid';
@@ -80,6 +81,20 @@ function requireRole(...roles) {
   };
 }
 
+// Use after requireAuth. The caller's permission keys are read from Postgres on every
+// request (never cached); every key listed must be held, otherwise 403.
+async function assertPermission(req, ...keys) {
+  const held = new Set(await permissionKeysForRole(req.staff?.role));
+  if (!keys.every((key) => held.has(key))) throw httpError(403, 'Forbidden');
+}
+
+function requirePermission(...keys) {
+  return async function (req, res, next) {
+    await assertPermission(req, ...keys);
+    next();
+  };
+}
+
 module.exports = {
   COOKIE_NAME,
   httpError,
@@ -89,4 +104,6 @@ module.exports = {
   requireSameOrigin,
   requireAuth,
   requireRole,
+  assertPermission,
+  requirePermission,
 };

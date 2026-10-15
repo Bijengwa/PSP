@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { apiRequest } from '../../../api/client'
-import { CHANGE_PASSWORD_PATH, useAuth } from '../../auth/AuthProvider'
+import { CHANGE_PASSWORD_PATH, useAuth, usePermission } from '../../auth/AuthProvider'
 import '../../auth/auth.css'
 import { passwordRules } from '../../auth/login'
 import { initials } from '../layout/ProfileMenu'
@@ -731,6 +731,13 @@ export default function StaffProfile() {
   const { id = '' } = useParams()
   const { state, refresh } = useAuth()
   const selfId = state.status === 'authenticated' ? state.staff.id : null
+  const mayEdit = usePermission('staff.edit')
+  const mayChangeRole = usePermission('staff.change_role')
+  const mayResetPassword = usePermission('staff.reset_password')
+  const mayDeactivate = usePermission('staff.deactivate')
+  // False when this person's role holds permissions the signed-in person lacks (Staff
+  // looking at an IT account): the server refuses every change, so none is offered.
+  const [canManage, setCanManage] = useState(true)
 
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -741,11 +748,15 @@ export default function StaffProfile() {
 
   useEffect(() => {
     const controller = new AbortController()
-    apiRequest<{ staff: StaffDetail }>(`/api/office/staff/${encodeURIComponent(id)}`, { signal: controller.signal }).then(
+    apiRequest<{ staff: StaffDetail; canManage?: boolean }>(`/api/office/staff/${encodeURIComponent(id)}`, {
+      signal: controller.signal,
+    }).then(
       (result) => {
-        if (result.ok) setLoad({ status: 'ready', staff: result.data.staff })
-        else if (result.status === 404) setLoad({ status: 'missing' })
-        else if (result.status === 403) setLoad({ status: 'error', message: 'Only IT can see staff profiles.' })
+        if (result.ok) {
+          setCanManage(result.data.canManage !== false)
+          setLoad({ status: 'ready', staff: result.data.staff })
+        } else if (result.status === 404) setLoad({ status: 'missing' })
+        else if (result.status === 403) setLoad({ status: 'error', message: 'You do not have access to staff profiles.' })
         else if (result.status === 503) {
           setLoad({ status: 'error', message: 'The service is temporarily unavailable. Please try again shortly.' })
         } else setLoad({ status: 'error', message: result.message })
@@ -874,7 +885,7 @@ export default function StaffProfile() {
       <section className="office-card" aria-labelledby="profile-contact-heading">
         <div className="office-profile-card-head">
           <h2 id="profile-contact-heading">Contact details</h2>
-          {!editing && (
+          {!editing && mayEdit && canManage && (
             <button
               ref={editButtonRef}
               type="button"
@@ -914,9 +925,13 @@ export default function StaffProfile() {
         <p className="office-settings-hint office-profile-note">The email address is the sign-in name and cannot be changed.</p>
       </section>
 
-      <RoleCard staff={staff} isSelf={staff.id === selfId} onChanged={roleChanged} />
-      <PasswordCard staff={staff} isSelf={staff.id === selfId} onReset={passwordReset} />
-      <AccessCard staff={staff} isSelf={staff.id === selfId} onChanged={statusChanged} />
+      {canManage && mayChangeRole && <RoleCard staff={staff} isSelf={staff.id === selfId} onChanged={roleChanged} />}
+      {canManage && mayResetPassword && (
+        <PasswordCard staff={staff} isSelf={staff.id === selfId} onReset={passwordReset} />
+      )}
+      {canManage && mayDeactivate && (
+        <AccessCard staff={staff} isSelf={staff.id === selfId} onChanged={statusChanged} />
+      )}
     </div>
   )
 }

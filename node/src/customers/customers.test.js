@@ -57,6 +57,7 @@ jest.mock('../redis', () => {
 });
 
 const db = require('../db');
+const { grantMatrix } = require('../auth/permissions.testing');
 const { app } = require('../server');
 const sessions = require('../auth/session.store');
 const { phoneDigits } = require('./customers.service');
@@ -84,6 +85,7 @@ beforeAll(async () => {
   await db.migrate.latest();
   await db.raw('truncate staff_profiles, roles restart identity cascade');
   const [role] = await db('roles').insert({ name: 'staff', description: 'Staff' }).returning('id');
+  await grantMatrix();
   const [staff] = await db('staff_profiles')
     .insert({ full_name: 'Sam Staff', email: 's@psp.test', password_hash: 'x', role_id: role.id, must_change_password: false })
     .returning('id');

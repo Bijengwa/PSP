@@ -10,7 +10,23 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const admin = { id: 'a1', fullName: 'Asha Admin', email: 'asha@psp.test', role: 'IT', mustChangePassword: false }
+const admin = {
+  id: 'a1',
+  fullName: 'Asha Admin',
+  email: 'asha@psp.test',
+  role: 'IT',
+  mustChangePassword: false,
+  permissions: [
+    'staff.view',
+    'staff.register',
+    'staff.edit',
+    'staff.change_role',
+    'staff.deactivate',
+    'staff.reset_password',
+    'reset_requests.view',
+    'reset_requests.manage',
+  ],
+}
 const person = {
   id: 'p1',
   fullName: 'Sam Staff',
@@ -467,6 +483,31 @@ describe('StaffProfile password reset', () => {
     expect(within(card).getByRole('link', { name: 'Change password' }).getAttribute('href')).toBe(
       '/office/auth/change-password',
     )
+  })
+})
+
+describe('StaffProfile by permission (H5)', () => {
+  it('offers only the actions the person holds', async () => {
+    const limited = { ...admin, role: 'staff', permissions: ['staff.view', 'staff.edit'] }
+    stubApi(() => ok({ staff: person, canManage: true }), limited)
+    renderAt(`/office/staff/${person.id}`)
+
+    await screen.findByRole('heading', { level: 1, name: 'Sam Staff' })
+    expect(screen.getByRole('button', { name: 'Edit' })).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Change role' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reset password' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Deactivate' })).toBeNull()
+  })
+
+  it('offers no change on an account the server says cannot be managed', async () => {
+    const staffRole = { ...admin, role: 'staff', permissions: admin.permissions.filter((key) => key !== 'staff.register') }
+    stubApi(() => ok({ staff: { ...person, role: 'IT' }, canManage: false }), staffRole)
+    renderAt(`/office/staff/${person.id}`)
+
+    await screen.findByRole('heading', { level: 1, name: 'Sam Staff' })
+    for (const name of ['Edit', 'Change role', 'Reset password', 'Deactivate']) {
+      expect(screen.queryByRole('button', { name })).toBeNull()
+    }
   })
 })
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
+import { usePermission } from '../../auth/AuthProvider'
 import { initials } from '../layout/ProfileMenu'
 import { CUSTOMERS_PATH, type CustomerAddress, type CustomerRecord } from './CustomerForm'
 import { displayName, phoneText } from './CustomersList'
@@ -257,6 +258,7 @@ function CustomerOrders({ customerId }: { customerId: string }) {
 
 // /office/customers/:id: one customer's contacts, addresses, linked orders and notes.
 export default function CustomerDetail() {
+  const canEdit = usePermission('customers.edit')
   const { id = '' } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -405,12 +407,14 @@ export default function CustomerDetail() {
             </div>
           </div>
         </div>
-        <div className="office-product-actions">
-          <Link className="button button-secondary" to={`${CUSTOMERS_PATH}/${customer.id}/edit`}>
-            <EditIcon />
-            Edit customer
-          </Link>
-        </div>
+        {canEdit && (
+          <div className="office-product-actions">
+            <Link className="button button-secondary" to={`${CUSTOMERS_PATH}/${customer.id}/edit`}>
+              <EditIcon />
+              Edit customer
+            </Link>
+          </div>
+        )}
       </div>
 
       {notice && (
@@ -434,9 +438,11 @@ export default function CustomerDetail() {
             {customer.addresses.length === 0 ? (
               <p className="office-address-empty">
                 No addresses yet.{' '}
-                <Link className="office-staff-link" to={`${CUSTOMERS_PATH}/${customer.id}/edit`}>
-                  Add one
-                </Link>
+                {canEdit && (
+                  <Link className="office-staff-link" to={`${CUSTOMERS_PATH}/${customer.id}/edit`}>
+                    Add one
+                  </Link>
+                )}
               </p>
             ) : (
               <ul className="office-customer-addresses">

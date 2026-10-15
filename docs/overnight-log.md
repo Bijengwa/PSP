@@ -1844,3 +1844,31 @@ H2 ticked; current step is **H3**, which needs the user to approve the role matr
 - Scope Guard asked to confirm H4's checks passed before ticking. They did (above).
 
 H4 ticked; current step is **H5**. H5 was not started. Nothing committed.
+
+---
+
+## H5 Permission enforcement (old M5.3), 2026-10-15
+
+**What changed**
+- `node/src/auth/auth.middleware.js`: `requirePermission(...keys)` and `assertPermission(req, ...keys)`; keys are read from Postgres on every request, all listed keys must be held, otherwise 403.
+- Routes: every office endpoint (staff, roles, reset requests, products, customers, orders) uses its key; `requireRole('IT')` is gone from the office router. `PATCH /staff/:id` picks the key from the body (`staff.change_role`, `staff.deactivate`, `staff.edit`).
+- "Staff cannot act on IT accounts": `assertCanActOn` on PATCH and reset-password refuses (403) when the target's role holds permissions the actor lacks. Compared by permission, not role name. `GET /staff/:id` returns `canManage`.
+- Web: `usePermission` in `AuthProvider.tsx`; sidebar items carry a `permission`; hidden buttons on Products, Customers, Orders, Staff list, Customer detail, Order detail, Staff profile and Reset requests.
+- Tests: new `node/src/auth/permissions.enforcement.test.js` and helper `permissions.testing.js` (re-grants the matrix after suites truncate roles); existing "Staff gets 403" tests updated to the approved matrix; new Sidebar and StaffProfile tests.
+- `web/scripts/responsive-check.mjs`: mocked `/me` now has permissions, and the mock role name `admin` became `IT` (stale since H3).
+
+**Verified**
+- `node` `npm test`: 12 suites, 413 pass.
+- `web` `npm test`: 153 pass; `npm run build` and `npm run lint` clean.
+- `npm run check:responsive`: passed (exit 0). Earlier runs failed on the stale mock and one browser crash. I did not view the screenshots; only buttons are conditionally hidden. Per policy, tests plus the check stand in for a manual browser run.
+
+**Decisions**
+- Key mapping: `/roles` needs `staff.view`; `POST /orders/:id/customer` needs `orders.link` and `customers.create`; customer duplicates needs `customers.view`.
+- Inventory and Reports links use keys nobody holds, so they are hidden for everyone until H8.
+- The IT sidebar group keeps its name but shows to Staff for the items they hold.
+- Edit forms (product, customer) are still reachable by URL without the edit permission; the server refuses the save with 403.
+
+**Guard warnings**
+- Collision Guard named another session editing `auth.routes.js`, `staff.test.js`, `auth.test.js` and `AuthProvider.tsx`. I re-read `auth.routes.js` and it held only my edits.
+
+H5 ticked; current step is **H6**. H6 was not started. Nothing committed.

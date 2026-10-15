@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react
 import { Link, useLocation, useNavigate } from 'react-router'
 import { apiRequest, type ApiResult } from '../../../api/client'
 import '../../auth/auth.css'
+import { usePermission } from '../../auth/AuthProvider'
 import { initials } from '../layout/ProfileMenu'
 
 type CustomerType = 'individual' | 'company'
@@ -158,6 +159,7 @@ function Contacts({ customer }: { customer: Customer }) {
 // company, phone or email, paged. A name opens the customer's detail page.
 export default function CustomersList() {
   const compact = useSyncExternalStore(subscribeToCompact, () => window.matchMedia(COMPACT_QUERY).matches)
+  const canCreate = usePermission('customers.create')
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -247,12 +249,14 @@ export default function CustomersList() {
           <h1 className="office-title">Customers</h1>
           <p className="office-lead">The people and companies PSP sells to</p>
         </div>
-        <div className="office-product-actions">
-          <Link className="button button-primary" to={`${CUSTOMERS_PATH}/new`}>
-            <PlusIcon />
-            Add customer
-          </Link>
-        </div>
+        {canCreate && (
+          <div className="office-product-actions">
+            <Link className="button button-primary" to={`${CUSTOMERS_PATH}/new`}>
+              <PlusIcon />
+              Add customer
+            </Link>
+          </div>
+        )}
       </div>
 
       {notice && (

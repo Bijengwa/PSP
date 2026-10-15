@@ -1258,3 +1258,60 @@ H4 Permissions is done and ticked. `docs/progress.md` now shows **H5** as the cu
 - **Test database:** existing tests truncate `roles`, which empties `role_permissions`; the new test block re-runs the migration to restore the grants.
 
 H4 has no "Done when" line, so I used its Scope as the bar.
+H5 is built and the node, web test, build and lint checks pass. `check:responsive` has not given a result: two earlier runs failed (a stale script mock, then a browser crash) and a third is running in the background. I have not ticked H5 or touched `docs/progress.md` or `docs/overnight-log.md` yet.
+
+**Done**
+- **Server:** `requirePermission(key)` now guards every office endpoint (staff, reset requests, products, customers, orders), replacing `requireRole('IT')`. Keys are read from Postgres on each request.
+- **Staff cannot act on IT accounts:** edit, deactivate, role change and password reset on an account whose role holds permissions the actor lacks return 403. This is compared by permission, not role name.
+- **Web:** the sidebar, list-page "add/new" buttons, edit and action buttons, and the staff profile cards are hidden by permission through a new `usePermission` hook. `GET /api/office/staff/:id` also returns `canManage`.
+- **Tests:** a new `permissions.enforcement.test.js` removes each key in turn and expects 403 on every endpoint. Existing tests that assumed "Staff gets 403" were updated to the approved matrix.
+
+**Checks**
+- `node` `npm test`: 12 suites, 413 tests pass.
+- `web` `npm test`: 153 pass (one run had a timeout flake in `StaffProfile`; it passed on rerun). `npm run build` and `npm run lint` are clean.
+- **Responsive check:**
+  - The script's mock still used the pre-H3 role name `admin` and had no permissions, so I fixed both.
+  - After that, one run hit a browser "Target crashed" late in the 1280px dark pass. A later run printed no final result and may have been cut off by my timeout. The background run is the one to trust.
+
+**Decisions**
+- Key choices: `staff.view` guards `/roles`; the order-create-customer route needs both `orders.link` and `customers.create`.
+- Inventory and Reports links are now hidden for everyone, because no role holds `inventory.view` or `reports.view`.
+- The "IT" sidebar group now also shows to Staff for the items they hold.
+- `requireRole` stays in the middleware only for the generic middleware tests; no office endpoint uses it.
+
+**Left**
+- Wait for the responsive result, then write `docs/overnight-log.md` and tick H5 with current step H6.
+- Nothing is committed. I could not run `git diff` here (needs approval), so I reviewed the changes file by file.
+- Product, customer and order edit forms are still reachable by URL without the edit permission. The server refuses the save with 403, but the form is not hidden.
+
+H5 is built, its checks pass, and it is ticked in `docs/progress.md`; the current step is now **H6**. Nothing is committed and H6 is not started.
+
+**What changed**
+- **Server:** every office endpoint now needs its own permission key via `requirePermission`, read from Postgres on each request. A missing key returns 403. The old `requireRole('IT')` is gone from the office router.
+- **Staff vs IT accounts:** Staff get 403 on edit, deactivate, role change and password reset for an IT account. The server compares permissions, not role names.
+- **Web:** the sidebar and the add/edit/action buttons are hidden by permission. The staff profile hides its cards when the server reports the account cannot be managed.
+- **Tests:** a new `permissions.enforcement.test.js` removes each key in turn and expects 403 on every endpoint, which is the "Done when" check. Existing "Staff gets 403" tests were updated to the approved matrix.
+
+**Checks**
+- `node` `npm test`: 12 suites, 413 pass.
+- `web` `npm test`: 153 pass. `npm run build` and `npm run lint` are clean.
+- `npm run check:responsive`: passed (exit 0) on the third run; I did not view the screenshots, and per policy the check stands in for a manual browser run.
+- Earlier runs failed on a stale script mock and a browser crash. The mock used the pre-H3 role name `admin` and had no permissions, so I fixed it in `web/scripts/responsive-check.mjs`.
+
+**Decisions** (also in `docs/overnight-log.md`)
+- Inventory and Reports links are hidden for everyone until H8, because no role holds their keys.
+- The "IT" sidebar group now shows to Staff for the items they hold.
+- Product and customer edit forms are still reachable by URL without the edit permission. The server refuses the save with 403, but the form itself is not hidden.
+
+**Guard warnings**
+- Scope Guard flagged the tick-before-current-step order in `progress.md`; both edits are intended because H5's checks passed.
+- Collision Guard named another session on `auth.routes.js`, `staff.test.js`, `auth.test.js` and `AuthProvider.tsx`. I re-read `auth.routes.js` and it held only my edits.
+- I could not run `git diff` here, so I reviewed the changes file by file.
+
+That wakeup prompt was left over from earlier, and all of it is already done:
+
+- **Responsive check:** the background `check:responsive` run finished with exit code 0, so it passed.
+- **Log:** the H5 section is written in `docs/overnight-log.md`.
+- **Progress:** H5 is ticked in `docs/progress.md` and the current step is **H6**.
+
+I have not started H6, and I have not edited either doc again. Nothing is committed.

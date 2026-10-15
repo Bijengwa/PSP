@@ -1,5 +1,5 @@
 const express = require('express');
-const { httpError, requireSameOrigin, requireAuth } = require('../auth/auth.middleware');
+const { httpError, requireSameOrigin, requireAuth, requirePermission } = require('../auth/auth.middleware');
 const {
   PRODUCT_STATUSES,
   STOCK_FILTERS,
@@ -18,8 +18,8 @@ const {
 } = require('./products.service');
 const { readPhotos, storePhotos, removeFile } = require('./products.images');
 
-// Office product catalogue, mounted at /api/office/products. Any signed-in staff
-// member may use it until the permissions stage (H3-H5) replaces role checks.
+// Office product catalogue, mounted at /api/office/products. Every route needs a
+// products.* permission, read from Postgres on each request.
 const router = express.Router();
 router.use(requireSameOrigin, requireAuth());
 
@@ -169,11 +169,11 @@ async function parseProduct(body, { partial }) {
   return Object.keys(fields).length ? { fields } : { values };
 }
 
-router.get('/categories', async (req, res) => {
+router.get('/categories', requirePermission('products.view'), async (req, res) => {
   res.json({ success: true, data: { categories: await listCategories() } });
 });
 
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('products.view'), async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
   const status = req.query.status || undefined;
   if (status && !PRODUCT_STATUSES.includes(status)) {
@@ -195,7 +195,7 @@ router.get('/', async (req, res) => {
   });
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requirePermission('products.create'), async (req, res) => {
   const parsed = await parseProduct(req.body, { partial: false });
   if (parsed.fields) throw validationError(parsed.fields);
 
@@ -229,13 +229,13 @@ function idParam(req) {
   return req.params.id;
 }
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', requirePermission('products.view'), async (req, res) => {
   const product = await findProduct(idParam(req));
   if (!product) throw httpError(404, 'Not found');
   res.json({ success: true, data: { product } });
 });
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requirePermission('products.edit'), async (req, res) => {
   const id = idParam(req);
   const parsed = await parseProduct(req.body, { partial: true });
   if (parsed.fields) throw validationError(parsed.fields);
@@ -266,7 +266,7 @@ router.patch('/:id', async (req, res) => {
 
 // ---------- Photos ----------
 
-router.post('/:id/images', readPhotos, async (req, res) => {
+router.post('/:id/images', requirePermission('products.edit'), readPhotos, async (req, res) => {
   const id = idParam(req);
   const product = await findProduct(id);
   if (!product) throw httpError(404, 'Not found');
@@ -287,7 +287,7 @@ router.post('/:id/images', readPhotos, async (req, res) => {
   res.status(201).json({ success: true, data: { product: await findProduct(id) } });
 });
 
-router.put('/:id/images/order', async (req, res) => {
+router.put('/:id/images/order', requirePermission('products.edit'), async (req, res) => {
   const id = idParam(req);
   const order = req.body?.imageIds;
   if (!Array.isArray(order) || !order.every((value) => typeof value === 'string' && UUID_PATTERN.test(value))) {
@@ -300,7 +300,7 @@ router.put('/:id/images/order', async (req, res) => {
   res.json({ success: true, data: { product: await findProduct(id) } });
 });
 
-router.delete('/:id/images/:imageId', async (req, res) => {
+router.delete('/:id/images/:imageId', requirePermission('products.edit'), async (req, res) => {
   const id = idParam(req);
   if (!UUID_PATTERN.test(req.params.imageId)) throw httpError(404, 'Not found');
   const removed = await removeImage(id, req.params.imageId);

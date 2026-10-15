@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react
 import { Link, useLocation, useNavigate } from 'react-router'
 import { apiRequest, apiUrl, type ApiResult } from '../../../api/client'
 import '../../auth/auth.css'
+import { usePermission } from '../../auth/AuthProvider'
 import { PRODUCTS_PATH, TZS, useCategories, type Product, type StockStatus } from './ProductForm'
 
 type Counts = { all: number; in_stock: number; low_stock: number; out_of_stock: number }
@@ -125,6 +126,9 @@ function Badges({ product }: { product: Product }) {
 }
 
 function Stepper({ product, busy, onStep }: { product: Product; busy: boolean; onStep: (delta: -1 | 1) => void }) {
+  const canEdit = usePermission('products.edit')
+  // Without products.edit the stock is shown, not adjustable.
+  if (!canEdit) return <span>{product.quantityInStock}</span>
   return (
     <span className="office-stepper">
       <button
@@ -153,6 +157,7 @@ function Stepper({ product, busy, onStep }: { product: Product; busy: boolean; o
 }
 
 function EditLink({ product }: { product: Product }) {
+  if (!usePermission('products.edit')) return null
   return (
     <Link
       className="office-icon-action"
@@ -169,6 +174,7 @@ function EditLink({ product }: { product: Product }) {
 export default function ProductsList() {
   const compact = useSyncExternalStore(subscribeToCompact, () => window.matchMedia(COMPACT_QUERY).matches)
   const { categories } = useCategories()
+  const canCreate = usePermission('products.create')
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -292,12 +298,14 @@ export default function ProductsList() {
           <h1 className="office-title">Products</h1>
           <p className="office-lead">Change a quantity with − and + to see the stock status update</p>
         </div>
-        <div className="office-product-actions">
-          <Link className="button button-primary" to={`${PRODUCTS_PATH}/new`}>
-            <PlusIcon />
-            Add product
-          </Link>
-        </div>
+        {canCreate && (
+          <div className="office-product-actions">
+            <Link className="button button-primary" to={`${PRODUCTS_PATH}/new`}>
+              <PlusIcon />
+              Add product
+            </Link>
+          </div>
+        )}
       </div>
 
       {notice && (
