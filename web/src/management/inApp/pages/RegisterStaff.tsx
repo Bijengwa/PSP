@@ -4,7 +4,7 @@ import { apiRequest } from '../../../api/client'
 import { passwordRules } from '../../auth/login'
 import '../../auth/auth.css'
 
-type Role = 'admin' | 'staff'
+type Role = 'IT' | 'staff'
 type FieldName = 'fullName' | 'email' | 'phone' | 'role' | 'temporaryPassword'
 type FieldErrors = Partial<Record<FieldName, string>>
 type TextFieldName = Exclude<FieldName, 'role' | 'temporaryPassword'>
@@ -12,7 +12,7 @@ type TextFieldName = Exclude<FieldName, 'role' | 'temporaryPassword'>
 type RegisteredStaff = { id: string; fullName: string; email: string; phone: string; role: Role }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const ROLE_LABELS: Record<Role, string> = { admin: 'Admin', staff: 'Staff' }
+const ROLE_LABELS: Record<Role, string> = { IT: 'IT', staff: 'Staff' }
 const FIELD_NAMES: FieldName[] = ['fullName', 'email', 'phone', 'role', 'temporaryPassword']
 
 // The form only catches what is cheap to see; the server stays the authority.
@@ -83,7 +83,7 @@ export default function RegisterStaff() {
 
     // 401 and 503 are also handled by the auth provider (login / unavailable screen).
     if (result.status === 403) {
-      setFormError('Only administrators can register staff.')
+      setFormError('Only IT can register staff.')
     } else if (result.status === 503) {
       setFormError('The service is temporarily unavailable. Please try again shortly.')
     } else {
@@ -190,7 +190,7 @@ export default function RegisterStaff() {
             aria-describedby={describedBy('role', 'register-role-hint')}
           >
             <option value="staff">Staff</option>
-            <option value="admin">Admin</option>
+            <option value="IT">IT</option>
           </select>
           <p id="register-role-hint" className="office-settings-hint">
             Admins can register staff and see everything. Staff are normal employees.

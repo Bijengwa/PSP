@@ -62,7 +62,7 @@ function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status })
 }
 
-const staff = { id: '1', fullName: 'Test Admin', email: 'admin@psp.test', role: 'admin', mustChangePassword: false }
+const staff = { id: '1', fullName: 'Test Admin', email: 'admin@psp.test', role: 'IT', mustChangePassword: false }
 
 describe('login return-to', () => {
   it('sends the person to the page they asked for after logging in', async () => {

@@ -169,7 +169,7 @@ beforeAll(async () => {
   await db.migrate.latest();
   await db.raw('truncate staff_profiles, roles restart identity cascade');
 
-  const [role] = await db('roles').insert({ name: 'admin', description: 'Full access' }).returning('id');
+  const [role] = await db('roles').insert({ name: 'IT', description: 'Full access' }).returning('id');
   passwordHash = await hashPassword(PASSWORD);
   const [admin] = await db('staff_profiles')
     .insert([
@@ -200,7 +200,7 @@ describe('POST /api/auth/login', () => {
     expect(res.body).toEqual({
       success: true,
       data: {
-        staff: { id: adminId, fullName: ADMIN.fullName, email: ADMIN.email, role: 'admin', mustChangePassword: false },
+        staff: { id: adminId, fullName: ADMIN.fullName, email: ADMIN.email, role: 'IT', mustChangePassword: false },
       },
     });
     expect(res.text).not.toContain('password_hash');
@@ -294,7 +294,7 @@ describe('GET /api/auth/me', () => {
       id: adminId,
       fullName: ADMIN.fullName,
       email: ADMIN.email,
-      role: 'admin',
+      role: 'IT',
       mustChangePassword: false,
     });
   });
@@ -541,7 +541,7 @@ describe('revocation', () => {
 describe('protected management routes', () => {
   // A stand-in for future office routes, using the real middleware and error handler.
   const office = express();
-  office.get('/office-only', requireAuth(), requireRole('admin'), (req, res) => res.json({ ok: req.staff.id }));
+  office.get('/office-only', requireAuth(), requireRole('IT'), (req, res) => res.json({ ok: req.staff.id }));
   office.get('/other-role', requireAuth(), requireRole('accountant'), (req, res) => res.json({ ok: true }));
   office.use(errorHandler);
 

@@ -91,7 +91,7 @@ const as = (cookie) => ({
 beforeAll(async () => {
   await db.migrate.latest();
   await db.raw('truncate staff_profiles, roles restart identity cascade');
-  const [admin] = await db('roles').insert({ name: 'admin', description: 'Full access' }).returning('id');
+  const [admin] = await db('roles').insert({ name: 'IT', description: 'Full access' }).returning('id');
   const [staff] = await db('roles').insert({ name: 'staff', description: 'Staff' }).returning('id');
   const hash = await hashPassword('Correct-Horse-42!');
   const rows = await db('staff_profiles')
@@ -198,7 +198,7 @@ describe('PATCH /api/office/staff/:id', () => {
   test('other fields cannot be changed through this route', async () => {
     for (const body of [
       { email: 'new@psp.test' },
-      { role: 'admin', fullName: 'Sam' },
+      { role: 'IT', fullName: 'Sam' },
       { isActive: false, fullName: 'Sam' },
       { fullName: 'Sam', passwordHash: 'x' },
     ]) {
@@ -332,7 +332,7 @@ describe('PATCH /api/office/staff/:id { isActive }', () => {
   });
 
   test('another admin can be deactivated while one stays active', async () => {
-    const other = await person('admin');
+    const other = await person('IT');
     const res = await as(adminCookie).patch(`/api/office/staff/${other.id}`, { isActive: false });
 
     expect(res.status).toBe(200);
@@ -350,14 +350,14 @@ describe('PATCH /api/office/staff/:id { isActive }', () => {
   });
 
   test('two admins deactivating each other at once leave one active', async () => {
-    const one = await person('admin');
+    const one = await person('IT');
     const results = await Promise.all([
       setStaffActive(one.id, false, { actorId: adminId }),
       setStaffActive(adminId, false, { actorId: one.id }),
     ]);
 
     expect(results.filter((r) => r.error === 'last_admin')).toHaveLength(1);
-    const active = await db('staff_profiles').where({ role_id: roleIds.admin, is_active: true }).select('id');
+    const active = await db('staff_profiles').where({ role_id: roleIds.IT, is_active: true }).select('id');
     expect(active).toHaveLength(1);
 
     // Put the main admin back for the tests after this one.
@@ -693,7 +693,7 @@ describe('GET /api/office/roles', () => {
     const res = await as(adminCookie).get('/api/office/roles');
     expect(res.status).toBe(200);
     expect(res.body.data.roles).toEqual([
-      { name: 'admin', description: 'Full access' },
+      { name: 'IT', description: 'Full access' },
       { name: 'staff', description: 'Staff' },
     ]);
 
@@ -707,15 +707,15 @@ describe('PATCH /api/office/staff/:id { role }', () => {
 
   // Every admin except the main one is made inactive, so the main admin is the last active one.
   const onlyMainAdminActive = () =>
-    db('staff_profiles').where({ role_id: roleIds.admin }).whereNot({ id: adminId }).update({ is_active: false });
+    db('staff_profiles').where({ role_id: roleIds.IT }).whereNot({ id: adminId }).update({ is_active: false });
 
   test('a promoted person is signed out at once and signs in again as admin', async () => {
     const sam = await person();
     const phone = `psp_sid=${(await sessions.create({ staffId: sam.id, ip: '::2', userAgent: 'phone' })).id}`;
 
-    const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { role: 'admin' });
+    const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { role: 'IT' });
     expect(res.status).toBe(200);
-    expect(res.body.data.staff).toMatchObject({ id: sam.id, role: 'admin' });
+    expect(res.body.data.staff).toMatchObject({ id: sam.id, role: 'IT' });
 
     expect((await me(sam.cookie)).status).toBe(401);
     expect((await me(phone)).status).toBe(401);
@@ -724,13 +724,13 @@ describe('PATCH /api/office/staff/:id { role }', () => {
 
     const again = await login(sam.email);
     expect(again.status).toBe(200);
-    expect(again.body.data.staff.role).toBe('admin');
+    expect(again.body.data.staff.role).toBe('IT');
     const cookie = again.headers['set-cookie'][0].split(';')[0];
     expect((await as(cookie).get('/api/office/roles')).status).toBe(200);
   });
 
   test('a demoted admin is signed out and loses IT access on the next sign-in', async () => {
-    const other = await person('admin');
+    const other = await person('IT');
 
     const res = await as(adminCookie).patch(`/api/office/staff/${other.id}`, { role: 'staff' });
     expect(res.status).toBe(200);
@@ -752,15 +752,15 @@ describe('PATCH /api/office/staff/:id { role }', () => {
   });
 
   test('an admin cannot remove their own admin role', async () => {
-    await person('admin'); // another active admin, so only the self rule applies
+    await person('IT'); // another active admin, so only the self rule applies
     const res = await as(adminCookie).patch(`/api/office/staff/${adminId}`, { role: 'staff' });
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatchObject({
       code: 'CANNOT_DEMOTE_SELF',
-      message: 'You cannot remove your own admin role.',
+      message: 'You cannot remove your own IT role.',
     });
-    expect(await roleOf(adminId)).toBe('admin');
+    expect(await roleOf(adminId)).toBe('IT');
     expect((await me(adminCookie)).status).toBe(200);
   });
 
@@ -771,12 +771,12 @@ describe('PATCH /api/office/staff/:id { role }', () => {
     const result = await setStaffRole(adminId, 'staff', { actorId: staffId });
 
     expect(result).toEqual({ error: 'last_admin' });
-    expect(await roleOf(adminId)).toBe('admin');
+    expect(await roleOf(adminId)).toBe('IT');
     expect((await me(adminCookie)).status).toBe(200);
   });
 
   test('an inactive admin can be demoted while one active admin remains', async () => {
-    const other = await person('admin');
+    const other = await person('IT');
     await onlyMainAdminActive();
 
     const res = await as(adminCookie).patch(`/api/office/staff/${other.id}`, { role: 'staff' });
@@ -786,19 +786,19 @@ describe('PATCH /api/office/staff/:id { role }', () => {
 
   test('two admins demoting each other at once leave one admin', async () => {
     await onlyMainAdminActive();
-    const one = await person('admin');
+    const one = await person('IT');
     const results = await Promise.all([
       setStaffRole(one.id, 'staff', { actorId: adminId }),
       setStaffRole(adminId, 'staff', { actorId: one.id }),
     ]);
 
     expect(results.filter((r) => r.error === 'last_admin')).toHaveLength(1);
-    const admins = await db('staff_profiles').where({ role_id: roleIds.admin, is_active: true }).select('id');
+    const admins = await db('staff_profiles').where({ role_id: roleIds.IT, is_active: true }).select('id');
     expect(admins).toHaveLength(1);
 
     // Put the main admin back for the tests after this one.
     if (admins[0].id !== adminId) {
-      await db('staff_profiles').where({ id: adminId }).update({ role_id: roleIds.admin });
+      await db('staff_profiles').where({ id: adminId }).update({ role_id: roleIds.IT });
       adminCookie = `psp_sid=${(await sessions.create({ staffId: adminId, ip: '::1', userAgent: 't' })).id}`;
     }
   });
@@ -810,8 +810,8 @@ describe('PATCH /api/office/staff/:id { role }', () => {
       { role: 'Admin' },
       { role: '' },
       { role: null },
-      { role: ['admin'] },
-      { role: 'admin', isActive: true },
+      { role: ['IT'] },
+      { role: 'IT', isActive: true },
     ]) {
       const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, body);
       expect(res.status).toBe(400);
@@ -826,7 +826,7 @@ describe('PATCH /api/office/staff/:id { role }', () => {
     const sam = await person();
     const spy = jest.spyOn(redis.client, 'sMembers').mockRejectedValueOnce(new Error('connection lost'));
 
-    const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { role: 'admin' });
+    const res = await as(adminCookie).patch(`/api/office/staff/${sam.id}`, { role: 'IT' });
     spy.mockRestore();
 
     expect(res.status).toBe(503);
@@ -835,16 +835,32 @@ describe('PATCH /api/office/staff/:id { role }', () => {
 
   test('unknown ids are 404; a non-admin gets 403; another origin is refused', async () => {
     const sam = await person();
-    expect((await as(adminCookie).patch(`/api/office/staff/${MISSING_ID}`, { role: 'admin' })).status).toBe(404);
-    expect((await as(staffCookie).patch(`/api/office/staff/${staffId}`, { role: 'admin' })).status).toBe(403);
+    expect((await as(adminCookie).patch(`/api/office/staff/${MISSING_ID}`, { role: 'IT' })).status).toBe(404);
+    expect((await as(staffCookie).patch(`/api/office/staff/${staffId}`, { role: 'IT' })).status).toBe(403);
 
     const foreign = await request(app)
       .patch(`/api/office/staff/${sam.id}`)
       .set('Cookie', adminCookie)
       .set('Origin', 'https://evil.example')
-      .send({ role: 'admin' });
+      .send({ role: 'IT' });
     expect(foreign.status).toBe(403);
     expect(await roleOf(sam.id)).toBe('staff');
     expect(await roleOf(staffId)).toBe('staff');
+  });
+});
+
+describe('the IT role (H3)', () => {
+  const MIGRATION = '20261015090000_rename_admin_role_to_it.js';
+  const roleName = async (id) => (await db('staff_profiles as s').join('roles as r', 'r.id', 's.role_id').where('s.id', id).first('r.name')).name;
+
+  test('migrating down and up again renames the role, and the people who hold it keep it', async () => {
+    expect(await roleName(adminId)).toBe('IT');
+
+    await db.migrate.down({ name: MIGRATION });
+    expect(await roleName(adminId)).toBe('admin');
+
+    await db.migrate.latest();
+    expect(await roleName(adminId)).toBe('IT');
+    expect(await db('roles').where({ name: 'admin' }).first('id')).toBeUndefined();
   });
 });

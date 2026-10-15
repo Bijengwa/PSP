@@ -158,7 +158,7 @@ function uuidParam(req, name) {
 }
 
 const officeRouter = express.Router();
-officeRouter.use(requireSameOrigin, requireAuth(), requireRole('admin'));
+officeRouter.use(requireSameOrigin, requireAuth(), requireRole('IT'));
 
 officeRouter.get('/reset-requests', async (req, res) => {
   const status = req.query.status ?? 'pending';
@@ -297,7 +297,7 @@ async function changeStatus(req, res, staffId, isActive) {
     throw httpError(409, 'You cannot deactivate your own account.', 'CANNOT_DEACTIVATE_SELF');
   }
   if (result.error === 'last_admin') {
-    throw httpError(409, 'The last active admin cannot be deactivated.', 'LAST_ADMIN');
+    throw httpError(409, 'The last active IT person cannot be deactivated.', 'LAST_ADMIN');
   }
 
   if (result.changed) {
@@ -318,10 +318,10 @@ async function changeRole(req, res, staffId, role) {
     });
   }
   if (result.error === 'self') {
-    throw httpError(409, 'You cannot remove your own admin role.', 'CANNOT_DEMOTE_SELF');
+    throw httpError(409, 'You cannot remove your own IT role.', 'CANNOT_DEMOTE_SELF');
   }
   if (result.error === 'last_admin') {
-    throw httpError(409, 'The last active admin cannot be given another role.', 'LAST_ADMIN');
+    throw httpError(409, 'The last active IT person cannot be given another role.', 'LAST_ADMIN');
   }
 
   if (result.changed) {

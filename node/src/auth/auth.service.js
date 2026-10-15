@@ -183,7 +183,7 @@ async function resetStaffPassword({ staffId, temporaryPassword, resetBy }) {
   return { staff: toPublicStaff({ ...staff, must_change_password: true }), resolvedRequests };
 }
 
-const REGISTRABLE_ROLES = ['admin', 'staff'];
+const REGISTRABLE_ROLES = ['IT', 'staff'];
 
 // IT registers someone with a temporary password. Returns { staff }, or
 // { error: 'weak', problems }, { error: 'email_taken' } or { error: 'role' }.
@@ -291,7 +291,7 @@ async function setStaffActive(id, isActive, { actorId }) {
   const result = await db.transaction(async (trx) => {
     const activeAdmins = await trx('staff_profiles as s')
       .join('roles as r', 'r.id', 's.role_id')
-      .where({ 'r.name': 'admin', 's.is_active': true })
+      .where({ 'r.name': 'IT', 's.is_active': true })
       .orderBy('s.id')
       .forUpdate('s')
       .select('s.id');
@@ -303,7 +303,7 @@ async function setStaffActive(id, isActive, { actorId }) {
     if (!target) return null;
 
     if (!isActive) {
-      if (target.role === 'admin' && target.is_active && activeAdmins.length <= 1) return { error: 'last_admin' };
+      if (target.role === 'IT' && target.is_active && activeAdmins.length <= 1) return { error: 'last_admin' };
       await sessions.destroyAllForStaff(id);
     }
     await trx('staff_profiles').where({ id }).update({ is_active: isActive, updated_at: trx.fn.now() });
@@ -334,7 +334,7 @@ async function setStaffRole(id, role, { actorId }) {
   const result = await db.transaction(async (trx) => {
     const activeAdmins = await trx('staff_profiles as s')
       .join('roles as r', 'r.id', 's.role_id')
-      .where({ 'r.name': 'admin', 's.is_active': true })
+      .where({ 'r.name': 'IT', 's.is_active': true })
       .orderBy('s.id')
       .forUpdate('s')
       .select('s.id');
@@ -346,7 +346,7 @@ async function setStaffRole(id, role, { actorId }) {
     if (!target) return null;
     if (target.role === role) return { changed: false, from: target.role };
 
-    if (target.role === 'admin') {
+    if (target.role === 'IT') {
       if (id === actorId) return { error: 'self' };
       if (target.is_active && activeAdmins.length <= 1) return { error: 'last_admin' };
     }

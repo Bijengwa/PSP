@@ -1,10 +1,10 @@
-# Overnight run (2026-10-15): H1 -> H2, the hardening reviews that need no approval.
-# Stops when the current step becomes H3 or later: the role matrix (H3) needs the user's
-# approval first, H4-H7 depend on it, and H8 needs the user's sign-off.
+# Overnight run (2026-10-15): H4 -> H5 -> H6 -> H7 (permissions, enforcement, audit).
+# The role matrix was approved on 2026-10-15. Stops when the current step becomes H8:
+# the final security review needs the user's sign-off.
 # Waits and retries when the Claude usage limit is hit.
 # Before sleeping: set Windows sleep to "Never" while plugged in, and keep this window open.
 # Run from the PSP folder:  powershell -ExecutionPolicy Bypass -File .\overnight.ps1
-$stopAt = '\*\*(H[3-8])'
+$stopAt = '\*\*(H8)'
 $mods = ".claude\mods\psp-guards"
 $maxSteps = 25
 $maxLimitWaits = 14   # 14 x 30 minutes = 7 hours per step

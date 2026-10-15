@@ -10,7 +10,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const admin = { id: 'a1', fullName: 'Asha Admin', email: 'asha@psp.test', role: 'admin', mustChangePassword: false }
+const admin = { id: 'a1', fullName: 'Asha Admin', email: 'asha@psp.test', role: 'IT', mustChangePassword: false }
 const person = {
   id: 'p1',
   fullName: 'Sam Staff',
@@ -235,7 +235,7 @@ describe('StaffProfile access', () => {
   })
 
   it('offers no deactivation on your own profile', async () => {
-    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'admin' } }))
+    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'IT' } }))
     renderAt(`/office/staff/${admin.id}`)
 
     const access = await screen.findByRole('region', { name: 'Access' })
@@ -246,7 +246,7 @@ describe('StaffProfile access', () => {
 
 describe('StaffProfile role', () => {
   const roles = [
-    { name: 'admin', description: 'Full access to the office' },
+    { name: 'IT', description: 'Full access to the office' },
     { name: 'staff', description: 'Normal office employee' },
   ]
 
@@ -269,24 +269,24 @@ describe('StaffProfile role', () => {
     const staffOption = await within(card).findByRole('radio', { name: /Staff/ })
     await waitFor(() => expect(document.activeElement).toBe(staffOption))
     expect((staffOption as HTMLInputElement).checked).toBe(true)
-    const adminOption = within(card).getByRole('radio', { name: /Admin/ })
-    expect(adminOption.getAttribute('aria-describedby')).toBe('role-admin-description')
+    const adminOption = within(card).getByRole('radio', { name: /IT/ })
+    expect(adminOption.getAttribute('aria-describedby')).toBe('role-IT-description')
     const save = within(card).getByRole('button', { name: 'Save role' }) as HTMLButtonElement
     expect(save.disabled).toBe(true)
 
     fireEvent.click(adminOption)
     expect(save.disabled).toBe(false)
-    expect(within(card).getByText('Sam Staff is signed out right away and signs in again as Admin.')).not.toBeNull()
+    expect(within(card).getByText('Sam Staff is signed out right away and signs in again as IT.')).not.toBeNull()
     fireEvent.click(save)
 
     const change = await within(card).findByRole('button', { name: 'Change role' })
     await waitFor(() => expect(document.activeElement).toBe(change))
-    expect(screen.getByRole('status').textContent).toBe('Sam Staff is now Admin and has been signed out.')
-    expect(within(card).getByText(/Sam is Admin\./)).not.toBeNull()
+    expect(screen.getByRole('status').textContent).toBe('Sam Staff is now IT and has been signed out.')
+    expect(within(card).getByText(/Sam is IT./)).not.toBeNull()
 
     const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')
     expect(patch?.[0]).toMatch(/\/api\/office\/staff\/p1$/)
-    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ role: 'admin' })
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ role: 'IT' })
   })
 
   it('shows the server refusal and keeps the choice', async () => {
@@ -300,13 +300,13 @@ describe('StaffProfile role', () => {
 
     const card = await screen.findByRole('region', { name: 'Role' })
     fireEvent.click(within(card).getByRole('button', { name: 'Change role' }))
-    fireEvent.click(await within(card).findByRole('radio', { name: /Admin/ }))
+    fireEvent.click(await within(card).findByRole('radio', { name: /IT/ }))
     fireEvent.click(within(card).getByRole('button', { name: 'Save role' }))
 
     expect((await within(card).findByRole('alert')).textContent).toBe(
       'The last active admin cannot be given another role.',
     )
-    expect((within(card).getByRole('radio', { name: /Admin/ }) as HTMLInputElement).checked).toBe(true)
+    expect((within(card).getByRole('radio', { name: /IT/ }) as HTMLInputElement).checked).toBe(true)
     expect(screen.getByRole('status').textContent).toBe('')
   })
 
@@ -325,7 +325,7 @@ describe('StaffProfile role', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Change role' }))
     expect((await within(card).findByRole('alert')).textContent).toBe('Database error')
     fireEvent.click(within(card).getByRole('button', { name: 'Try again' }))
-    expect(await within(card).findByRole('radio', { name: /Admin/ })).not.toBeNull()
+    expect(await within(card).findByRole('radio', { name: /IT/ })).not.toBeNull()
   })
 
   it('Cancel closes the choice without sending anything', async () => {
@@ -334,7 +334,7 @@ describe('StaffProfile role', () => {
 
     const card = await screen.findByRole('region', { name: 'Role' })
     fireEvent.click(within(card).getByRole('button', { name: 'Change role' }))
-    fireEvent.click(await within(card).findByRole('radio', { name: /Admin/ }))
+    fireEvent.click(await within(card).findByRole('radio', { name: /IT/ }))
     fireEvent.click(within(card).getByRole('button', { name: 'Cancel' }))
 
     expect(within(card).queryByRole('radio')).toBeNull()
@@ -343,11 +343,11 @@ describe('StaffProfile role', () => {
   })
 
   it('offers no role change on your own admin profile', async () => {
-    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'admin' } }))
+    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'IT' } }))
     renderAt(`/office/staff/${admin.id}`)
 
     const card = await screen.findByRole('region', { name: 'Role' })
-    expect(within(card).getByText(/You cannot remove your own admin role/)).not.toBeNull()
+    expect(within(card).getByText(/You cannot remove your own IT role/)).not.toBeNull()
     expect(within(card).queryByRole('button')).toBeNull()
   })
 })
@@ -459,7 +459,7 @@ describe('StaffProfile password reset', () => {
   })
 
   it('on your own profile it points to Change password instead', async () => {
-    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'admin' } }))
+    stubApi(() => ok({ staff: { ...person, id: admin.id, fullName: admin.fullName, role: 'IT' } }))
     renderAt(`/office/staff/${admin.id}`)
 
     const card = await screen.findByRole('region', { name: 'Password' })

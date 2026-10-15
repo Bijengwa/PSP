@@ -144,7 +144,7 @@ type QueueState =
 const REQUESTED_AT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 function queueErrorMessage(result: Extract<ApiResult<unknown>, { ok: false }>) {
-  if (result.status === 403) return 'Only administrators can see reset requests.'
+  if (result.status === 403) return 'Only IT can see reset requests.'
   if (result.status === 503) return 'The service is temporarily unavailable. Please try again shortly.'
   return result.message
 }

@@ -10,7 +10,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const staff = { id: '1', fullName: 'Test Admin', email: 'admin@psp.test', role: 'admin', mustChangePassword: false }
+const staff = { id: '1', fullName: 'Test Admin', email: 'admin@psp.test', role: 'IT', mustChangePassword: false }
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status })

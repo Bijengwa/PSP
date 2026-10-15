@@ -31,7 +31,7 @@ type FieldErrors = Partial<Record<FieldName, string>>
 const STAFF_PATH = '/office/staff'
 const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
-const ROLE_LABELS: Record<string, string> = { admin: 'Admin', staff: 'Staff' }
+const ROLE_LABELS: Record<string, string> = { IT: 'IT', staff: 'Staff' }
 const roleLabel = (role: string) => ROLE_LABELS[role] ?? role
 
 function status(staff: StaffDetail) {
@@ -148,7 +148,7 @@ function ContactForm({ staff, onSaved, onCancel }: EditFormProps) {
     }
 
     // 401 and 503 are also handled by the auth provider (login / unavailable screen).
-    if (result.status === 403) setFormError('Only administrators can edit staff profiles.')
+    if (result.status === 403) setFormError('Only IT can edit staff profiles.')
     else if (result.status === 404) setFormError('This person no longer exists.')
     else if (result.status === 503) setFormError('The service is temporarily unavailable. Please try again shortly.')
     else setFormError(result.message)
@@ -331,14 +331,14 @@ function RoleCard({ staff, isSelf, onChanged }: RoleProps) {
       return
     }
     // 401 and 503 are also handled by the auth provider (login / unavailable screen).
-    if (result.status === 403) setError('Only administrators can change roles.')
+    if (result.status === 403) setError('Only IT can change roles.')
     else if (result.status === 404) setError('This person no longer exists.')
     else if (result.status === 503) setError('The service is temporarily unavailable. Please try again shortly.')
     else setError(result.message)
   }
 
   const firstName = staff.fullName.split(' ')[0]
-  const locked = isSelf && staff.role === 'admin'
+  const locked = isSelf && staff.role === 'IT'
 
   return (
     <section className="office-card" aria-labelledby="profile-role-heading">
@@ -353,7 +353,7 @@ function RoleCard({ staff, isSelf, onChanged }: RoleProps) {
 
       <p className="office-card-sub">
         {locked
-          ? 'This is your own account. You cannot remove your own admin role; another admin can change it.'
+          ? 'This is your own account. You cannot remove your own IT role; another IT person can change it.'
           : `${firstName} is ${roleLabel(staff.role)}. Changing the role signs them out on every device at once.`}
       </p>
 
@@ -500,7 +500,7 @@ function PasswordCard({ staff, isSelf, onReset }: PasswordProps) {
     // 401 and 503 are also handled by the auth provider (login / unavailable screen).
     const reasons = Array.isArray(result.details) ? result.details.filter((d): d is string => typeof d === 'string') : []
     let message = result.message
-    if (result.status === 403) message = 'Only administrators can reset passwords.'
+    if (result.status === 403) message = 'Only IT can reset passwords.'
     else if (result.status === 404) message = 'This person no longer exists.'
     else if (result.status === 503) message = 'The service is temporarily unavailable. Please try again shortly.'
     setError({ message, reasons })
@@ -643,7 +643,7 @@ function AccessCard({ staff, isSelf, onChanged }: AccessProps) {
       return
     }
     // 401 and 503 are also handled by the auth provider (login / unavailable screen).
-    if (result.status === 403) setError('Only administrators can change who has access.')
+    if (result.status === 403) setError('Only IT can change who has access.')
     else if (result.status === 404) setError('This person no longer exists.')
     else if (result.status === 503) setError('The service is temporarily unavailable. Please try again shortly.')
     else setError(result.message)
@@ -692,7 +692,7 @@ function AccessCard({ staff, isSelf, onChanged }: AccessProps) {
 
       <p className="office-card-sub">
         {isSelf
-          ? 'This is your own account. Another admin can deactivate it if needed.'
+          ? 'This is your own account. Another IT person can deactivate it if needed.'
           : staff.isActive
             ? `${firstName} can sign in. Deactivating signs them out on every device at once. Nothing is deleted.`
             : `This account is deactivated, so ${firstName} cannot sign in. Reactivate it to give access back.`}
@@ -704,7 +704,7 @@ function AccessCard({ staff, isSelf, onChanged }: AccessProps) {
             Deactivate {staff.fullName}?
           </p>
           <p className="office-confirm-text">
-            They are signed out right away and cannot sign in until an admin reactivates the account.
+            They are signed out right away and cannot sign in until IT reactivates the account.
           </p>
           <div className="office-reset-actions">
             <button type="button" className="button button-danger" onClick={() => setActive(false)} disabled={working}>
@@ -745,7 +745,7 @@ export default function StaffProfile() {
       (result) => {
         if (result.ok) setLoad({ status: 'ready', staff: result.data.staff })
         else if (result.status === 404) setLoad({ status: 'missing' })
-        else if (result.status === 403) setLoad({ status: 'error', message: 'Only administrators can see staff profiles.' })
+        else if (result.status === 403) setLoad({ status: 'error', message: 'Only IT can see staff profiles.' })
         else if (result.status === 503) {
           setLoad({ status: 'error', message: 'The service is temporarily unavailable. Please try again shortly.' })
         } else setLoad({ status: 'error', message: result.message })
@@ -944,7 +944,7 @@ export function MyProfile() {
           ]}
         />
         <p className="office-settings-hint office-profile-note">
-          {staff.role === 'admin' ? (
+          {staff.role === 'IT' ? (
             <>
               You can correct your name and phone in{' '}
               <Link to={`${STAFF_PATH}/${staff.id}`}>your staff profile</Link>.

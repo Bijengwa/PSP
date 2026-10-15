@@ -161,7 +161,7 @@ const valid = (over = {}) => ({
 beforeAll(async () => {
   await db.migrate.latest();
   await db.raw('truncate staff_profiles, roles restart identity cascade');
-  const [admin] = await db('roles').insert({ name: 'admin', description: 'Full access' }).returning('id');
+  const [admin] = await db('roles').insert({ name: 'IT', description: 'Full access' }).returning('id');
   const [staff] = await db('roles').insert({ name: 'staff', description: 'Staff' }).returning('id');
   const hash = await hashPassword('Correct-Horse-42!');
   const rows = await db('staff_profiles')

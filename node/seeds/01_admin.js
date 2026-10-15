@@ -2,8 +2,8 @@ require('dotenv').config({ quiet: true });
 
 const { hashPassword } = require('../src/auth/password');
 
-// Creates the `admin` role and the first admin from SEED_ADMIN_*. Running it
-// again changes nothing. The admin must change the password at first login.
+// Creates the `IT` role and the first IT person from SEED_ADMIN_*. Running it
+// again changes nothing. They must change the password at first login.
 exports.seed = async function (knex) {
   const email = (process.env.SEED_ADMIN_EMAIL || '').trim().toLowerCase();
   const password = process.env.SEED_ADMIN_PASSWORD || '';
@@ -17,10 +17,10 @@ exports.seed = async function (knex) {
   }
 
   await knex('roles')
-    .insert({ name: 'admin', description: 'Full access to the office' })
+    .insert({ name: 'IT', description: 'Full access to the office' })
     .onConflict('name')
     .ignore();
-  const role = await knex('roles').where({ name: 'admin' }).first('id');
+  const role = await knex('roles').where({ name: 'IT' }).first('id');
 
   await knex('staff_profiles')
     .insert({

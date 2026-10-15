@@ -23,7 +23,7 @@ type StatusFilter = '' | 'active' | 'inactive'
 type ListState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: StaffPage }
 
 const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-const ROLE_LABELS: Record<string, string> = { admin: 'Admin', staff: 'Staff' }
+const ROLE_LABELS: Record<string, string> = { IT: 'IT', staff: 'Staff' }
 
 // Phones get a card list instead of a table. Only one layout is rendered, so the
 // reset form's input id exists once. Keep the width in step with the 900px rules in index.css.
@@ -36,7 +36,7 @@ function subscribeToCompact(onChange: () => void) {
 }
 
 function listErrorMessage(result: Extract<ApiResult<unknown>, { ok: false }>) {
-  if (result.status === 403) return 'Only administrators can see the staff list.'
+  if (result.status === 403) return 'Only IT can see the staff list.'
   if (result.status === 503) return 'The service is temporarily unavailable. Please try again shortly.'
   return result.message
 }

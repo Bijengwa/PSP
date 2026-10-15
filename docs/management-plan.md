@@ -164,6 +164,7 @@ Each step lists **Scope** (what to do), **Done when** (checks that must pass) an
 - **M6/M7 track (2026-10-14):** `node/src/customers/` and `node/src/orders/` (staff routes under `/api/office/customers` and `/api/office/orders`; the public checkout stays in `node/src/shop/`), migrations `<timestamp>_create_customers.js` and `<timestamp>_extend_orders.js`, and in `web/src/management/inApp/pages/`: `CustomersList.tsx`, `CustomerForm.tsx`, `CustomerDetail.tsx`, `OrdersList.tsx`, `OrderDetail.tsx` with their tests. No new dependencies. The M6.1 and M7.1 fields exactly as written in this plan are **approved**. Nobody is awake for these steps, so where the plan is silent the run chooses the most reasonable option and records it as a "Decision" in `docs/overnight-log.md`.
 - **Overnight order after M4.8:** M6.1 → M6.2 → M6.3 → M6.4 → M7.1 → M7.2 → M7.3 → M7.5. **M7.4 (staff-created orders) is skipped** because the plan says to confirm with the user first; after M7.5 the current step is set to M7.4 and the run stops. M7.4 was then built on 2026-10-15 at the user's instruction.
 - **H track (2026-10-15):** H1 and H2 run overnight, in that order. They are reviews: findings that are bugs are fixed in the existing files under `node/src/auth/`, `node/src/server.js` and their tests (new test files only beside the code they test), and H2 writes its notes in the Appendix below. No new dependencies, no new folders. Where the plan is silent the run chooses the most reasonable option and records it as a "Decision" in `docs/overnight-log.md`. **After H2 the current step is set to H3 and the run stops:** H3 needs the user to approve the role matrix before any code, H4–H7 depend on it, and H8 needs the user's sign-off.
+- **H4–H7 track (2026-10-15):** after the user approved the role matrix (H3), H4 → H5 → H6 → H7 run overnight and **the run stops when the current step becomes H8** (needs the user's sign-off). New migrations for `permissions`, `role_permissions` and `audit_logs` are approved, with new files beside the code they belong to under `node/src/auth/` (permissions, audit, event bus), `node/src/` for the shared audit helper, and `web/src/management/inApp/pages/` for the Audit log page and its test. Existing office routes, sidebar and pages may change only to use permissions and to publish audit events. Redis Streams for the bus uses the existing Redis client; no new dependencies. The approved matrix and the "Staff cannot act on IT accounts" rule in H3 are the specification.
 - **M4 track (2026-10-14):** `web/src/management/inApp/pages/StaffProfile.tsx`, `web/src/management/inApp/layout/Sidebar.test.tsx`, other web tests beside the files they test, and a new `node/src/auth/staff.test.js` for the staff endpoints. Staff routes stay in `node/src/auth/auth.routes.js` (`officeRouter`) and `auth.service.js`. A "Department" column is NOT approved.
 - Dev dependency `playwright-core` in `web/` (drives the Edge or Chrome already installed; downloads no browser) — needed so UI steps can pass the 360/768/desktop check without a person.
 
@@ -411,7 +412,24 @@ Must be done **before real customer data goes in**. Includes everything moved ou
 - **Scope:** Cookie flags in production, `trust proxy` so `req.ip` is real, CORS and `requireSameOrigin`, helmet headers, error responses that leak nothing. Written in the appendix.
 
 #### H3 Roles (old M5.1)
-- **Scope:** Finalise the role list (proposed: Administrator, IT, Manager, Sales, Staff). The user approves the role matrix in this file before code.
+- **Scope:** Finalise the role list and the role matrix. The user approves the matrix in this file before code.
+- **Role list (decided 2026-10-15 by the user):** exactly two roles, **IT** and **Staff**. No Administrator, Manager or Sales. The current seeded `admin` role is renamed `IT` (a data change; its people keep their access).
+- **Role matrix (APPROVED by the user 2026-10-15: Staff can do everything except register staff; IT can do everything; Staff cannot act on IT accounts):**
+
+  | Area | Action | IT | Staff |
+  |---|---|---|---|
+  | Staff accounts | **register** a new person | yes | **no** |
+  | Staff accounts | list, view, edit, change role, deactivate | yes | yes |
+  | Reset requests | list, set a temporary password | yes | yes |
+  | Own profile and password | view and change | yes | yes |
+  | Products | everything, including cost price | yes | yes |
+  | Customers | everything | yes | yes |
+  | Orders | everything, including create, cancel, link | yes | yes |
+  | Audit log (H7) | view | yes | yes |
+
+  Rules that hold for both: nobody grants a role more permissions than they hold (so Staff cannot make anyone IT); the last active IT person cannot be deactivated or demoted (as today); the server checks permissions, the sidebar only hides.
+- **Added rule (chosen by the user 2026-10-15):** Staff cannot edit, deactivate, change the role of or reset the password of an **IT** account, because that would let them sign in as IT. H5 enforces it on the server.
+- **What H3 built:** the role rename only (`admin` → `IT`, migration `20261015090000_rename_admin_role_to_it.js`, code, labels and tests). The matrix is enforced by H4 (permission keys) and H5 (checks on every endpoint); until then the staff, reset-request and audit areas still require the IT role.
 
 #### H4 Permissions (old M5.2)
 - **Scope:** `permissions` and `role_permissions` tables. Keys for staff and reset requests (as before) **plus** `products.*`, `customers.*`, `orders.*` and `audit.view`. Nobody can grant a role with more permissions than they hold. `/api/auth/me` returns permission keys (from Postgres, not cached).

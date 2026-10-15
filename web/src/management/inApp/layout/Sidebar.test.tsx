@@ -11,7 +11,7 @@ afterEach(() => {
 })
 
 const people = {
-  admin: { id: 'a1', fullName: 'Asha Admin', email: 'asha@psp.test', role: 'admin', mustChangePassword: false },
+  admin: { id: 'a1', fullName: 'Asha Admin', email: 'asha@psp.test', role: 'IT', mustChangePassword: false },
   staff: { id: 's1', fullName: 'Sam Staff', email: 'sam@psp.test', role: 'staff', mustChangePassword: false },
 }
 
@@ -71,7 +71,7 @@ describe('Sidebar IT group', () => {
   it('is shown to an admin, with Staff, Register Staff and Reset requests and the pending badge', async () => {
     stubApi(people.admin, 3)
     renderSidebar()
-    await screen.findByText('Signed in as admin')
+    await screen.findByText('Signed in as IT')
 
     const nav = screen.getByRole('navigation', { name: 'Office' })
     const list = within(nav).getByRole('list', { name: 'IT' })
@@ -99,7 +99,7 @@ describe('Sidebar Orders badge', () => {
   it('shows no badge when there are no new orders', async () => {
     const fetchMock = stubApi(people.admin, 0, 0)
     renderSidebar()
-    await screen.findByText('Signed in as admin')
+    await screen.findByText('Signed in as IT')
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/office/orders'))).toBe(true),
     )

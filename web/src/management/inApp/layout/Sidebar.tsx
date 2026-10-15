@@ -257,7 +257,7 @@ export default function Sidebar({
   onToggleRail,
 }: SidebarProps) {
   const { state } = useAuth()
-  const isAdmin = state.status === 'authenticated' && state.staff.role === 'admin'
+  const isAdmin = state.status === 'authenticated' && state.staff.role === 'IT'
   // Pending forgot-password requests (admins only) and new orders (everyone signed in).
   const pendingResets = useBadgeCount('/api/office/reset-requests?status=pending', isAdmin, RESET_REQUESTS_CHANGED)
   const newOrders = useBadgeCount('/api/office/orders?status=new', state.status === 'authenticated', ORDERS_CHANGED)
